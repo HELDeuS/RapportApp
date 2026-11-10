@@ -230,6 +230,47 @@ $("#students-table tbody").addEventListener("click", async (e) => {
   await loadAll();
 });
 
+function showResult(sel, res) {
+  const el = $(sel);
+  el.classList.remove("hidden");
+  let msg = `Toegevoegd: ${res.imported}`;
+  if (res.skipped) msg += `, overgeslagen (bestaat al): ${res.skipped}`;
+  if (res.errors && res.errors.length) msg += `\nFouten:\n` + res.errors.join("\n");
+  el.textContent = msg;
+}
+
+// Import studenten via CSV/Excel
+$("#import-students-file").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append("file", file);
+  try {
+    const res = await api("/api/import/students", { method: "POST", body: fd });
+    showResult("#students-import-result", res);
+    await loadAll();
+  } catch (err) {
+    showResult("#students-import-result", { imported: 0, errors: [err.message] });
+  }
+  e.target.value = "";
+});
+
+// Import vakken via CSV/Excel
+$("#import-subjects-file").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append("file", file);
+  try {
+    const res = await api("/api/import/subjects", { method: "POST", body: fd });
+    showResult("#subjects-import-result", res);
+    await loadAll();
+  } catch (err) {
+    showResult("#subjects-import-result", { imported: 0, errors: [err.message] });
+  }
+  e.target.value = "";
+});
+
 // ---------- Vakken ----------
 function renderSubjects() {
   $("#subjects-table tbody").innerHTML = subjects.map((s) => `

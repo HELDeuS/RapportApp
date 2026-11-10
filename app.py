@@ -431,6 +431,93 @@ def import_grades():
 
 
 # ---------------------------------------------------------------------------
+# Import van studenten en vakken (CSV/Excel)
+# ---------------------------------------------------------------------------
+# Studenten: eerste kolom = naam, tweede kolom (optioneel) = studentnummer.
+# Vakken: eerste kolom = vaknaam.
+# Een kopregel (bijv. "Naam,Nummer" of "Vak") wordt automatisch herkend.
+# ---------------------------------------------------------------------------
+
+def rows_from_upload(file_storage):
+    filename = (file_storage.filename or str()).lower()
+    if filename.endswith((".xlsx", ".xlsm")):
+        wb = openpyxl.load_workbook(file_storage, data_only=True)
+        ws = wb.active
+        return [[("" if c is None else str(c).strip()) for c in row]
+                for row in ws.iter_rows(values_only=True)]
+    raw = file_storage.read()
+    text = raw.decode("utf-8-sig") if isinstance(raw, bytes) else raw
+    return [split_line(line.strip()) for line in text.splitlines()
+            if line.strip() != ""]
+
+
+@app.route("/api/import/students", methods=["POST"])
+def import_students():
+    file = request.files.get("file")
+    if not file:
+        return jsonify({"error": "Geen bestand meegestuurd"}), 400
+    rows = rows_from_upload(file)
+    if not rows:
+        return jsonify({"error": "Geen data gevonden"}), 400
+
+    first = rows[0][0].strip().lower()
+    if first in ("naam", "name", "student", "leerling", "studentnaam"):
+        rows = rows[1:]
+
+    db = get_db()
+    existing = {r["name"].strip().lower() for r in
+                db.execute("SELECT name FROM students").fetchall()}
+    imported, skipped = 0, 0
+    for row in rows:
+        if not row or not row[0].strip():
+            continue
+        name = row[0].strip()
+        number = row[1].strip() if len(row) > 1 else ""
+        if name.lower() in existing:
+            skipped += 1
+            continue
+        db.execute("INSERT INTO students (name, student_number) VALUES (?, ?)",
+                   (name, number))
+        existing.add(name.lower())
+        imported += 1
+    db.commit()
+    return jsonify({"imported": imported, "skipped": skipped,
+                     "errors": []})
+
+
+@app.route("/api/import/subjects", methods=["POST"])
+def import_subjects():
+    file = request.files.get("file")
+    if not file:
+        return jsonify({"error": "Geen bestand meegestuurd"}), 400
+    rows = rows_from_upload(file)
+    if not rows:
+        return jsonify({"error": "Geen data gevonden"}), 400
+
+    first = rows[0][0].strip().lower()
+    if first in ("vak", "vakken", "subject", "subjects", "vaknaam"):
+        rows = rows[1:]
+
+    db = get_db()
+    existing = {r["name"].strip().lower() for r in
+                db.execute("SELECT name FROM subjects").fetchall()}
+    imported, skipped = 0, 0
+    for row in rows:
+        if not row or not row[0].strip():
+            continue
+        name = row[0].strip()
+        if name.lower() in existing:
+            skipped += 1
+            continue
+        db.execute("INSERT INTO subjects (name) VALUES (?)", (name,))
+        existing.add(name.lower())
+        imported += 1
+    db.commit()
+    return jsonify({"imported": imported, "skipped": skipped,
+                     "errors": []})
+
+
+# ---------------------------------------------------------------------------
 # Reports
 # ---------------------------------------------------------------------------
 

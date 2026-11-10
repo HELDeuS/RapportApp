@@ -57,7 +57,11 @@
     <input id="student-name" placeholder="Naam">
     <input id="student-number" placeholder="Studentnummer">
     <button id="btn-add-student">Toevoegen</button>
+    <label class="file-label">Import CSV/Excel
+      <input type="file" id="import-students-file" accept=".csv,.txt,.tsv,.xlsx,.xlsm">
+    </label>
   </div>
+  <div id="students-import-result" class="result hidden"></div>
   <table class="list" id="students-table">
     <thead><tr><th>Naam</th><th>Studentnummer</th><th></th></tr></thead>
     <tbody></tbody>
@@ -69,7 +73,11 @@
   <div class="toolbar">
     <input id="subject-name" placeholder="Vaknaam">
     <button id="btn-add-subject">Toevoegen</button>
+    <label class="file-label">Import CSV/Excel
+      <input type="file" id="import-subjects-file" accept=".csv,.txt,.tsv,.xlsx,.xlsm">
+    </label>
   </div>
+  <div id="subjects-import-result" class="result hidden"></div>
   <table class="list" id="subjects-table">
     <thead><tr><th>Vak</th><th></th></tr></thead>
     <tbody></tbody>
