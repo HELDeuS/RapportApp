@@ -39,7 +39,7 @@ De app vereist inloggen. Bij de eerste start wordt automatisch het account **`be
 | **Student** | Alleen het eigen rapport (studentvariant, zonder opmerking docenten) |
 
 - Elke klas kan een **mentor** gekoppeld krijgen (beheerder, op het tabblad Klassen).
-- Studentaccounts worden op het tabblad **Gebruikers** aan een student gekoppeld.
+- **Studentaccounts** worden beheerd via het vinkje **"Inlog"** op het tabblad Studenten: aanvinken maakt automatisch een account aan (gebruikersnaam = studentnummer, anders `student<id>`; standaardwachtwoord `welkom`), afvinken blokkeert het account. In de gebruikerslijst op het tabblad Gebruikers kun je studentwachtwoorden resetten.
 - Rollen worden server-side afgedwongen op elk API-endpoint; de UI verbergt alleen wat niet mag.
 
 > **Let op:** gebruik voor het live gaan van studentaccounts HTTPS (bijv. via Caddy of nginx), zodat wachtwoorden niet als platte tekst over het netwerk gaan.

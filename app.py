@@ -96,7 +96,8 @@ CREATE TABLE IF NOT EXISTS students (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     student_number TEXT DEFAULT '',
-    class_id INTEGER REFERENCES classes(id) ON DELETE SET NULL
+    class_id INTEGER REFERENCES classes(id) ON DELETE SET NULL,
+    login_enabled INTEGER DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS subjects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -177,6 +178,9 @@ def init_db():
     if "mentor_id" not in ccols:
         db.execute("ALTER TABLE classes ADD COLUMN mentor_id INTEGER "
                    "REFERENCES users(id) ON DELETE SET NULL")
+    stcols = [r[1] for r in db.execute("PRAGMA table_info(students)").fetchall()]
+    if "login_enabled" not in stcols:
+        db.execute("ALTER TABLE students ADD COLUMN login_enabled INTEGER DEFAULT 0")
     if not db.execute("SELECT COUNT(*) FROM users").fetchone()[0]:
         db.execute(
             "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
@@ -391,6 +395,34 @@ def user_item(user_id):
     return jsonify({"ok": True})
 
 
+def ensure_student_account(db, student_row):
+    """Maakt (of activeert) het studentaccount bij een student; geeft de gebruikersnaam terug."""
+    base = (student_row["student_number"] or "").strip() or f"student{student_row['id']}"
+    username = base
+    n = 0
+    while db.execute(
+        "SELECT id FROM users WHERE username = ? AND NOT (role = 'student' AND student_id = ?)",
+        (username, student_row["id"]),
+    ).fetchone():
+        n += 1
+        username = f"{base}{n}"
+    existing = db.execute(
+        "SELECT * FROM users WHERE role = 'student' AND student_id = ?",
+        (student_row["id"],),
+    ).fetchone()
+    if existing is None:
+        db.execute(
+            "INSERT INTO users (username, password_hash, role, student_id) VALUES (?, ?, ?, ?)",
+            (username, generate_password_hash("welkom"), "student", student_row["id"]),
+        )
+    else:
+        db.execute(
+            "UPDATE users SET username = ?, active = 1 WHERE id = ?",
+            (username, existing["id"]),
+        )
+    return username
+
+
 def mentor_class_ids(user):
     if user["role"] != "mentor":
         return None
@@ -572,16 +604,27 @@ def students_collection():
         if user["role"] == "mentor" and not mentor_owns_student(user, None, class_id):
             return jsonify({"error": "Als mentor kun je alleen studenten in je eigen klas toevoegen"}), 403
         cur = db.execute(
-            "INSERT INTO students (name, student_number, class_id) VALUES (?, ?, ?)",
-            (name, number, class_id),
+            "INSERT INTO students (name, student_number, class_id, login_enabled) VALUES (?, ?, ?, ?)",
+            (name, number, class_id, 1 if data.get("login_enabled") else 0),
         )
         db.commit()
-        return jsonify(dict(db.execute(
+        student = dict(db.execute(
             "SELECT * FROM students WHERE id = ?", (cur.lastrowid,)
-        ).fetchone())), 201
+        ).fetchone())
+        username = None
+        if data.get("login_enabled"):
+            username = ensure_student_account(db, student)
+            db.commit()
+        student["login_username"] = username
+        return jsonify(student), 201
     archived = 1 if request.args.get("archived") == "1" else 0
     rows = db.execute(
-        "SELECT * FROM students WHERE archived = ? ORDER BY name", (archived,)
+        """SELECT st.*, u.username AS login_username, u.active AS login_active
+           FROM students st
+           LEFT JOIN users u ON u.student_id = st.id AND u.role = 'student'
+           WHERE st.archived = ?
+           ORDER BY st.name""",
+        (archived,),
     ).fetchall()
     return jsonify([dict(r) for r in rows])
 
@@ -610,6 +653,22 @@ def student_item(student_id):
             db.execute(
                 "UPDATE students SET name = ?, student_number = ?, class_id = ? WHERE id = ?",
                 (name, number, class_id, student_id),
+            )
+        if "login_enabled" in data:
+            enable = 1 if data.get("login_enabled") else 0
+            db.execute("UPDATE students SET login_enabled = ? WHERE id = ?",
+                       (enable, student_id))
+            db.commit()
+            if enable:
+                fresh = db.execute(
+                    "SELECT * FROM students WHERE id = ?", (student_id,)
+                ).fetchone()
+                username = ensure_student_account(db, dict(fresh))
+                db.commit()
+                return jsonify({"ok": True, "login_username": username})
+            db.execute(
+                "UPDATE users SET active = 0 WHERE role = 'student' AND student_id = ?",
+                (student_id,),
             )
         if "archived" in data:
             db.execute("UPDATE students SET archived = ? WHERE id = ?",

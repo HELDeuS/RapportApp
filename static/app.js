@@ -453,6 +453,7 @@ function renderStudents() {
       <td><input data-field="name" value="${esc(s.name)}"></td>
       <td><input data-field="student_number" value="${esc(s.student_number || "")}"></td>
       <td><select data-field="class_id">${classOptions(s.class_id)}</select></td>
+      <td title="${s.login_username ? "Gebruikersnaam: " + esc(s.login_username) : "Nog geen account"}"><input type="checkbox" data-field="login_enabled"${s.login_enabled ? " checked" : ""}></td>
       <td><button class="secondary" data-archive>Archiveren</button></td>
       <td><button class="danger" data-del>Verwijderen</button></td>
     </tr>`).join("");
@@ -479,6 +480,24 @@ $("#students-table tbody").addEventListener("change", async (e) => {
   const tr = e.target.closest("tr");
   const s = students.find((x) => x.id === +tr.dataset.id);
   if (!s) return;
+  if (e.target.dataset.field === "login_enabled") {
+    try {
+      const res = await api(`/api/students/${s.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ login_enabled: e.target.checked }),
+      });
+      if (e.target.checked && res.login_username) {
+        const msg = "Account aangemaakt voor " + s.name + ".\nGebruikersnaam: " + res.login_username + "\nStandaardwachtwoord: welkom";
+        alert(msg);
+      }
+      await loadAll();
+    } catch (err) {
+      alert(err.message);
+      await loadAll();
+    }
+    return;
+  }
   s[e.target.dataset.field] = e.target.value === "" ? null : e.target.value;
   await api(`/api/students/${s.id}`, {
     method: "PUT",
