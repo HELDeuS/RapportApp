@@ -281,6 +281,7 @@ function renderGradeTable() {
     `<th title="Opmerkingen (zichtbaar op studentrapport)">Opmerkingen</th>` +
     `<th title="Opmerking docenten (alleen op docentenrapport)">Opm. docenten</th>` +
     `<th data-key="tekorten">Tekorten</th></tr>`;
+  updateSortArrows("#grade-table", listSort.grades);
 
   const periodSubjectsForSort = periodSubjects;
   const tekortTotal = (st) => periodSubjectsForSort.reduce(
@@ -613,7 +614,7 @@ function renderClasses() {
       <td><input data-field="name" value="${esc(c.name)}"></td>
       <td><select data-field="niveau_id">${niveauOptions(c.niveau_id)}</select></td>
       <td><select data-field="cohort_id">${optList(c.cohort_id, cohorts, "Geen cohort")}</select></td>
-      ${users.length ? `<td><select data-field="mentor_id">${optList(c.mentor_id, users.filter((u) => u.role === "mentor" || u.role === "beheerder"), "Geen mentor")}</select></td>` : `<td>${esc(c.mentor || "")}</td>`}
+      ${users.length ? `<td><select data-field="mentor_id">${optList(c.mentor_id, users.filter((u) => u.role === "mentor" || u.role === "beheerder").map((u) => ({ id: u.id, name: u.username })), "Geen mentor")}</select></td>` : `<td>${esc(c.mentor || "")}</td>`}
       <td><button class="secondary" data-archive>Archiveren</button></td>
       <td><button class="danger" data-del>Verwijderen</button></td>
     </tr>`).join("");
