@@ -26,7 +26,10 @@
   --input-bg: #232b36;
   --input-border: #46515f;
   --row-input-bg: #28303c;
+  --tab-active-bg: #2a3341;
 }
+
+[data-theme="dark"] .tab.active { background: var(--tab-active-bg); }
 
 * { box-sizing: border-box; }
 
@@ -65,7 +68,7 @@ nav { display: flex; gap: 6px; flex-wrap: wrap; }
   font-size: .95rem;
 }
 
-.tab.active { background: var(--bg); color: #222; font-weight: 600; }
+.tab.active { background: var(--bg); color: var(--text); font-weight: 600; }
 
 .panel { display: none; padding: 20px; max-width: 1200px; margin: 0 auto; }
 .panel.active { display: block; }
