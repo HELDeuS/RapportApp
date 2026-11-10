@@ -287,9 +287,10 @@ def subject_item(subject_id):
     if request.method == "PUT":
         data = request.get_json(force=True)
         name = (data.get("name") or "").strip()
-        if not name:
+        if "name" in data and not name:
             return jsonify({"error": "Naam is verplicht"}), 400
-        db.execute("UPDATE subjects SET name = ? WHERE id = ?", (name, subject_id))
+        if name:
+            db.execute("UPDATE subjects SET name = ? WHERE id = ?", (name, subject_id))
         if "period_ids" in data:
             db.execute("DELETE FROM subject_periods WHERE subject_id = ?", (subject_id,))
             for pid in (data.get("period_ids") or []):

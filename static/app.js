@@ -382,14 +382,19 @@ $("#subjects-table tbody").addEventListener("change", async (e) => {
   if (e.target.dataset.period !== undefined) {
     const periodIds = [...tr.querySelectorAll("input[data-period]:checked")]
       .map((c) => +c.dataset.period);
-    await api(`/api/subjects/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ period_ids: periodIds }),
-    });
-    const s = subjects.find((x) => x.id === +id);
-    if (s) s.period_ids = periodIds;
-    renderGradeTable();
+    try {
+      await api(`/api/subjects/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ period_ids: periodIds }),
+      });
+      const s = subjects.find((x) => x.id === +id);
+      if (s) s.period_ids = periodIds;
+      renderGradeTable();
+    } catch (err) {
+      alert("Opslaan van module-koppeling mislukt: " + err.message);
+      await loadAll();
+    }
   } else {
     await api(`/api/subjects/${id}`, {
       method: "PUT",
