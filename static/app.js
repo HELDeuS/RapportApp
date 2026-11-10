@@ -9,6 +9,7 @@ let subjects = [];
 let periods = [];
 let grades = {}; // "studentId:subjectId" -> value
 let attendance = {}; // studentId -> {present, absent_allowed, absent_unallowed}
+let notes = {}; // studentId -> {comment, teacher_comment}
 let currentPeriod = null;
 
 const api = async (url, opts) => {
@@ -119,6 +120,9 @@ async function loadGrades() {
   const attRows = await api(`/api/attendance?period_id=${currentPeriod}`);
   attendance = {};
   for (const r of attRows) attendance[r.student_id] = r;
+  const noteRows = await api(`/api/notes?period_id=${currentPeriod}`);
+  notes = {};
+  for (const r of noteRows) notes[r.student_id] = r;
   renderGradeTable();
 }
 
@@ -137,6 +141,8 @@ function renderGradeTable() {
     `<th title="Aanwezigheid">Aanw. %</th>` +
     `<th title="Geoorloofd afwezig">Geoorl. afw. %</th>` +
     `<th title="Ongeoorloofd afwezig">Ongeoorl. afw. %</th>` +
+    `<th title="Opmerkingen (zichtbaar op studentrapport)">Opmerkingen</th>` +
+    `<th title="Opmerking docenten (alleen op docentenrapport)">Opm. docenten</th>` +
     `<th>Tekorten</th></tr>`;
 
   tbody.innerHTML = visibleStudents().map((st) => {
@@ -159,11 +165,19 @@ function renderGradeTable() {
       attCell("present", "att-present") +
       attCell("absent_allowed", "att-allowed") +
       attCell("absent_unallowed", "att-unallowed") +
+      `<td><input class="cell note-cell" data-note="comment" data-sid="${st.id}" value="${esc((notes[st.id] || {}).comment || "")}"></td>` +
+      `<td><input class="cell note-cell" data-note="teacher_comment" data-sid="${st.id}" value="${esc((notes[st.id] || {}).teacher_comment || "")}"></td>` +
       `<td class="total" data-total="${st.id}" data-name="${esc(st.name)}">${total}</td></tr>`;
   }).join("");
 
   tbody.querySelectorAll("input.cell").forEach((inp) => {
-    inp.addEventListener("change", () => inp.dataset.att ? saveAttendance(inp) : saveCell(inp));
+    if (inp.dataset.note) {
+      inp.addEventListener("change", () => saveNote(inp));
+    } else if (inp.dataset.att) {
+      inp.addEventListener("change", () => saveAttendance(inp));
+    } else {
+      inp.addEventListener("change", () => saveCell(inp));
+    }
     inp.addEventListener("focus", () => inp.select());
   });
 }
@@ -202,6 +216,27 @@ async function saveCell(inp) {
   } catch (e) {
     alert(e.message);
     inp.value = grades[`${body.student_id}:${body.subject_id}`] || "";
+  }
+}
+
+async function saveNote(inp) {
+  const sid = +inp.dataset.sid;
+  const cur = notes[sid] || { comment: "", teacher_comment: "" };
+  const payload = {
+    student_id: sid,
+    period_id: currentPeriod,
+    comment: inp.dataset.note === "comment" ? inp.value : (cur.comment || ""),
+    teacher_comment: inp.dataset.note === "teacher_comment" ? inp.value : (cur.teacher_comment || ""),
+  };
+  try {
+    await api("/api/notes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    notes[sid] = { comment: payload.comment, teacher_comment: payload.teacher_comment };
+  } catch (e) {
+    alert(e.message);
   }
 }
 
@@ -712,7 +747,8 @@ async function showReport() {
   const studentId = $("#report-student").value;
   const classId = $("#report-class").value;
   const cohortId = $("#report-cohort").value;
-  let url = `/api/report?period_id=${periodId}`;
+  const audience = $("#report-audience").value;
+  let url = `/api/report?period_id=${periodId}&audience=${audience}`;
   if (studentId) url += `&student_id=${studentId}`;
   if (classId) url += `&class_id=${classId}`;
   if (cohortId) url += `&cohort_id=${cohortId}`;
@@ -731,6 +767,11 @@ async function showReport() {
           <td class="val-onv">${fmtPct(s.attendance.absent_unallowed)}</td>
         </tr></tbody>
       </table>` : ""}
+      ${s.notes && (s.notes.comment || (audience !== "student" && s.notes.teacher_comment)) ? `
+      <div class="notes-block">
+        ${s.notes.comment ? `<p><strong>Opmerkingen:</strong> ${esc(s.notes.comment)}</p>` : ""}
+        ${audience !== "student" && s.notes.teacher_comment ? `<p><strong>Opmerking docenten:</strong> ${esc(s.notes.teacher_comment)}</p>` : ""}
+      </div>` : ""}
       ${s.entries.length ? `
       <table>
         <thead><tr><th>Vak</th><th>Beoordeling</th><th>Tekorten</th></tr></thead>

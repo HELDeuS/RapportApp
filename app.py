@@ -73,6 +73,14 @@ CREATE TABLE IF NOT EXISTS subject_periods (
     period_id INTEGER NOT NULL REFERENCES periods(id) ON DELETE CASCADE,
     UNIQUE (subject_id, period_id)
 );
+CREATE TABLE IF NOT EXISTS notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    period_id INTEGER NOT NULL REFERENCES periods(id) ON DELETE CASCADE,
+    comment TEXT DEFAULT '',
+    teacher_comment TEXT DEFAULT '',
+    UNIQUE (student_id, period_id)
+);
 CREATE TABLE IF NOT EXISTS attendance (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
@@ -828,6 +836,50 @@ def import_subjects():
 
 
 # ---------------------------------------------------------------------------
+# Opmerkingen (per student per module)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/notes")
+def notes_list():
+    period_id = request.args.get("period_id", type=int)
+    if not period_id:
+        return jsonify({"error": "period_id is verplicht"}), 400
+    db = get_db()
+    rows = db.execute(
+        """SELECT student_id, comment, teacher_comment FROM notes
+           WHERE period_id = ? AND (comment != '' OR teacher_comment != '')""",
+        (period_id,),
+    ).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/notes", methods=["POST"])
+def note_set():
+    data = request.get_json(force=True)
+    student_id = data.get("student_id")
+    period_id = data.get("period_id")
+    if not (student_id and period_id):
+        return jsonify({"error": "student_id en period_id zijn verplicht"}), 400
+    comment = (data.get("comment") or "").strip()
+    teacher_comment = (data.get("teacher_comment") or "").strip()
+    db = get_db()
+    if comment == "" and teacher_comment == "":
+        db.execute("DELETE FROM notes WHERE student_id = ? AND period_id = ?",
+                   (student_id, period_id))
+    else:
+        db.execute(
+            """INSERT INTO notes (student_id, period_id, comment, teacher_comment)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT (student_id, period_id) DO UPDATE SET
+                 comment = excluded.comment,
+                 teacher_comment = excluded.teacher_comment""",
+            (student_id, period_id, comment, teacher_comment),
+        )
+    db.commit()
+    return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------------------
 # Aanwezigheid (per student per module, percentages)
 # ---------------------------------------------------------------------------
 
@@ -965,6 +1017,17 @@ def report():
         class_map[r["sid"]] = (
             {"name": r["cname"], "niveau": r["cniveau"]} if r["cname"] else None
         )
+    audience = request.args.get("audience", "staff")
+    notes_map = {}
+    for r in db.execute(
+        """SELECT student_id, comment, teacher_comment FROM notes
+           WHERE period_id = ?""",
+        (period_id,),
+    ).fetchall():
+        notes_map[r["student_id"]] = {
+            "comment": r["comment"],
+            "teacher_comment": r["teacher_comment"] if audience != "student" else "",
+        }
     attendance = {}
     for r in db.execute(
         """SELECT student_id, present, absent_allowed, absent_unallowed
@@ -1008,12 +1071,17 @@ def report():
         att = attendance.get(s["id"])
         if att is not None and all(v is None for v in att.values()):
             att = None
+        note = notes_map.get(s["id"])
+        if note is not None and not note["comment"] and not note["teacher_comment"]:
+            note = None
         result.append({
             "student": dict(s),
             "class": class_map.get(s["id"]),
             "entries": entries,
             "total_tekorten": total,
             "attendance": att,
+            "notes": note,
+            "audience": audience,
         })
     return jsonify({"period": dict(period), "students": result})
 

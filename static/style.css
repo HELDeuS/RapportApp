@@ -224,6 +224,17 @@ input.cell.att-unallowed { color: var(--onv); font-weight: 700; }
 
 .att-table { margin-bottom: 12px; }
 
+.note-cell { width: 160px; text-align: left; }
+
+.notes-block {
+  margin: 10px 0 12px;
+  padding: 10px 12px;
+  background: var(--input-bg);
+  border-left: 4px solid var(--accent);
+  border-radius: 4px;
+}
+.notes-block p { margin: 4px 0; }
+
 .sortable th[data-key] { cursor: pointer; user-select: none; }
 .sortable th[data-key]:hover { text-decoration: underline; }
 .att-table td { text-align: center; }
