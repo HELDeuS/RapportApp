@@ -20,6 +20,7 @@ Webapp voor het bijhouden van rapportcijfers van de opleiding MBO ICT.
 - **Import** van cijfers via CSV- of Excel-bestand (`.csv`, `.tsv`, `.txt`, `.xlsx`), of via **kopiëren en plakken** direct uit Excel.
 - **Import van studenten en vakken** via CSV- of Excel-bestand, met automatische herkenning van een kopregel. Bestaande studenten/vakken worden overgeslagen.
 - **Aanwezigheid** per student per module: aanwezigheid, geoorloofd afwezig en ongeoorloofd afwezig als percentages. Aanwezigheid is groen vanaf 85% (daaronder rood); geoorloofd afwezig is donkergeel en ongeoorloofd afwezig rood. Komt terug in de cijfermatrix en het rapport.
+- **Archiveren**: studenten, klassen, vakken en cohorten kun je archiveren. De gegevens (inclusief cijfers) blijven bewaard, maar verdwijnen uit de actieve overzichten, filters en rapporten. Via het tabblad **Archief** zijn ze weer zichtbaar en kunnen ze met één klik worden teruggezet.
 - **Rapport** per student per module, netjes vormgegeven en printklaar (afdrukken als PDF via de browser).
 
 ## Installatie op een Ubuntu-server (in `/opt/RapportApp`)

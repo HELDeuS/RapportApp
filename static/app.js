@@ -334,6 +334,7 @@ function renderStudents() {
       <td><input data-field="name" value="${esc(s.name)}"></td>
       <td><input data-field="student_number" value="${esc(s.student_number || "")}"></td>
       <td><select data-field="class_id">${classOptions(s.class_id)}</select></td>
+      <td><button class="secondary" data-archive>Archiveren</button></td>
       <td><button class="danger" data-del>Verwijderen</button></td>
     </tr>`).join("");
 }
@@ -373,17 +374,32 @@ function niveauOptions(sel) {
     niveaus.map((n) => `<option value="${n.id}"${String(sel) === String(n.id) ? " selected" : ""}>${esc(n.name)}</option>`).join("");
 }
 
+function optList(sel, items, emptyLabel) {
+  let out = `<option value="">${esc(emptyLabel)}</option>`;
+  for (const it of items) {
+    const mark = String(sel) === String(it.id) ? " selected" : "";
+    out += `<option value="${it.id}"${mark}>${esc(it.name)}</option>`;
+  }
+  return out;
+}
+
 function renderClasses() {
   $("#classes-table tbody").innerHTML = classes.map((c) => `
     <tr data-id="${c.id}">
       <td><input data-field="name" value="${esc(c.name)}"></td>
       <td><select data-field="niveau_id">${niveauOptions(c.niveau_id)}</select></td>
+      <td><select data-field="cohort_id">${optList(c.cohort_id, cohorts, "Geen cohort")}</select></td>
+      <td><button class="secondary" data-archive>Archiveren</button></td>
       <td><button class="danger" data-del>Verwijderen</button></td>
     </tr>`).join("");
   $("#class-niveau").innerHTML = niveauOptions("");
+  $("#class-cohort").innerHTML = optList("", cohorts, "Geen cohort");
   $("#niveau-manage").innerHTML = niveaus.length
     ? niveaus.map((n) => `<option value="${n.id}">${esc(n.name)}</option>`).join("")
     : `<option value="">(geen niveaus)</option>`;
+  $("#cohort-manage").innerHTML = cohorts.length
+    ? cohorts.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("")
+    : `<option value="">(geen cohorten)</option>`;
 }
 
 $("#btn-add-class").addEventListener("click", async () => {
@@ -404,13 +420,29 @@ $("#btn-add-class").addEventListener("click", async () => {
 
 $("#btn-add-cohort").addEventListener("click", async () => {
   const name = $("#cohort-name").value.trim();
-  if (!name) return;
-  await api("/api/cohorts", {
-    method: "POST",
+  if (!name) return alert("Vul eerst een cohortnaam in (bijv. 25-26).");
+  try {
+    await api("/api/cohorts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    $("#cohort-name").value = "";
+    await loadAll();
+  } catch (err) {
+    alert("Cohort toevoegen mislukt: " + err.message);
+  }
+});
+
+$("#btn-archive-cohort").addEventListener("click", async () => {
+  const id = $("#cohort-manage").value;
+  if (!id) return;
+  if (!confirm("Cohort archiveren? Het verdwijnt uit de actieve overzichten; klassen en studenten blijven bewaard.")) return;
+  await api(`/api/cohorts/${id}`, {
+    method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ archived: true }),
   });
-  $("#cohort-name").value = "";
   await loadAll();
 });
 
@@ -554,6 +586,7 @@ function renderSubjects() {
       <td><input data-field="name" value="${esc(s.name)}"></td>
       <td class="period-checks">${checks(s)}</td>
       <td class="period-checks">${classChecks(s)}</td>
+      <td><button class="secondary" data-archive>Archiveren</button></td>
       <td><button class="danger" data-del>Verwijderen</button></td>
     </tr>`).join("");
 }
@@ -712,6 +745,63 @@ async function showReport() {
         <tfoot><tr><td colspan="2">Totaal tekorten</td><td>${s.total_tekorten}</td></tr></tfoot>
       </table>` : `<p>Geen cijfers bekend in deze module.</p>`}
     </div>`).join("");
+}
+
+// ---------- Archief ----------
+async function renderArchive() {
+  const [archStudents, archClasses, archSubjects, archCohorts] = await Promise.all([
+    api("/api/students?archived=1"), api("/api/classes?archived=1"),
+    api("/api/subjects?archived=1"), api("/api/cohorts?archived=1"),
+  ]);
+  const unarchiveBtn = `<button class="secondary" data-unarchive>Terugzetten</button>`;
+  $("#arch-students-table tbody").innerHTML = archStudents.length
+    ? archStudents.map((s) => `<tr data-id="${s.id}" data-kind="students"><td>${esc(s.name)}</td><td>${esc(s.student_number || "")}</td><td>${unarchiveBtn}</td></tr>`).join("")
+    : `<tr><td colspan="3" class="hint">Niets gearchiveerd.</td></tr>`;
+  $("#arch-classes-table tbody").innerHTML = archClasses.length
+    ? archClasses.map((c) => `<tr data-id="${c.id}" data-kind="classes"><td>${esc(c.name)}</td><td>${esc(c.niveau || "")}</td><td>${esc(c.cohort || "")}</td><td>${unarchiveBtn}</td></tr>`).join("")
+    : `<tr><td colspan="4" class="hint">Niets gearchiveerd.</td></tr>`;
+  $("#arch-subjects-table tbody").innerHTML = archSubjects.length
+    ? archSubjects.map((s) => `<tr data-id="${s.id}" data-kind="subjects"><td>${esc(s.name)}</td><td>${unarchiveBtn}</td></tr>`).join("")
+    : `<tr><td colspan="2" class="hint">Niets gearchiveerd.</td></tr>`;
+  $("#arch-cohorts-table tbody").innerHTML = archCohorts.length
+    ? archCohorts.map((c) => `<tr data-id="${c.id}" data-kind="cohorts"><td>${esc(c.name)}</td><td>${unarchiveBtn}</td></tr>`).join("")
+    : `<tr><td colspan="2" class="hint">Niets gearchiveerd.</td></tr>`;
+}
+
+async function setArchived(kind, id, archived) {
+  await api(`/api/${kind}/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ archived }),
+  });
+  await loadAll();
+  await renderArchive();
+}
+
+$$(".tab").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    if (btn.dataset.tab === "archief") renderArchive();
+  });
+});
+
+for (const sel of ["#students-table tbody", "#classes-table tbody", "#subjects-table tbody"]) {
+  $(sel).addEventListener("click", async (e) => {
+    if (!e.target.dataset.archive) return;
+    const tr = e.target.closest("tr");
+    const kind = sel.includes("students") ? "students"
+      : sel.includes("classes") ? "classes" : "subjects";
+    if (!confirm("Archiveren? De gegevens blijven bewaard maar verdwijnen uit de actieve overzichten.")) return;
+    await setArchived(kind, tr.dataset.id, true);
+  });
+}
+
+for (const sel of ["#arch-students-table tbody", "#arch-classes-table tbody",
+                   "#arch-subjects-table tbody", "#arch-cohorts-table tbody"]) {
+  $(sel).addEventListener("click", async (e) => {
+    if (!e.target.dataset.unarchive) return;
+    const tr = e.target.closest("tr");
+    await setArchived(tr.dataset.kind, tr.dataset.id, false);
+  });
 }
 
 // ---------- Darkmode ----------

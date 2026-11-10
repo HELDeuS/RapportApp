@@ -118,6 +118,10 @@ def init_db():
     if "cohort_id" not in ccols:
         db.execute("ALTER TABLE classes ADD COLUMN cohort_id INTEGER "
                    "REFERENCES cohorts(id) ON DELETE SET NULL")
+    for table in ("students", "classes", "subjects", "cohorts"):
+        tcols = [r[1] for r in db.execute(f"PRAGMA table_info({table})").fetchall()]
+        if "archived" not in tcols:
+            db.execute(f"ALTER TABLE {table} ADD COLUMN archived INTEGER DEFAULT 0")
     db.commit()
     db.close()
 
@@ -218,15 +222,24 @@ def cohorts_collection():
             return jsonify({"error": "Naam is verplicht"}), 400
         db.execute("INSERT OR IGNORE INTO cohorts (name) VALUES (?)", (name,))
         db.commit()
-    rows = db.execute("SELECT * FROM cohorts ORDER BY name DESC").fetchall()
+    archived = 1 if request.args.get("archived") == "1" else 0
+    rows = db.execute(
+        "SELECT * FROM cohorts WHERE archived = ? ORDER BY name DESC", (archived,)
+    ).fetchall()
     return jsonify([dict(r) for r in rows])
 
 
-@app.route("/api/cohorts/<int:cohort_id>", methods=["DELETE"])
+@app.route("/api/cohorts/<int:cohort_id>", methods=["PUT", "DELETE"])
 def cohort_item(cohort_id):
     db = get_db()
-    db.execute("DELETE FROM cohorts WHERE id = ?", (cohort_id,))
-    db.commit()
+    if request.method == "PUT":
+        data = request.get_json(force=True)
+        archived = 1 if data.get("archived") else 0
+        db.execute("UPDATE cohorts SET archived = ? WHERE id = ?", (archived, cohort_id))
+        db.commit()
+    else:
+        db.execute("DELETE FROM cohorts WHERE id = ?", (cohort_id,))
+        db.commit()
     return jsonify({"ok": True})
 
 
@@ -268,13 +281,16 @@ def classes_collection():
         )
         db.commit()
         return jsonify(class_with_niveau(db, cur.lastrowid)), 201
+    archived = 1 if request.args.get("archived") == "1" else 0
     rows = db.execute(
         """SELECT c.id, c.name, n.name AS niveau, c.niveau_id,
-                  co.name AS cohort, c.cohort_id
+                  co.name AS cohort, c.cohort_id, c.archived
            FROM classes c
            LEFT JOIN niveaus n ON n.id = c.niveau_id
            LEFT JOIN cohorts co ON co.id = c.cohort_id
-           ORDER BY c.name"""
+           WHERE c.archived = ?
+           ORDER BY c.name""",
+        (archived,),
     ).fetchall()
     return jsonify([dict(r) for r in rows])
 
@@ -284,13 +300,17 @@ def class_item(class_id):
     db = get_db()
     if request.method == "PUT":
         data = request.get_json(force=True)
-        name = (data.get("name") or "").strip()
-        if not name:
-            return jsonify({"error": "Naam is verplicht"}), 400
-        niveau_id = data.get("niveau_id") or None
-        cohort_id = data.get("cohort_id") or None
-        db.execute("UPDATE classes SET name = ?, niveau_id = ?, cohort_id = ? WHERE id = ?",
-                   (name, niveau_id, cohort_id, class_id))
+        if "name" in data or "niveau_id" in data or "cohort_id" in data:
+            name = (data.get("name") or "").strip()
+            if "name" in data and not name:
+                return jsonify({"error": "Naam is verplicht"}), 400
+            niveau_id = data.get("niveau_id") or None
+            cohort_id = data.get("cohort_id") or None
+            db.execute("UPDATE classes SET name = ?, niveau_id = ?, cohort_id = ? WHERE id = ?",
+                       (name, niveau_id, cohort_id, class_id))
+        if "archived" in data:
+            db.execute("UPDATE classes SET archived = ? WHERE id = ?",
+                       (1 if data.get("archived") else 0, class_id))
         db.commit()
     else:
         db.execute("DELETE FROM classes WHERE id = ?", (class_id,))
@@ -320,7 +340,10 @@ def students_collection():
         return jsonify(dict(db.execute(
             "SELECT * FROM students WHERE id = ?", (cur.lastrowid,)
         ).fetchone())), 201
-    rows = db.execute("SELECT * FROM students ORDER BY name").fetchall()
+    archived = 1 if request.args.get("archived") == "1" else 0
+    rows = db.execute(
+        "SELECT * FROM students WHERE archived = ? ORDER BY name", (archived,)
+    ).fetchall()
     return jsonify([dict(r) for r in rows])
 
 
@@ -329,15 +352,19 @@ def student_item(student_id):
     db = get_db()
     if request.method == "PUT":
         data = request.get_json(force=True)
-        name = (data.get("name") or "").strip()
-        if not name:
-            return jsonify({"error": "Naam is verplicht"}), 400
-        number = (data.get("student_number") or "").strip()
-        class_id = data.get("class_id") or None
-        db.execute(
-            "UPDATE students SET name = ?, student_number = ?, class_id = ? WHERE id = ?",
-            (name, number, class_id, student_id),
-        )
+        if "name" in data or "student_number" in data or "class_id" in data:
+            name = (data.get("name") or "").strip()
+            if "name" in data and not name:
+                return jsonify({"error": "Naam is verplicht"}), 400
+            number = (data.get("student_number") or "").strip()
+            class_id = data.get("class_id") or None
+            db.execute(
+                "UPDATE students SET name = ?, student_number = ?, class_id = ? WHERE id = ?",
+                (name, number, class_id, student_id),
+            )
+        if "archived" in data:
+            db.execute("UPDATE students SET archived = ? WHERE id = ?",
+                       (1 if data.get("archived") else 0, student_id))
         db.commit()
     else:
         db.execute("DELETE FROM students WHERE id = ?", (student_id,))
@@ -393,7 +420,10 @@ def subjects_collection():
             )
         db.commit()
         return jsonify(subject_with_periods(db, subject_id)), 201
-    rows = db.execute("SELECT * FROM subjects ORDER BY name").fetchall()
+    archived = 1 if request.args.get("archived") == "1" else 0
+    rows = db.execute(
+        "SELECT * FROM subjects WHERE archived = ? ORDER BY name", (archived,)
+    ).fetchall()
     return jsonify([subject_with_periods(db, r["id"]) for r in rows])
 
 
@@ -421,6 +451,9 @@ def subject_item(subject_id):
                     "INSERT OR IGNORE INTO subject_classes (subject_id, class_id) VALUES (?, ?)",
                     (subject_id, cid),
                 )
+        if "archived" in data:
+            db.execute("UPDATE subjects SET archived = ? WHERE id = ?",
+                       (1 if data.get("archived") else 0, subject_id))
         db.commit()
     else:
         db.execute("DELETE FROM subjects WHERE id = ?", (subject_id,))
@@ -875,23 +908,34 @@ def report():
 
     if student_id:
         students = db.execute(
-            "SELECT * FROM students WHERE id = ?", (student_id,)
+            "SELECT * FROM students WHERE id = ? AND archived = 0", (student_id,)
         ).fetchall()
     elif cohort_id:
         students = db.execute(
             """SELECT st.* FROM students st
                JOIN classes c ON c.id = st.class_id
-               WHERE c.cohort_id = ? ORDER BY st.name""",
+               JOIN cohorts co ON co.id = c.cohort_id
+               WHERE c.cohort_id = ? AND st.archived = 0
+                 AND co.archived = 0
+               ORDER BY st.name""",
             (cohort_id,),
         ).fetchall()
     elif class_id:
         students = db.execute(
-            "SELECT * FROM students WHERE class_id = ? ORDER BY name", (class_id,)
+            """SELECT st.* FROM students st
+               JOIN classes c ON c.id = st.class_id
+               WHERE st.class_id = ? AND st.archived = 0 AND c.archived = 0
+               ORDER BY st.name""",
+            (class_id,),
         ).fetchall()
     else:
-        students = db.execute("SELECT * FROM students ORDER BY name").fetchall()
+        students = db.execute(
+            "SELECT * FROM students WHERE archived = 0 ORDER BY name"
+        ).fetchall()
 
-    subjects = db.execute("SELECT * FROM subjects ORDER BY name").fetchall()
+    subjects = db.execute(
+        "SELECT * FROM subjects WHERE archived = 0 ORDER BY name"
+    ).fetchall()
     # Alleen vakken tonen waarvan de periode expliciet is aangevinkt.
     subject_period_map = {}
     for r in db.execute("SELECT subject_id, period_id FROM subject_periods").fetchall():

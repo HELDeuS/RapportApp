@@ -16,6 +16,7 @@
     <button data-tab="vakken" class="tab">Vakken</button>
     <button data-tab="periodes" class="tab">Modules</button>
     <button data-tab="rapport" class="tab">Rapport</button>
+    <button data-tab="archief" class="tab">Archief</button>
     <button id="btn-theme" class="theme-toggle" title="Donker/licht thema wisselen">&#9681;</button>
   </nav>
 </header>
@@ -111,6 +112,7 @@
     <button id="btn-add-cohort" class="secondary">Cohort toevoegen</button>
     <select id="cohort-manage"></select>
     <button id="btn-del-cohort" class="danger">Verwijderen</button>
+    <button id="btn-archive-cohort" class="secondary">Archiveren</button>
   </div>
   <table class="list" id="classes-table">
     <thead><tr><th>Klas</th><th>Niveau</th><th>Startcohort</th><th></th></tr></thead>
@@ -167,6 +169,31 @@
     <button id="btn-print" class="secondary">Afdrukken / PDF</button>
   </div>
   <div id="report-output"></div>
+</section>
+
+<!-- Archief -->
+<section id="tab-archief" class="panel">
+  <p class="hint">Gearchiveerde studenten, klassen, vakken en cohorten blijven bewaard (inclusief cijfers) maar zijn niet zichtbaar in de actieve overzichten en rapporten.</p>
+  <h3>Studenten</h3>
+  <table class="list" id="arch-students-table">
+    <thead><tr><th>Naam</th><th>Studentnummer</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <h3>Klassen</h3>
+  <table class="list" id="arch-classes-table">
+    <thead><tr><th>Klas</th><th>Niveau</th><th>Cohort</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <h3>Vakken</h3>
+  <table class="list" id="arch-subjects-table">
+    <thead><tr><th>Vak</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <h3>Cohorten</h3>
+  <table class="list" id="arch-cohorts-table">
+    <thead><tr><th>Cohort</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
 </section>
 
 <script src="/static/app.js"></script>
