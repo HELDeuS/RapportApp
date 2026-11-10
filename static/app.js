@@ -534,7 +534,7 @@ function renderStudents() {
       <td><select data-field="class_id">${classOptions(s.class_id)}</select></td>
       <td title="${s.login_username ? "Gebruikersnaam: " + esc(s.login_username) : "Nog geen account"}"><input type="checkbox" data-field="login_enabled"${s.login_enabled ? " checked" : ""}></td>
       <td><button class="secondary" data-archive>Archiveren</button></td>
-      <td><button class="danger" data-del>Verwijderen</button></td>
+      ${!currentUser || currentUser.role === "beheerder" ? `<td><button class="danger" data-del>Verwijderen</button></td>` : "<td></td>"}
     </tr>`).join("");
 }
 

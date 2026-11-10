@@ -563,14 +563,20 @@ def class_item(class_id):
     db = get_db()
     if request.method == "PUT":
         data = request.get_json(force=True)
-        if "name" in data or "niveau_id" in data or "cohort_id" in data:
+        updates = {}
+        if "name" in data:
             name = (data.get("name") or "").strip()
-            if "name" in data and not name:
+            if not name:
                 return jsonify({"error": "Naam is verplicht"}), 400
-            niveau_id = data.get("niveau_id") or None
-            cohort_id = data.get("cohort_id") or None
-            db.execute("UPDATE classes SET name = ?, niveau_id = ?, cohort_id = ? WHERE id = ?",
-                       (name, niveau_id, cohort_id, class_id))
+            updates["name"] = name
+        if "niveau_id" in data:
+            updates["niveau_id"] = data.get("niveau_id") or None
+        if "cohort_id" in data:
+            updates["cohort_id"] = data.get("cohort_id") or None
+        if updates:
+            sets = ", ".join(f"{k} = ?" for k in updates)
+            db.execute(f"UPDATE classes SET {sets} WHERE id = ?",
+                       (*updates.values(), class_id))
         if "mentor_id" in data:
             db.execute("UPDATE classes SET mentor_id = ? WHERE id = ?",
                        (data.get("mentor_id") or None, class_id))
@@ -618,20 +624,36 @@ def students_collection():
         student["login_username"] = username
         return jsonify(student), 201
     archived = 1 if request.args.get("archived") == "1" else 0
-    rows = db.execute(
-        """SELECT st.*, u.username AS login_username, u.active AS login_active
-           FROM students st
-           LEFT JOIN users u ON u.student_id = st.id AND u.role = 'student'
-           WHERE st.archived = ?
-           ORDER BY st.name""",
-        (archived,),
-    ).fetchall()
+    mentor_ids = None
+    if user["role"] == "mentor":
+        mentor_ids = mentor_class_ids(user)
+    if mentor_ids is not None:
+        if not mentor_ids:
+            return jsonify([])
+        placeholders = ",".join("?" for _ in mentor_ids)
+        rows = db.execute(
+            f"""SELECT st.*, u.username AS login_username, u.active AS login_active
+                FROM students st
+                LEFT JOIN users u ON u.student_id = st.id AND u.role = 'student'
+                WHERE st.archived = ? AND st.class_id IN ({placeholders})
+                ORDER BY st.name""",
+            (archived, *mentor_ids),
+        ).fetchall()
+    else:
+        rows = db.execute(
+            """SELECT st.*, u.username AS login_username, u.active AS login_active
+               FROM students st
+               LEFT JOIN users u ON u.student_id = st.id AND u.role = 'student'
+               WHERE st.archived = ?
+               ORDER BY st.name""",
+            (archived,),
+        ).fetchall()
     return jsonify([dict(r) for r in rows])
 
 
 @app.route("/api/students/<int:student_id>", methods=["PUT", "DELETE"])
 def student_item(student_id):
-    user, err = auth_error("beheerder")
+    user, err = auth_error("beheerder", "mentor") if request.method == "PUT" else auth_error("beheerder")
     if err:
         return err
     db = get_db()
@@ -644,16 +666,22 @@ def student_item(student_id):
             target_class = data.get("class_id", existing["class_id"]) or None
             if not mentor_owns_student(user, existing, target_class):
                 return jsonify({"error": "Als mentor kun je alleen studenten van je eigen klas wijzigen"}), 403
-        if "name" in data or "student_number" in data or "class_id" in data:
+            if "class_id" in data and (data.get("class_id") or None) not in mentor_class_ids(user):
+                return jsonify({"error": "Als mentor kun je studenten niet naar een andere klas verplaatsen"}), 403
+        updates = {}
+        if "name" in data:
             name = (data.get("name") or "").strip()
-            if "name" in data and not name:
+            if not name:
                 return jsonify({"error": "Naam is verplicht"}), 400
-            number = (data.get("student_number") or "").strip()
-            class_id = data.get("class_id") or None
-            db.execute(
-                "UPDATE students SET name = ?, student_number = ?, class_id = ? WHERE id = ?",
-                (name, number, class_id, student_id),
-            )
+            updates["name"] = name
+        if "student_number" in data:
+            updates["student_number"] = (data.get("student_number") or "").strip()
+        if "class_id" in data:
+            updates["class_id"] = data.get("class_id") or None
+        if updates:
+            sets = ", ".join(f"{k} = ?" for k in updates)
+            db.execute(f"UPDATE students SET {sets} WHERE id = ?",
+                       (*updates.values(), student_id))
         if "login_enabled" in data:
             enable = 1 if data.get("login_enabled") else 0
             db.execute("UPDATE students SET login_enabled = ? WHERE id = ?",
@@ -824,9 +852,12 @@ def period_item(period_id):
         name = (data.get("name") or "").strip()
         if not name:
             return jsonify({"error": "Naam is verplicht"}), 400
-        year = (data.get("year") or "").strip()
-        db.execute("UPDATE periods SET name = ?, year = ? WHERE id = ?",
-                   (name, year, period_id))
+        year = (data.get("year") if "year" in data else None)
+        if year is None:
+            db.execute("UPDATE periods SET name = ? WHERE id = ?", (name, period_id))
+        else:
+            db.execute("UPDATE periods SET name = ?, year = ? WHERE id = ?",
+                       (name, year.strip(), period_id))
         db.commit()
     else:
         db.execute("DELETE FROM periods WHERE id = ?", (period_id,))
