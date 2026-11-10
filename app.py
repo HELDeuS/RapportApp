@@ -839,7 +839,7 @@ def subject_item(subject_id):
 
 @app.route("/api/periods", methods=["GET", "POST"])
 def periods_collection():
-    user, err = auth_error("beheerder", "mentor", "docent", "administratie") if request.method == "GET" else auth_error("beheerder")
+    user, err = auth_error() if request.method == "GET" else auth_error("beheerder")
     if err:
         return err
     db = get_db()

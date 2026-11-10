@@ -96,6 +96,16 @@ function applyRoleUi() {
   }
 }
 
+function renderStudentReportUi() {
+  const sel = $("#report-period");
+  sel.innerHTML = `<option value="all">Alle modules (totaal)</option>` +
+    periods.map((p) => `<option value="${p.id}">${esc(periodLabel(p))}</option>`).join("");
+  for (const id of ["report-student", "report-class", "report-cohort", "report-audience"]) {
+    const el = $("#" + id);
+    if (el) el.parentElement.style.display = "none";
+  }
+}
+
 function activateDefaultTab() {
   $$(".panel").forEach((p) => p.classList.remove("hidden", "active"));
   $$(".tab").forEach((b) => b.classList.remove("active"));
@@ -163,6 +173,11 @@ $$(".tab").forEach((btn) => {
 
 // ---------- Loaders ----------
 async function loadAll() {
+  if (currentUser && currentUser.role === "student") {
+    periods = await api("/api/periods");
+    renderStudentReportUi();
+    return;
+  }
   [students, classes, niveaus, cohorts, subjects, periods] = await Promise.all([
     api("/api/students"), api("/api/classes"), api("/api/niveaus"), api("/api/cohorts"), api("/api/subjects"), api("/api/periods"),
   ]);
@@ -963,6 +978,16 @@ $("#btn-print").addEventListener("click", async () => {
 async function showReport() {
   const periodId = $("#report-period").value;
   if (!periodId) return;
+  if (periodId === "all") {
+    const out = $("#report-output");
+    out.innerHTML = "";
+    for (const p of periods) {
+      const data = await api(`/api/report?period_id=${p.id}&audience=student&student_id=${currentUser.student_id}`);
+      renderReportCards(data, p);
+    }
+    if (!out.innerHTML) out.innerHTML = `<p class="hint">Er zijn nog geen modules met cijfers.</p>`;
+    return;
+  }
   const studentId = currentUser && currentUser.role === "student"
     ? currentUser.student_id : $("#report-student").value;
   const classId = $("#report-class").value;
@@ -975,7 +1000,15 @@ async function showReport() {
   if (cohortId) url += `&cohort_id=${cohortId}`;
   const data = await api(url);
   const out = $("#report-output");
-  out.innerHTML = data.students.map((s) => `
+  out.innerHTML = "";
+  renderReportCards(data);
+}
+
+function renderReportCards(data, periodOverride) {
+  const out = $("#report-output");
+  const audience = currentUser && currentUser.role === "student" ? "student" : $("#report-audience").value;
+  out.innerHTML += (periodOverride ? `<h2 class="report-module-header">Module: ${esc(periodLabel(periodOverride))}</h2>` : "") +
+    data.students.map((s) => `
     <div class="report-card">
       <h2>${esc(s.student.name)}</h2>
       <div class="sub">${s.class ? `${esc(s.class.name)}${s.class.niveau ? ` &mdash; ${esc(s.class.niveau)}` : ""} &mdash; ` : ""}${s.student.student_number ? `Nr. ${esc(s.student.student_number)} &mdash; ` : ""}Module: ${esc(periodLabel(data.period))}</div>

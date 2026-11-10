@@ -244,6 +244,8 @@ input.cell.att-unallowed { color: var(--onv); font-weight: 700; }
 
 .note-cell { width: 160px; text-align: left; }
 
+.report-module-header { margin: 18px 0 8px; font-size: 1.05rem; }
+
 .notes-block {
   margin: 10px 0 12px;
   padding: 10px 12px;
