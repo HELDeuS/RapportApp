@@ -76,8 +76,11 @@
 <!-- Studenten -->
 <section id="tab-studenten" class="panel">
   <div class="toolbar">
-    <input id="student-name" placeholder="Naam">
-    <input id="student-number" placeholder="Studentnummer">
+    <input id="student-number" placeholder="Studentnummer *" style="width:110px">
+    <input id="student-firstname" placeholder="Voornaam *" style="width:130px">
+    <input id="student-prefix" placeholder="Tussenvoegsel" style="width:100px">
+    <input id="student-lastname" placeholder="Achternaam *" style="width:130px">
+    <input id="student-email" type="email" placeholder="E-mailadres *" style="width:170px">
     <select id="student-class"><option value="">Geen klas</option></select>
     <button id="btn-add-student">Toevoegen</button>
     <label class="file-label">Import CSV/Excel
@@ -85,6 +88,13 @@
     </label>
   </div>
   <div id="students-import-result" class="result hidden"></div>
+  <div class="toolbar hidden" id="bulk-bar">
+    <strong id="bulk-count">0 geselecteerd</strong>
+    <button id="bulk-login-on" class="secondary">Inloggen aan</button>
+    <button id="bulk-login-off" class="secondary">Inloggen uit</button>
+    <button id="bulk-archive" class="secondary">Archiveren</button>
+    <button id="bulk-delete" class="danger">Verwijderen</button>
+  </div>
   <div class="toolbar">
     <input id="student-search" placeholder="&#9906; Zoek student...">
     <label>Cohort:
@@ -95,7 +105,7 @@
     </label>
   </div>
   <table class="list sortable" id="students-table">
-    <thead><tr><th data-key="name">Naam</th><th data-key="student_number">Studentnummer</th><th data-key="class">Klas</th><th data-key="login_enabled" title="Account mag inloggen">Inlog</th><th></th></tr></thead>
+    <thead><tr><th style="width:30px"><input type="checkbox" id="students-select-all" title="Alles selecteren"></th><th data-key="last_name">Naam</th><th data-key="student_number">Studentnummer</th><th data-key="email">E-mail</th><th data-key="class">Klas</th><th data-key="login_enabled" title="Account mag inloggen">Inlog</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
 </section>

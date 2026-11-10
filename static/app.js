@@ -245,6 +245,13 @@ function renderClassSelects() {
     visibleClasses.map((c) => `<option value="${c.id}">${esc(classLabel(c))}</option>`).join("");
 }
 
+function studentName(s) {
+  if (s.first_name || s.last_name) {
+    return [s.first_name, s.prefix, s.last_name].filter(Boolean).join(" ");
+  }
+  return s.name || "";
+}
+
 function classLabel(c) {
   return c.niveau ? `${c.name} (${c.niveau})` : c.name;
 }
@@ -544,39 +551,103 @@ function renderStudents() {
     return c ? c.name : "";
   };
   const rows = sortRows(visibleStudentsList(), listSort.students, (s, key) =>
-    key === "class" ? classOf(s)
+    key === "name" ? studentName(s)
+    : key === "class" ? classOf(s)
     : key === "login_enabled" ? (s.login_enabled ? "1" : "0")
     : s[key]);
   updateSortArrows("#students-table", listSort.students);
   $("#students-table tbody").innerHTML = rows.map((s) => `
     <tr data-id="${s.id}">
-      <td><input data-field="name" value="${esc(s.name)}"></td>
-      <td><input data-field="student_number" value="${esc(s.student_number || "")}"></td>
+      <td><input type="checkbox" class="row-select" data-id="${s.id}"></td>
+      <td><input data-field="first_name" value="${esc(s.first_name || "")}" style="width:110px" title="${esc(s.prefix || "")}"></td>
+      <td><input data-field="student_number" value="${esc(s.student_number || "")}" style="width:90px"></td>
+      <td><input type="email" data-field="email" value="${esc(s.email || "")}" style="width:160px"></td>
       <td><select data-field="class_id">${classOptions(s.class_id)}</select></td>
       <td title="${s.login_username ? "Gebruikersnaam: " + esc(s.login_username) : "Nog geen account"}"><input type="checkbox" data-field="login_enabled"${s.login_enabled ? " checked" : ""}></td>
       <td><button class="secondary" data-archive>Archiveren</button></td>
       ${!currentUser || currentUser.role === "beheerder" ? `<td><button class="danger" data-del>Verwijderen</button></td>` : "<td></td>"}
     </tr>`).join("");
+  updateBulkBar();
 }
 
 $("#btn-add-student").addEventListener("click", async () => {
-  const name = $("#student-name").value.trim();
-  if (!name) return;
-  await api("/api/students", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      name,
-      student_number: $("#student-number").value.trim(),
-      class_id: $("#student-class").value || null,
-    }),
+  const payload = {
+    student_number: $("#student-number").value.trim(),
+    first_name: $("#student-firstname").value.trim(),
+    prefix: $("#student-prefix").value.trim(),
+    last_name: $("#student-lastname").value.trim(),
+    email: $("#student-email").value.trim(),
+    class_id: $("#student-class").value || null,
+  };
+  if (!payload.student_number || !payload.first_name || !payload.last_name || !payload.email) {
+    return alert("Studentnummer, voornaam, achternaam en e-mailadres zijn verplicht. Tussenvoegsel mag leeg blijven.");
+  }
+  try {
+    await api("/api/students", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    for (const id of ["student-number", "student-firstname", "student-prefix", "student-lastname", "student-email"]) {
+      $("#" + id).value = "";
+    }
+    await loadAll();
+  } catch (err) {
+    alert("Student toevoegen mislukt: " + err.message);
+  }
+});
+
+function selectedStudentIds() {
+  return [...$$("#students-table tbody input.row-select:checked")].map((cb) => +cb.dataset.id);
+}
+
+function updateBulkBar() {
+  const bar = $("#bulk-bar");
+  const n = selectedStudentIds().length;
+  bar.classList.toggle("hidden", n === 0);
+  $("#bulk-count").textContent = n + " geselecteerd";
+  $("#bulk-delete").style.display =
+    (!currentUser || currentUser.role === "beheerder") ? "" : "none";
+}
+
+async function bulkAction(action, confirmMsg) {
+  const ids = selectedStudentIds();
+  if (!ids.length) return;
+  if (confirmMsg && !confirm(confirmMsg.replace("{n}", ids.length))) return;
+  try {
+    const res = await api("/api/students/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids, action }),
+    });
+    if (action === "login_on" && res.usernames && res.usernames.length) {
+      alert("Accounts aangemaakt (" + res.usernames.length + ").\nGebruikersnamen: " + res.usernames.join(", ") + "\nStandaardwachtwoord: welkom");
+    }
+    await loadAll();
+  } catch (err) {
+    alert("Bulkactie mislukt: " + err.message);
+  }
+}
+
+$("#bulk-login-on").addEventListener("click", () => bulkAction("login_on"));
+$("#bulk-login-off").addEventListener("click", () => bulkAction("login_off"));
+$("#bulk-archive").addEventListener("click", () =>
+  bulkAction("archive", "{n} studenten archiveren?"));
+$("#bulk-delete").addEventListener("click", () =>
+  bulkAction("delete", "{n} studenten definitief verwijderen? Dit kan niet ongedaan worden."));
+
+$("#students-select-all").addEventListener("change", (e) => {
+  $$("#students-table tbody input.row-select").forEach((cb) => {
+    cb.checked = e.target.checked;
   });
-  $("#student-name").value = "";
-  $("#student-number").value = "";
-  await loadAll();
+  updateBulkBar();
 });
 
 $("#students-table tbody").addEventListener("change", async (e) => {
+  if (e.target.classList.contains("row-select")) {
+    updateBulkBar();
+    return;
+  }
   const tr = e.target.closest("tr");
   const s = students.find((x) => x.id === +tr.dataset.id);
   if (!s) return;
@@ -588,7 +659,7 @@ $("#students-table tbody").addEventListener("change", async (e) => {
         body: JSON.stringify({ login_enabled: e.target.checked }),
       });
       if (e.target.checked && res.login_username) {
-        const msg = "Account aangemaakt voor " + s.name + ".\nGebruikersnaam: " + res.login_username + "\nStandaardwachtwoord: welkom";
+        const msg = "Account aangemaakt voor " + studentName(s) + ".\nGebruikersnaam: " + res.login_username + "\nStandaardwachtwoord: welkom";
         alert(msg);
       }
       await loadAll();

@@ -100,7 +100,11 @@ CREATE TABLE IF NOT EXISTS students (
     name TEXT NOT NULL,
     student_number TEXT DEFAULT '',
     class_id INTEGER REFERENCES classes(id) ON DELETE SET NULL,
-    login_enabled INTEGER DEFAULT 0
+    login_enabled INTEGER DEFAULT 0,
+    first_name TEXT DEFAULT '',
+    prefix TEXT DEFAULT '',
+    last_name TEXT DEFAULT '',
+    email TEXT DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS subjects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -184,6 +188,9 @@ def init_db():
     stcols = [r[1] for r in db.execute("PRAGMA table_info(students)").fetchall()]
     if "login_enabled" not in stcols:
         db.execute("ALTER TABLE students ADD COLUMN login_enabled INTEGER DEFAULT 0")
+    for col in ("first_name", "prefix", "last_name", "email"):
+        if col not in stcols:
+            db.execute(f"ALTER TABLE students ADD COLUMN {col} TEXT DEFAULT ''")
     ucols = [r[1] for r in db.execute("PRAGMA table_info(users)").fetchall()]
     for col in ("first_name", "last_name", "email"):
         if col not in ucols:
@@ -412,6 +419,12 @@ def user_item(user_id):
     return jsonify({"ok": True})
 
 
+def student_display_name(data):
+    """Bouw de weergavenaam uit voornaam/tussenvoegsel/achternaam."""
+    parts = [data.get("first_name") or "", data.get("prefix") or "", data.get("last_name") or ""]
+    return " ".join(p.strip() for p in parts if p and p.strip())
+
+
 def ensure_student_account(db, student_row):
     """Maakt (of activeert) het studentaccount bij een student; geeft de gebruikersnaam terug."""
     base = (student_row["student_number"] or "").strip() or f"student{student_row['id']}"
@@ -427,15 +440,23 @@ def ensure_student_account(db, student_row):
         "SELECT * FROM users WHERE role = 'student' AND student_id = ?",
         (student_row["id"],),
     ).fetchone()
+    first = student_row.get("first_name") or ""
+    last = student_row.get("last_name") or ""
+    email = student_row.get("email") or ""
     if existing is None:
         db.execute(
-            "INSERT INTO users (username, password_hash, role, student_id) VALUES (?, ?, ?, ?)",
-            (username, generate_password_hash("welkom"), "student", student_row["id"]),
+            """INSERT INTO users (username, password_hash, role, student_id,
+                                  first_name, last_name, email)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (username, generate_password_hash("welkom"), "student", student_row["id"],
+             first, last, email),
         )
     else:
         db.execute(
-            "UPDATE users SET username = ?, active = 1 WHERE id = ?",
-            (username, existing["id"]),
+            """UPDATE users SET username = ?, active = 1,
+                               first_name = ?, last_name = ?, email = ?
+               WHERE id = ?""",
+            (username, first, last, email, existing["id"]),
         )
     return username
 
@@ -619,16 +640,29 @@ def students_collection():
     db = get_db()
     if request.method == "POST":
         data = request.get_json(force=True)
-        name = (data.get("name") or "").strip()
-        if not name:
-            return jsonify({"error": "Naam is verplicht"}), 400
         number = (data.get("student_number") or "").strip()
+        first = (data.get("first_name") or "").strip()
+        last = (data.get("last_name") or "").strip()
+        email = (data.get("email") or "").strip()
+        if not number:
+            return jsonify({"error": "Studentnummer is verplicht"}), 400
+        if not first:
+            return jsonify({"error": "Voornaam is verplicht"}), 400
+        if not last:
+            return jsonify({"error": "Achternaam is verplicht"}), 400
+        if not email:
+            return jsonify({"error": "E-mailadres is verplicht"}), 400
+        prefix = (data.get("prefix") or "").strip()
+        name = student_display_name({"first_name": first, "prefix": prefix, "last_name": last})
         class_id = data.get("class_id") or None
         if user["role"] == "mentor" and not mentor_owns_student(user, None, class_id):
             return jsonify({"error": "Als mentor kun je alleen studenten in je eigen klas toevoegen"}), 403
         cur = db.execute(
-            "INSERT INTO students (name, student_number, class_id, login_enabled) VALUES (?, ?, ?, ?)",
-            (name, number, class_id, 1 if data.get("login_enabled") else 0),
+            """INSERT INTO students (name, student_number, class_id, login_enabled,
+                                     first_name, prefix, last_name, email)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (name, number, class_id, 1 if data.get("login_enabled") else 0,
+             first, prefix, last, email),
         )
         db.commit()
         student = dict(db.execute(
@@ -668,6 +702,43 @@ def students_collection():
     return jsonify([dict(r) for r in rows])
 
 
+@app.route("/api/students/bulk", methods=["POST"])
+def students_bulk():
+    data = request.get_json(force=True)
+    ids = data.get("ids") or []
+    action = data.get("action")
+    if not ids or action not in ("login_on", "login_off", "archive", "unarchive", "delete"):
+        return jsonify({"error": "Ongeldig bulkverzoek"}), 400
+    user, err = auth_error("beheerder") if action == "delete" else auth_error("beheerder", "mentor")
+    if err:
+        return err
+    db = get_db()
+    placeholders = ",".join("?" for _ in ids)
+    rows = db.execute(
+        f"SELECT * FROM students WHERE id IN ({placeholders})", ids
+    ).fetchall()
+    if user["role"] == "mentor":
+        own = mentor_class_ids(user)
+        rows = [r for r in rows if r["class_id"] in own]
+    usernames = []
+    for r in rows:
+        if action == "delete":
+            db.execute("DELETE FROM students WHERE id = ?", (r["id"],))
+        elif action == "archive":
+            db.execute("UPDATE students SET archived = 1 WHERE id = ?", (r["id"],))
+        elif action == "unarchive":
+            db.execute("UPDATE students SET archived = 0 WHERE id = ?", (r["id"],))
+        elif action == "login_on":
+            db.execute("UPDATE students SET login_enabled = 1 WHERE id = ?", (r["id"],))
+            usernames.append(ensure_student_account(db, dict(r)))
+        elif action == "login_off":
+            db.execute("UPDATE students SET login_enabled = 0 WHERE id = ?", (r["id"],))
+            db.execute("UPDATE users SET active = 0 WHERE role = 'student' AND student_id = ?",
+                       (r["id"],))
+    db.commit()
+    return jsonify({"ok": True, "affected": len(rows), "usernames": usernames})
+
+
 @app.route("/api/students/<int:student_id>", methods=["PUT", "DELETE"])
 def student_item(student_id):
     user, err = auth_error("beheerder", "mentor") if request.method == "PUT" else auth_error("beheerder")
@@ -695,6 +766,15 @@ def student_item(student_id):
             updates["student_number"] = (data.get("student_number") or "").strip()
         if "class_id" in data:
             updates["class_id"] = data.get("class_id") or None
+        for field in ("first_name", "prefix", "last_name", "email"):
+            if field in data:
+                updates[field] = (data.get(field) or "").strip()
+        if "name" not in updates and any(k in updates for k in ("first_name", "prefix", "last_name")):
+            merged = dict(existing)
+            merged.update(updates)
+            new_name = student_display_name(merged)
+            if new_name:
+                updates["name"] = new_name
         if updates:
             sets = ", ".join(f"{k} = ?" for k in updates)
             db.execute(f"UPDATE students SET {sets} WHERE id = ?",
@@ -1121,10 +1201,16 @@ def import_students():
     number_words = ("nummer", "studentnummer", "number", "nr", "id")
     class_words = ("klas", "class", "groep")
     niveau_words = ("niveau", "level")
+    first_words = ("voornaam", "voornamen", "first", "first name")
+    prefix_words = ("tussenvoegsel", "tussenvoegsels", "prefix", "voorvoegsel")
+    last_words = ("achternaam", "achternamen", "last", "last name", "familienaam")
+    email_words = ("email", "e-mail", "mail", "mailadres", "e-mailadres")
 
     header = [c.strip().lower() for c in rows[0]]
-    has_header = header and header[0] in name_words
-    col = {"name": 0, "number": 1, "class": 2, "niveau": None}
+    has_header = header and (header[0] in name_words or header[0] in first_words
+                              or header[0] in number_words)
+    col = {"name": 0, "number": 1, "class": 2, "niveau": None,
+           "first": None, "prefix": None, "last": None, "email": None}
     if has_header:
         for i, h in enumerate(header):
             if h in number_words:
@@ -1133,6 +1219,14 @@ def import_students():
                 col["class"] = i
             elif h in niveau_words:
                 col["niveau"] = i
+            elif h in first_words:
+                col["first"] = i
+            elif h in prefix_words:
+                col["prefix"] = i
+            elif h in last_words:
+                col["last"] = i
+            elif h in email_words:
+                col["email"] = i
         rows = rows[1:]
 
     db = get_db()
@@ -1149,7 +1243,13 @@ def import_students():
     for row in rows:
         if not row or not row[0].strip():
             continue
-        name = cell(row, col["name"])
+        first = cell(row, col["first"])
+        prefix = cell(row, col["prefix"])
+        last = cell(row, col["last"])
+        email = cell(row, col["email"])
+        name = student_display_name({"first_name": first, "prefix": prefix, "last_name": last})             if col["first"] is not None or col["last"] is not None             else cell(row, col["name"])
+        if not name:
+            continue
         number = cell(row, col["number"])
         class_name = cell(row, col["class"])
         niveau = cell(row, col["niveau"])
@@ -1189,8 +1289,10 @@ def import_students():
             skipped += 1
             continue
         db.execute(
-            "INSERT INTO students (name, student_number, class_id) VALUES (?, ?, ?)",
-            (name, number, class_id),
+            """INSERT INTO students (name, student_number, class_id,
+                                     first_name, prefix, last_name, email)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (name, number, class_id, first, prefix, last, email),
         )
         existing.add(name.lower())
         imported += 1

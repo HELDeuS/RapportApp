@@ -137,17 +137,30 @@ Zowel bestanden als geplakte tekst volgen dezelfde tabelvorm:
 - Cellen: cijfer (punt of komma als decimaalteken), `V`, `G`, `VS`, `O` of leeg.
 - Optie "Ontbrekende vakken/studenten aanmaken" voegt onbekende namen automatisch toe.
 
+### Studenten invoeren
+
+Handmatig via het tabblad Studenten met de velden **studentnummer, voornaam, tussenvoegsel (optioneel), achternaam en e-mailadres** (met * gemarkeerd = verplicht). De weergavenaam wordt automatisch samengesteld (bijv. "Jan van Jansen") en bijgewijzigd als een naamdeel verandert.
+
 ### Studenten importeren
 
-CSV met per rij: naam, (optioneel) studentnummer, (optioneel) klas en (optioneel) niveau. Een kopregel zoals `Naam,Nummer,Klas,Niveau` wordt automatisch herkend en de kolommen worden op naam gematched; onbekende klassen worden aangemaakt:
+CSV met per rij de nieuwe velden; een kopregel wordt automatisch herkend en de kolommen worden op naam gematched; onbekende klassen worden aangemaakt:
 
 ```csv
-Naam,Nummer,Klas,Niveau
-Jan Jansen,1001,IAO4A,niveau 4
-Piet Pietersen,1002,IAO3B,niveau 3
+Studentnummer,Voornaam,Tussenvoegsel,Achternaam,Email,Klas,Niveau
+1001,Jan,van,Jansen,jan@school.nl,IAO4A,niveau 4
+1002,Piet,,Pietersen,piet@school.nl,IAO3B,niveau 3
 ```
 
-Zonder kopregel zijn de kolommen: naam, studentnummer, klas.
+Het oude formaat met een enkele `Naam`-kolom blijft ook werken:
+
+```csv
+Naam,Nummer,Klas
+Piet Pietersen,3001,IAO4A
+```
+
+### Bulkacties
+
+In het studentenoverzicht kun je rijen aanvinken (of "alles selecteren" bovenaan de tabel) en daarna in bulk: **inloggen aan/uit** (maakt/blokkeert de accounts), **archiveren** en **verwijderen** (alleen beheerder). Bij "inloggen aan" worden voornaam, achternaam en e-mailadres automatisch overgenomen in het account.
 
 ### Vakken importeren
 
