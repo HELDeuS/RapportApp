@@ -353,11 +353,24 @@ $("#import-subjects-file").addEventListener("change", async (e) => {
 function renderSubjects() {
   const q = $("#subject-filter").value.trim().toLowerCase();
   const visible = q ? subjects.filter((s) => s.name.toLowerCase().includes(q)) : subjects;
+  const years = {};
+  for (const p of periods) {
+    const y = p.year || "Zonder studiejaar";
+    (years[y] = years[y] || []).push(p);
+  }
+  const checks = (s) => Object.entries(years).map(([year, mods]) => {
+    const anyChecked = mods.some((p) => (s.period_ids || []).includes(p.id));
+    return `
+      <details class="year-group"${anyChecked ? " open" : ""}>
+        <summary>${esc(year)}${anyChecked ? ` <span class="badge">${mods.filter((p) => (s.period_ids || []).includes(p.id)).length}</span>` : ""}</summary>
+        <div class="year-modules">${mods.map((p) => `
+          <label class="check"><input type="checkbox" data-period="${p.id}"${(s.period_ids || []).includes(p.id) ? " checked" : ""}> ${esc(p.name)}</label>`).join("")}</div>
+      </details>`;
+  }).join("");
   $("#subjects-table tbody").innerHTML = visible.map((s) => `
     <tr data-id="${s.id}">
       <td><input data-field="name" value="${esc(s.name)}"></td>
-      <td class="period-checks">${periods.map((p) => `
-        <label class="check"><input type="checkbox" data-period="${p.id}"${(s.period_ids || []).includes(p.id) ? " checked" : ""}> ${esc(periodLabel(p))}</label>`).join("")}</td>
+      <td class="period-checks">${checks(s)}</td>
       <td><button class="danger" data-del>Verwijderen</button></td>
     </tr>`).join("");
 }
@@ -390,6 +403,7 @@ $("#subjects-table tbody").addEventListener("change", async (e) => {
       });
       const s = subjects.find((x) => x.id === +id);
       if (s) s.period_ids = periodIds;
+      renderSubjects();
       renderGradeTable();
     } catch (err) {
       alert("Opslaan van module-koppeling mislukt: " + err.message);

@@ -117,9 +117,54 @@ input, select {
   outline: none;
 }
 
-.period-checks { white-space: normal; }
+.period-checks { white-space: normal; min-width: 260px; }
 
-.check { margin-right: 10px; white-space: nowrap; }
+.check { margin-right: 10px; white-space: nowrap; display: inline-block; margin-top: 4px; }
+
+.year-group {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 6px;
+  background: var(--input-bg);
+}
+
+.year-group summary {
+  cursor: pointer;
+  padding: 5px 10px;
+  font-weight: 600;
+  user-select: none;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.year-group summary::before {
+  content: "\25B8";
+  display: inline-block;
+  transition: transform .15s;
+  color: var(--subtext);
+}
+
+.year-group[open] summary::before { transform: rotate(90deg); }
+
+.year-group summary::-webkit-details-marker { display: none; }
+
+.year-modules { padding: 4px 10px 8px 18px; }
+
+.badge {
+  background: var(--accent);
+  color: #fff;
+  border-radius: 10px;
+  font-size: .75rem;
+  font-weight: 700;
+  padding: 1px 7px;
+}
+
+.list tbody tr:nth-child(even) { background: var(--th-bg); }
+@supports (background: color-mix(in srgb, red, blue)) {
+  .list tbody tr:nth-child(even) { background: color-mix(in srgb, var(--card) 94%, var(--border)); }
+}
 
 .file-label {
   background: var(--accent);
