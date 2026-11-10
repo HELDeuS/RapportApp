@@ -90,7 +90,10 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT NOT NULL,
     role TEXT NOT NULL,
     student_id INTEGER,
-    active INTEGER DEFAULT 1
+    active INTEGER DEFAULT 1,
+    first_name TEXT DEFAULT '',
+    last_name TEXT DEFAULT '',
+    email TEXT DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS students (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -181,6 +184,10 @@ def init_db():
     stcols = [r[1] for r in db.execute("PRAGMA table_info(students)").fetchall()]
     if "login_enabled" not in stcols:
         db.execute("ALTER TABLE students ADD COLUMN login_enabled INTEGER DEFAULT 0")
+    ucols = [r[1] for r in db.execute("PRAGMA table_info(users)").fetchall()]
+    for col in ("first_name", "last_name", "email"):
+        if col not in ucols:
+            db.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT DEFAULT ''")
     if not db.execute("SELECT COUNT(*) FROM users").fetchone()[0]:
         db.execute(
             "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
@@ -347,8 +354,13 @@ def users_collection():
             return jsonify({"error": "Een studentaccount moet aan een student gekoppeld zijn"}), 400
         try:
             cur = db.execute(
-                "INSERT INTO users (username, password_hash, role, student_id) VALUES (?, ?, ?, ?)",
-                (username, generate_password_hash(password), role, student_id),
+                """INSERT INTO users (username, password_hash, role, student_id,
+                                      first_name, last_name, email)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (username, generate_password_hash(password), role, student_id,
+                 (data.get("first_name") or "").strip(),
+                 (data.get("last_name") or "").strip(),
+                 (data.get("email") or "").strip()),
             )
             db.commit()
         except sqlite3.IntegrityError:
@@ -356,7 +368,8 @@ def users_collection():
         return jsonify({"id": cur.lastrowid, "username": username,
                         "role": role, "student_id": student_id}), 201
     rows = db.execute(
-        """SELECT u.id, u.username, u.role, u.student_id, u.active, s.name AS student_name
+        """SELECT u.id, u.username, u.role, u.student_id, u.active,
+                  u.first_name, u.last_name, u.email, s.name AS student_name
            FROM users u LEFT JOIN students s ON s.id = u.student_id
            ORDER BY u.username"""
     ).fetchall()
@@ -381,6 +394,10 @@ def user_item(user_id):
         if "student_id" in data:
             db.execute("UPDATE users SET student_id = ? WHERE id = ?",
                        (data.get("student_id") or None, user_id))
+        for field in ("first_name", "last_name", "email"):
+            if field in data:
+                db.execute(f"UPDATE users SET {field} = ? WHERE id = ?",
+                           ((data.get(field) or "").strip(), user_id))
         if "active" in data:
             if user_id == user["id"] and not data["active"]:
                 return jsonify({"error": "Je kunt jezelf niet deactiveren"}), 400

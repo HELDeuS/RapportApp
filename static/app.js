@@ -1131,6 +1131,9 @@ function renderUsers() {
   $("#users-table tbody").innerHTML = users.map((u) => `
     <tr data-id="${u.id}">
       <td>${esc(u.username)}</td>
+      <td><input data-field="first_name" value="${esc(u.first_name || "")}" style="width:110px"></td>
+      <td><input data-field="last_name" value="${esc(u.last_name || "")}" style="width:110px"></td>
+      <td><input type="email" data-field="email" value="${esc(u.email || "")}" style="width:170px"></td>
       <td>${esc(ROLE_LABELS[u.role] || u.role)}</td>
       <td>${esc(u.student_name || "")}</td>
       <td><input type="checkbox" data-field="active"${u.active ? " checked" : ""}></td>
@@ -1148,10 +1151,18 @@ $("#btn-add-user").addEventListener("click", async () => {
     await api("/api/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password, role }),
+      body: JSON.stringify({
+        username, password, role,
+        first_name: $("#user-firstname").value.trim(),
+        last_name: $("#user-lastname").value.trim(),
+        email: $("#user-email").value.trim(),
+      }),
     });
     $("#user-username").value = "";
     $("#user-password").value = "";
+    $("#user-firstname").value = "";
+    $("#user-lastname").value = "";
+    $("#user-email").value = "";
     await loadAll();
   } catch (err) {
     alert("Account aanmaken mislukt: " + err.message);
@@ -1161,9 +1172,11 @@ $("#btn-add-user").addEventListener("click", async () => {
 $("#users-table tbody").addEventListener("change", async (e) => {
   const tr = e.target.closest("tr");
   const id = tr.dataset.id;
+  const field = e.target.dataset.field;
   const body = {};
-  if (e.target.dataset.field === "active") body.active = e.target.checked;
-  if (e.target.dataset.field === "password" && e.target.value) body.password = e.target.value;
+  if (field === "active") body.active = e.target.checked;
+  if (field === "password" && e.target.value) body.password = e.target.value;
+  if (["first_name", "last_name", "email"].includes(field)) body[field] = e.target.value;
   if (!Object.keys(body).length) return;
   try {
     await api(`/api/users/${id}`, {
