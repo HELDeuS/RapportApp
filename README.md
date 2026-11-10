@@ -29,14 +29,14 @@ sudo useradd --system --home /opt/RapportApp --shell /usr/sbin/nologin rapportap
 sudo mkdir -p /opt/RapportApp
 sudo git clone https://github.com/HELDeuS/RapportApp.git /opt/RapportApp
 
-# 3. Virtuele omgeving en dependencies
+# 3. Eigendom eerst aan rapportapp geven (anders: Permission denied op venv)
+sudo chown -R rapportapp:rapportapp /opt/RapportApp
+
+# 4. Virtuele omgeving en dependencies
 cd /opt/RapportApp
 sudo -u rapportapp python3 -m venv venv
 sudo -u rapportapp venv/bin/pip install -r requirements.txt
 sudo -u rapportapp venv/bin/pip install gunicorn
-
-# 4. Map-eigendom regelen
-sudo chown -R rapportapp:rapportapp /opt/RapportApp
 
 # 5. systemd-service aanmaken
 sudo tee /etc/systemd/system/rapportapp.service > /dev/null <<'EOF'
