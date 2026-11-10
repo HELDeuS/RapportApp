@@ -218,7 +218,7 @@ function showImportResult(res) {
 // ---------- Studenten ----------
 function renderStudents() {
   const classOptions = (sel) => `<option value="">Geen klas</option>` +
-    classes.map((c) => `<option value="${c.id}"${String(sel) === String(c.id) ? " selected" : "">${esc(classLabel(c))}</option>`).join("");
+    classes.map((c) => `<option value="${c.id}"${String(sel) === String(c.id) ? " selected" : ""}>${esc(classLabel(c))}</option>`).join("");
   $("#students-table tbody").innerHTML = students.map((s) => `
     <tr data-id="${s.id}">
       <td><input data-field="name" value="${esc(s.name)}"></td>
