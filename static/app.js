@@ -52,6 +52,16 @@ function applyRoleUi() {
   }
 }
 
+function activateDefaultTab() {
+  $$(".panel").forEach((p) => p.classList.remove("hidden", "active"));
+  $$(".tab").forEach((b) => b.classList.remove("active"));
+  const firstTab = [...$$(".tab")].find((b) => b.style.display !== "none");
+  if (firstTab) {
+    firstTab.classList.add("active");
+    $(`#tab-${firstTab.dataset.tab}`).classList.add("active");
+  }
+}
+
 async function init() {
   try {
     currentUser = await api("/api/auth/me");
@@ -67,6 +77,7 @@ async function init() {
   $("#login-screen").classList.add("hidden");
   $("#app-header").classList.remove("hidden");
   applyRoleUi();
+  activateDefaultTab();
   await loadAll();
 }
 
@@ -100,7 +111,7 @@ $("#btn-logout").addEventListener("click", async () => {
 $$(".tab").forEach((btn) => {
   btn.addEventListener("click", () => {
     $$(".tab").forEach((b) => b.classList.remove("active"));
-    $$(".panel").forEach((p) => p.classList.remove("active"));
+    $$(".panel").forEach((p) => p.classList.remove("active", "hidden"));
     btn.classList.add("active");
     $(`#tab-${btn.dataset.tab}`).classList.add("active");
   });
