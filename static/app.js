@@ -1023,8 +1023,6 @@ for (const tableId of Object.keys(ARCH_TABLES)) {
 // ---------- Gebruikers ----------
 function renderUsers() {
   if (!$("#users-table")) return;
-  $("#user-student").innerHTML = `<option value="">Alleen bij rol Student: koppel student</option>` +
-    students.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join("");
   $("#users-table tbody").innerHTML = users.map((u) => `
     <tr data-id="${u.id}">
       <td>${esc(u.username)}</td>
@@ -1040,13 +1038,12 @@ $("#btn-add-user").addEventListener("click", async () => {
   const username = $("#user-username").value.trim();
   const password = $("#user-password").value;
   const role = $("#user-role").value;
-  const student_id = $("#user-student").value || null;
   if (!username || !password) return alert("Vul gebruikersnaam en wachtwoord in.");
   try {
     await api("/api/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password, role, student_id }),
+      body: JSON.stringify({ username, password, role }),
     });
     $("#user-username").value = "";
     $("#user-password").value = "";
