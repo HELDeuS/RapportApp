@@ -591,7 +591,10 @@ $("#periods-table tbody").addEventListener("click", async (e) => {
 
 // ---------- Rapport ----------
 $("#btn-report").addEventListener("click", showReport);
-$("#btn-print").addEventListener("click", () => window.print());
+$("#btn-print").addEventListener("click", async () => {
+  await showReport();
+  window.print();
+});
 
 async function showReport() {
   const periodId = $("#report-period").value;
