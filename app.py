@@ -64,8 +64,8 @@ def init_db():
 def parse_value(raw):
     """Validate a cell value. Returns normalized value or raises ValueError.
 
-    Accepted: '' (delete), 'V' (vrijstelling), 'O' (onvoldoende),
-    or a number between 1 and 10 (comma or point decimal separator).
+    Accepted: '' (delete), 'V' (voldoende), 'G' (goed), 'VS' (vrijstelling),
+    'O' (onvoldoende), or a number between 1 and 10 (comma or point decimal).
     """
     if raw is None:
         return ""
@@ -73,10 +73,8 @@ def parse_value(raw):
     if s == "":
         return ""
     upper = s.upper()
-    if upper == "V":
-        return "V"
-    if upper == "O":
-        return "O"
+    if upper in ("V", "G", "VS", "O"):
+        return upper
     s = s.replace(",", ".")
     try:
         num = float(s)
@@ -95,7 +93,7 @@ def tekorten_for_value(value):
     """Number of tekorten for a grade value, per the school's rules."""
     if value is None or value == "":
         return 0
-    if value == "V":
+    if value in ("V", "G", "VS"):
         return 0
     if value == "O":
         return 1
@@ -112,7 +110,7 @@ def tekorten_for_value(value):
 def display_value(value):
     if value is None or value == "":
         return ""
-    if value in ("V", "O"):
+    if value in ("V", "G", "VS", "O"):
         return value
     try:
         f = float(value)

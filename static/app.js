@@ -93,7 +93,7 @@ function renderGradeTable() {
 
 function tekorten(v) {
   if (!v) return 0;
-  if (v === "V") return 0;
+  if (v === "V" || v === "G" || v === "VS") return 0;
   if (v === "O") return 1;
   const n = Math.round(parseFloat(v));
   return n < 6 ? 6 - n : 0;
