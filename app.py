@@ -47,7 +47,8 @@ CREATE TABLE IF NOT EXISTS subjects (
 );
 CREATE TABLE IF NOT EXISTS periods (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL
+    name TEXT NOT NULL,
+    year TEXT DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS grades (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,13 +69,16 @@ CREATE TABLE IF NOT EXISTS subject_periods (
 def init_db():
     db = sqlite3.connect(DB_PATH)
     db.executescript(SCHEMA)
-    # Migratie voor bestaande databases: class_id-kolom toevoegen.
+    # Migratie voor bestaande databases: class_id- en year-kolommen toevoegen.
     cols = [r[1] for r in db.execute("PRAGMA table_info(students)").fetchall()]
     if "class_id" not in cols:
         db.execute(
             "ALTER TABLE students ADD COLUMN class_id INTEGER "
             "REFERENCES classes(id) ON DELETE SET NULL"
         )
+    pcols = [r[1] for r in db.execute("PRAGMA table_info(periods)").fetchall()]
+    if "year" not in pcols:
+        db.execute("ALTER TABLE periods ADD COLUMN year TEXT DEFAULT ''")
     db.commit()
     db.close()
 
@@ -312,12 +316,13 @@ def periods_collection():
         name = (data.get("name") or "").strip()
         if not name:
             return jsonify({"error": "Naam is verplicht"}), 400
-        cur = db.execute("INSERT INTO periods (name) VALUES (?)", (name,))
+        year = (data.get("year") or "").strip()
+        cur = db.execute("INSERT INTO periods (name, year) VALUES (?, ?)", (name, year))
         db.commit()
         return jsonify(dict(db.execute(
             "SELECT * FROM periods WHERE id = ?", (cur.lastrowid,)
         ).fetchone())), 201
-    rows = db.execute("SELECT * FROM periods ORDER BY id").fetchall()
+    rows = db.execute("SELECT * FROM periods ORDER BY year, id").fetchall()
     return jsonify([dict(r) for r in rows])
 
 
@@ -329,7 +334,9 @@ def period_item(period_id):
         name = (data.get("name") or "").strip()
         if not name:
             return jsonify({"error": "Naam is verplicht"}), 400
-        db.execute("UPDATE periods SET name = ? WHERE id = ?", (name, period_id))
+        year = (data.get("year") or "").strip()
+        db.execute("UPDATE periods SET name = ?, year = ? WHERE id = ?",
+                   (name, year, period_id))
         db.commit()
     else:
         db.execute("DELETE FROM periods WHERE id = ?", (period_id,))

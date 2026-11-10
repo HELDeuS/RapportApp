@@ -4,20 +4,20 @@ Webapp voor het bijhouden van rapportcijfers van de opleiding MBO ICT.
 
 ## Functies
 
-- **Studenten, vakken, periodes en klassen** beheren (CRUD). Klassen hebben een naam en een niveau (bijv. IAO4A, niveau 4). Niet elk vak hoeft in elke periode cijfers te hebben.
+- **Studenten, vakken, modules en klassen** beheren (CRUD). Klassen hebben een naam en een niveau (bijv. IAO4A, niveau 4). Modules (voorheen periodes) hebben een naam en een studiejaar (bijv. M1, 2025-2026). Niet elk vak hoeft in elke module cijfers te hebben.
 - **Overzicht per klas**: filter de cijfermatrix en het rapport op klas; het rapport toont klas en niveau per student.
-- **Vak-periode-koppeling**: per vak geef je met vinkjes aan in welke periode(s) het gegeven wordt. De cijfermatrix en het rapport tonen per periode alléén de vakken waarvoor die periode is aangevinkt. De vakkenlijst heeft een zoekfilter.
+- **Vak-module-koppeling**: per vak geef je met vinkjes aan in welke module(s) het gegeven wordt. De cijfermatrix en het rapport tonen per module alléén de vakken waarvoor die module is aangevinkt. De vakkenlijst heeft een zoekfilter.
 - **Darkmode**: donker thema (automatisch volgens systeeminstelling, handmatig te wisselen); invoervelden hebben een subtiel contrast met de regel.
-- **Cijfermatrix per periode**: voer per vak een cijfer (1–10) of een beoordelingscode in:
+- **Cijfermatrix per module**: voer per vak een cijfer (1–10) of een beoordelingscode in:
   - `V` = voldoende, `G` = goed, `VS` = vrijstelling — alle drie tellen als voldoende: **0 tekorten**.
   - `O` = onvoldoende — telt als **1 tekort**.
-- **Tekortberekening** per student per periode:
+- **Tekortberekening** per student per module:
   - Een cijfer dat afgerond onder 6 is, geeft `6 − afgerond cijfer` tekorten (5 → 1 tekort, 4 → 2 tekorten, enz.).
   - `V`, `G` en `VS` tellen als een voldoende: 0 tekorten.
   - `O` telt als 1 tekort.
 - **Import** van cijfers via CSV- of Excel-bestand (`.csv`, `.tsv`, `.txt`, `.xlsx`), of via **kopiëren en plakken** direct uit Excel.
 - **Import van studenten en vakken** via CSV- of Excel-bestand, met automatische herkenning van een kopregel. Bestaande studenten/vakken worden overgeslagen.
-- **Rapport** per student per periode, netjes vormgegeven en printklaar (afdrukken als PDF via de browser).
+- **Rapport** per student per module, netjes vormgegeven en printklaar (afdrukken als PDF via de browser).
 
 ## Installatie op een Ubuntu-server (in `/opt/RapportApp`)
 
@@ -139,7 +139,7 @@ Engels
 
 - `GET/POST /api/classes`, `PUT/DELETE /api/classes/<id>`
 - `GET/POST /api/students`, `PUT/DELETE /api/students/<id>` (met optioneel `class_id`)
-- `GET/POST /api/subjects`, `PUT/DELETE /api/subjects/<id>` (met optioneel `period_ids`: periodes waarin het vak gegeven wordt)
+- `GET/POST /api/subjects`, `PUT/DELETE /api/subjects/<id>` (met optioneel `period_ids`: modules waarin het vak gegeven wordt)
 - `GET/POST /api/periods`, `PUT/DELETE /api/periods/<id>`
 - `GET /api/grades?period_id=…`, `POST /api/grades` (één cijfer zetten/wissen)
 - `POST /api/import` (bestand of tekst, form-data: `period_id`, `file` of `text`, `create_missing`)

@@ -48,7 +48,7 @@ async function loadAll() {
 
 function renderPeriodSelects() {
   for (const sel of [$("#grade-period"), $("#report-period")]) {
-    sel.innerHTML = periods.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("");
+    sel.innerHTML = periods.map((p) => `<option value="${p.id}">${esc(periodLabel(p))}</option>`).join("");
   }
   const rs = $("#report-student");
   rs.innerHTML = `<option value="">Alle studenten</option>` +
@@ -357,7 +357,7 @@ function renderSubjects() {
     <tr data-id="${s.id}">
       <td><input data-field="name" value="${esc(s.name)}"></td>
       <td class="period-checks">${periods.map((p) => `
-        <label class="check"><input type="checkbox" data-period="${p.id}"${(s.period_ids || []).includes(p.id) ? " checked" : ""}> ${esc(p.name)}</label>`).join("")}</td>
+        <label class="check"><input type="checkbox" data-period="${p.id}"${(s.period_ids || []).includes(p.id) ? " checked" : ""}> ${esc(periodLabel(p))}</label>`).join("")}</td>
       <td><button class="danger" data-del>Verwijderen</button></td>
     </tr>`).join("");
 }
@@ -407,11 +407,16 @@ $("#subjects-table tbody").addEventListener("click", async (e) => {
   await loadAll();
 });
 
-// ---------- Periodes ----------
+// ---------- Modules ----------
+function periodLabel(p) {
+  return p.year ? `${p.name} (${p.year})` : p.name;
+}
+
 function renderPeriods() {
   $("#periods-table tbody").innerHTML = periods.map((p) => `
     <tr data-id="${p.id}">
       <td><input data-field="name" value="${esc(p.name)}"></td>
+      <td><input data-field="year" value="${esc(p.year || "")}"></td>
       <td><button class="danger" data-del>Verwijderen</button></td>
     </tr>`).join("");
 }
@@ -422,18 +427,22 @@ $("#btn-add-period").addEventListener("click", async () => {
   await api("/api/periods", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, year: $("#period-year").value.trim() }),
   });
   $("#period-name").value = "";
+  $("#period-year").value = "";
   await loadAll();
 });
 
 $("#periods-table tbody").addEventListener("change", async (e) => {
   const id = e.target.closest("tr").dataset.id;
+  const p = periods.find((x) => x.id === +id);
+  if (!p) return;
+  p[e.target.dataset.field] = e.target.value;
   await api(`/api/periods/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: e.target.value }),
+    body: JSON.stringify(p),
   });
   await loadAll();
 });
@@ -441,7 +450,7 @@ $("#periods-table tbody").addEventListener("change", async (e) => {
 $("#periods-table tbody").addEventListener("click", async (e) => {
   if (!e.target.dataset.del) return;
   const id = e.target.closest("tr").dataset.id;
-  if (!confirm("Periode verwijderen? Alle cijfers in deze periode vervallen.")) return;
+  if (!confirm("Module verwijderen? Alle cijfers in deze module vervallen.")) return;
   await api(`/api/periods/${id}`, { method: "DELETE" });
   await loadAll();
 });
@@ -463,7 +472,7 @@ async function showReport() {
   out.innerHTML = data.students.map((s) => `
     <div class="report-card">
       <h2>${esc(s.student.name)}</h2>
-      <div class="sub">${s.class ? `${esc(s.class.name)}${s.class.niveau ? ` &mdash; ${esc(s.class.niveau)}` : ""} &mdash; ` : ""}${s.student.student_number ? `Nr. ${esc(s.student.student_number)} &mdash; ` : ""}Periode: ${esc(data.period.name)}</div>
+      <div class="sub">${s.class ? `${esc(s.class.name)}${s.class.niveau ? ` &mdash; ${esc(s.class.niveau)}` : ""} &mdash; ` : ""}${s.student.student_number ? `Nr. ${esc(s.student.student_number)} &mdash; ` : ""}Module: ${esc(periodLabel(data.period))}</div>
       ${s.entries.length ? `
       <table>
         <thead><tr><th>Vak</th><th>Beoordeling</th><th>Tekorten</th></tr></thead>
@@ -476,7 +485,7 @@ async function showReport() {
           </tr>`).join("")}
         </tbody>
         <tfoot><tr><td colspan="2">Totaal tekorten</td><td>${s.total_tekorten}</td></tr></tfoot>
-      </table>` : `<p>Geen cijfers bekend in deze periode.</p>`}
+      </table>` : `<p>Geen cijfers bekend in deze module.</p>`}
     </div>`).join("");
 }
 
