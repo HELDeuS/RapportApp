@@ -11,6 +11,7 @@ let grades = {}; // "studentId:subjectId" -> value
 let attendance = {}; // studentId -> {present, absent_allowed, absent_unallowed}
 let notes = {}; // studentId -> {comment, teacher_comment}
 let currentPeriod = null;
+let users = [];
 
 const api = async (url, opts) => {
   const res = await fetch(url, opts);
@@ -18,6 +19,82 @@ const api = async (url, opts) => {
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
 };
+
+let currentUser = null;
+
+const ROLE_LABELS = {
+  beheerder: "Beheerder", mentor: "Mentor", docent: "Docent",
+  administratie: "Administratie", student: "Student",
+};
+
+const ROLE_TABS = {
+  beheerder: ["cijfers", "studenten", "klassen", "vakken", "periodes", "rapport", "archief", "gebruikers"],
+  mentor: ["cijfers", "studenten", "rapport", "archief"],
+  docent: ["cijfers", "rapport"],
+  administratie: ["rapport"],
+  student: ["rapport"],
+};
+
+function applyRoleUi() {
+  const role = currentUser ? currentUser.role : null;
+  $$(".tab").forEach((btn) => {
+    btn.style.display = role && ROLE_TABS[role].includes(btn.dataset.tab) ? "" : "none";
+  });
+  $("#user-info").textContent = currentUser
+    ? `${currentUser.username} (${ROLE_LABELS[currentUser.role] || currentUser.role})` : "";
+  const isStudent = role === "student";
+  const reportStudentSel = $("#report-student");
+  const reportAudience = $("#report-audience");
+  if (reportStudentSel) reportStudentSel.disabled = isStudent;
+  if (reportAudience) {
+    if (isStudent) { reportAudience.value = "student"; reportAudience.disabled = true; }
+    else reportAudience.disabled = false;
+  }
+}
+
+async function init() {
+  try {
+    currentUser = await api("/api/auth/me");
+  } catch (e) {
+    currentUser = null;
+  }
+  if (!currentUser) {
+    $("#login-screen").classList.remove("hidden");
+    $("#app-header").classList.add("hidden");
+    $$(".panel").forEach((p) => p.classList.add("hidden"));
+    return;
+  }
+  $("#login-screen").classList.add("hidden");
+  $("#app-header").classList.remove("hidden");
+  applyRoleUi();
+  await loadAll();
+}
+
+$("#login-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("#login-error").classList.add("hidden");
+  try {
+    currentUser = await api("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: $("#login-username").value,
+        password: $("#login-password").value,
+      }),
+    });
+    $("#login-password").value = "";
+    await init();
+  } catch (err) {
+    const el = $("#login-error");
+    el.textContent = err.message;
+    el.classList.remove("hidden");
+  }
+});
+
+$("#btn-logout").addEventListener("click", async () => {
+  await api("/api/auth/logout", { method: "POST" }).catch(() => {});
+  location.reload();
+});
 
 // ---------- Tabs ----------
 $$(".tab").forEach((btn) => {
@@ -34,6 +111,10 @@ async function loadAll() {
   [students, classes, niveaus, cohorts, subjects, periods] = await Promise.all([
     api("/api/students"), api("/api/classes"), api("/api/niveaus"), api("/api/cohorts"), api("/api/subjects"), api("/api/periods"),
   ]);
+  if (currentUser && currentUser.role === "beheerder") {
+    users = await api("/api/users").catch(() => []);
+    renderUsers();
+  }
   students.sort((a, b) => a.name.localeCompare(b.name, "nl"));
   classes.sort((a, b) => a.name.localeCompare(b.name, "nl"));
   niveaus.sort((a, b) => a.name.localeCompare(b.name, "nl"));
@@ -427,6 +508,7 @@ function renderClasses() {
       <td><input data-field="name" value="${esc(c.name)}"></td>
       <td><select data-field="niveau_id">${niveauOptions(c.niveau_id)}</select></td>
       <td><select data-field="cohort_id">${optList(c.cohort_id, cohorts, "Geen cohort")}</select></td>
+      ${users.length ? `<td><select data-field="mentor_id">${optList(c.mentor_id, users.filter((u) => u.role === "mentor" || u.role === "beheerder"), "Geen mentor")}</select></td>` : `<td>${esc(c.mentor || "")}</td>`}
       <td><button class="secondary" data-archive>Archiveren</button></td>
       <td><button class="danger" data-del>Verwijderen</button></td>
     </tr>`).join("");
@@ -761,10 +843,12 @@ $("#btn-print").addEventListener("click", async () => {
 async function showReport() {
   const periodId = $("#report-period").value;
   if (!periodId) return;
-  const studentId = $("#report-student").value;
+  const studentId = currentUser && currentUser.role === "student"
+    ? currentUser.student_id : $("#report-student").value;
   const classId = $("#report-class").value;
   const cohortId = $("#report-cohort").value;
-  const audience = $("#report-audience").value;
+  const audience = currentUser && currentUser.role === "student"
+    ? "student" : $("#report-audience").value;
   let url = `/api/report?period_id=${periodId}&audience=${audience}`;
   if (studentId) url += `&student_id=${studentId}`;
   if (classId) url += `&class_id=${classId}`;
@@ -917,6 +1001,75 @@ for (const tableId of Object.keys(ARCH_TABLES)) {
   });
 }
 
+// ---------- Gebruikers ----------
+function renderUsers() {
+  if (!$("#users-table")) return;
+  $("#user-student").innerHTML = `<option value="">Alleen bij rol Student: koppel student</option>` +
+    students.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join("");
+  $("#users-table tbody").innerHTML = users.map((u) => `
+    <tr data-id="${u.id}">
+      <td>${esc(u.username)}</td>
+      <td>${esc(ROLE_LABELS[u.role] || u.role)}</td>
+      <td>${esc(u.student_name || "")}</td>
+      <td><input type="checkbox" data-field="active"${u.active ? " checked" : ""}></td>
+      <td><input type="password" placeholder="Nieuw wachtwoord" data-field="password" style="width:140px"></td>
+      <td><button class="danger" data-del>Verwijderen</button></td>
+    </tr>`).join("");
+}
+
+$("#btn-add-user").addEventListener("click", async () => {
+  const username = $("#user-username").value.trim();
+  const password = $("#user-password").value;
+  const role = $("#user-role").value;
+  const student_id = $("#user-student").value || null;
+  if (!username || !password) return alert("Vul gebruikersnaam en wachtwoord in.");
+  try {
+    await api("/api/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password, role, student_id }),
+    });
+    $("#user-username").value = "";
+    $("#user-password").value = "";
+    await loadAll();
+  } catch (err) {
+    alert("Account aanmaken mislukt: " + err.message);
+  }
+});
+
+$("#users-table tbody").addEventListener("change", async (e) => {
+  const tr = e.target.closest("tr");
+  const id = tr.dataset.id;
+  const body = {};
+  if (e.target.dataset.field === "active") body.active = e.target.checked;
+  if (e.target.dataset.field === "password" && e.target.value) body.password = e.target.value;
+  if (!Object.keys(body).length) return;
+  try {
+    await api(`/api/users/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (e.target.dataset.field === "password") e.target.value = "";
+    users = await api("/api/users");
+    renderUsers();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+$("#users-table tbody").addEventListener("click", async (e) => {
+  if (e.target.dataset.del === undefined) return;
+  const id = e.target.closest("tr").dataset.id;
+  if (!confirm("Dit account verwijderen?")) return;
+  try {
+    await api(`/api/users/${id}`, { method: "DELETE" });
+    await loadAll();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
 // ---------- Darkmode ----------
 const themeBtn = $("#btn-theme");
 function applyTheme(theme) {
@@ -940,4 +1093,4 @@ function esc(s) {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
-loadAll().catch((e) => alert("Laden mislukt: " + e.message));
+init().catch((e) => alert("Laden mislukt: " + e.message));

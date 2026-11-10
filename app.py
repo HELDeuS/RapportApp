@@ -1,8 +1,11 @@
 import math
 import os
+import secrets
 import sqlite3
+from datetime import timedelta
 
-from flask import Flask, g, jsonify, request, send_from_directory
+from flask import Flask, g, jsonify, request, send_from_directory, session
+from werkzeug.security import check_password_hash, generate_password_hash
 
 import openpyxl
 
@@ -10,6 +13,41 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("RAPPORTAPP_DB", os.path.join(APP_DIR, "rapportapp.db"))
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
+app.permanent_session_lifetime = timedelta(days=7)
+
+
+def _secret_key():
+    keyfile = os.path.join(APP_DIR, ".secret_key")
+    if not os.path.exists(keyfile):
+        with open(keyfile, "w") as f:
+            f.write(secrets.token_hex(32))
+    with open(keyfile) as f:
+        return f.read().strip()
+
+
+app.secret_key = _secret_key()
+
+ROLES = ("beheerder", "mentor", "docent", "administratie", "student")
+
+
+def current_user():
+    uid = session.get("user_id")
+    if not uid:
+        return None
+    row = get_db().execute(
+        "SELECT * FROM users WHERE id = ? AND active = 1", (uid,)
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def auth_error(*roles):
+    """Returns (user, error_response). user is None on success is not possible."""
+    user = current_user()
+    if user is None:
+        return None, (jsonify({"error": "Niet ingelogd"}), 401)
+    if roles and user["role"] not in roles:
+        return None, (jsonify({"error": "Hiervoor heb je geen toestemming"}), 403)
+    return user, None
 
 
 def get_db():
@@ -43,7 +81,16 @@ CREATE TABLE IF NOT EXISTS classes (
     name TEXT NOT NULL,
     niveau TEXT DEFAULT '',
     niveau_id INTEGER REFERENCES niveaus(id) ON DELETE SET NULL,
-    cohort_id INTEGER REFERENCES cohorts(id) ON DELETE SET NULL
+    cohort_id INTEGER REFERENCES cohorts(id) ON DELETE SET NULL,
+    mentor_id INTEGER REFERENCES users(id) ON DELETE SET NULL
+);
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL,
+    student_id INTEGER,
+    active INTEGER DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS students (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -127,6 +174,14 @@ def init_db():
     if "cohort_id" not in ccols:
         db.execute("ALTER TABLE classes ADD COLUMN cohort_id INTEGER "
                    "REFERENCES cohorts(id) ON DELETE SET NULL")
+    if "mentor_id" not in ccols:
+        db.execute("ALTER TABLE classes ADD COLUMN mentor_id INTEGER "
+                   "REFERENCES users(id) ON DELETE SET NULL")
+    if not db.execute("SELECT COUNT(*) FROM users").fetchone()[0]:
+        db.execute(
+            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+            ("beheerder", generate_password_hash("rapportapp"), "beheerder"),
+        )
     for table in ("students", "classes", "subjects", "cohorts"):
         tcols = [r[1] for r in db.execute(f"PRAGMA table_info({table})").fetchall()]
         if "archived" not in tcols:
@@ -234,16 +289,136 @@ def index():
 
 
 # ---------------------------------------------------------------------------
+# Authenticatie en gebruikersbeheer
+# ---------------------------------------------------------------------------
+
+@app.route("/api/auth/login", methods=["POST"])
+def auth_login():
+    data = request.get_json(force=True)
+    username = (data.get("username") or "").strip()
+    password = data.get("password") or ""
+    row = get_db().execute(
+        "SELECT * FROM users WHERE username = ? AND active = 1", (username,)
+    ).fetchone()
+    if row is None or not check_password_hash(row["password_hash"], password):
+        return jsonify({"error": "Onjuiste gebruikersnaam of wachtwoord"}), 401
+    session.permanent = True
+    session["user_id"] = row["id"]
+    return jsonify({"id": row["id"], "username": row["username"],
+                    "role": row["role"], "student_id": row["student_id"]})
+
+
+@app.route("/api/auth/logout", methods=["POST"])
+def auth_logout():
+    session.clear()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/auth/me")
+def auth_me():
+    user = current_user()
+    if user is None:
+        return jsonify({"error": "Niet ingelogd"}), 401
+    return jsonify({"id": user["id"], "username": user["username"],
+                    "role": user["role"], "student_id": user["student_id"]})
+
+
+@app.route("/api/users", methods=["GET", "POST"])
+def users_collection():
+    user, err = auth_error("beheerder")
+    if err:
+        return err
+    db = get_db()
+    if request.method == "POST":
+        data = request.get_json(force=True)
+        username = (data.get("username") or "").strip()
+        password = data.get("password") or ""
+        role = data.get("role") or ""
+        student_id = data.get("student_id") or None
+        if not username or not password:
+            return jsonify({"error": "Gebruikersnaam en wachtwoord zijn verplicht"}), 400
+        if role not in ROLES:
+            return jsonify({"error": "Onbekende rol"}), 400
+        if role == "student" and not student_id:
+            return jsonify({"error": "Een studentaccount moet aan een student gekoppeld zijn"}), 400
+        try:
+            cur = db.execute(
+                "INSERT INTO users (username, password_hash, role, student_id) VALUES (?, ?, ?, ?)",
+                (username, generate_password_hash(password), role, student_id),
+            )
+            db.commit()
+        except sqlite3.IntegrityError:
+            return jsonify({"error": "Deze gebruikersnaam bestaat al"}), 400
+        return jsonify({"id": cur.lastrowid, "username": username,
+                        "role": role, "student_id": student_id}), 201
+    rows = db.execute(
+        """SELECT u.id, u.username, u.role, u.student_id, u.active, s.name AS student_name
+           FROM users u LEFT JOIN students s ON s.id = u.student_id
+           ORDER BY u.username"""
+    ).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/users/<int:user_id>", methods=["PUT", "DELETE"])
+def user_item(user_id):
+    user, err = auth_error("beheerder")
+    if err:
+        return err
+    db = get_db()
+    if request.method == "PUT":
+        data = request.get_json(force=True)
+        if data.get("password"):
+            db.execute("UPDATE users SET password_hash = ? WHERE id = ?",
+                       (generate_password_hash(data["password"]), user_id))
+        if "role" in data:
+            if data["role"] not in ROLES:
+                return jsonify({"error": "Onbekende rol"}), 400
+            db.execute("UPDATE users SET role = ? WHERE id = ?", (data["role"], user_id))
+        if "student_id" in data:
+            db.execute("UPDATE users SET student_id = ? WHERE id = ?",
+                       (data.get("student_id") or None, user_id))
+        if "active" in data:
+            if user_id == user["id"] and not data["active"]:
+                return jsonify({"error": "Je kunt jezelf niet deactiveren"}), 400
+            db.execute("UPDATE users SET active = ? WHERE id = ?",
+                       (1 if data["active"] else 0, user_id))
+        db.commit()
+    else:
+        if user_id == user["id"]:
+            return jsonify({"error": "Je kunt jezelf niet verwijderen"}), 400
+        db.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        db.commit()
+    return jsonify({"ok": True})
+
+
+def mentor_class_ids(user):
+    if user["role"] != "mentor":
+        return None
+    rows = get_db().execute(
+        "SELECT id FROM classes WHERE mentor_id = ?", (user["id"],)
+    ).fetchall()
+    return {r["id"] for r in rows}
+
+
+def mentor_owns_student(user, student_row, new_class_id=None):
+    ids = mentor_class_ids(user)
+    class_id = new_class_id if new_class_id is not None else student_row["class_id"]
+    return class_id in ids if ids is not None else False
+
+
+# ---------------------------------------------------------------------------
 # Classes (klassen met niveau)
 # ---------------------------------------------------------------------------
 
 def class_with_niveau(db, class_id):
     row = db.execute(
         """SELECT c.id, c.name, n.name AS niveau, c.niveau_id,
-                  co.name AS cohort, c.cohort_id
+                  co.name AS cohort, c.cohort_id,
+                  c.mentor_id, m.username AS mentor
            FROM classes c
            LEFT JOIN niveaus n ON n.id = c.niveau_id
            LEFT JOIN cohorts co ON co.id = c.cohort_id
+           LEFT JOIN users m ON m.id = c.mentor_id
            WHERE c.id = ?""",
         (class_id,),
     ).fetchone()
@@ -252,6 +427,9 @@ def class_with_niveau(db, class_id):
 
 @app.route("/api/cohorts", methods=["GET", "POST"])
 def cohorts_collection():
+    user, err = auth_error("beheerder", "mentor", "docent", "administratie") if request.method == "GET" else auth_error("beheerder")
+    if err:
+        return err
     db = get_db()
     if request.method == "POST":
         data = request.get_json(force=True)
@@ -269,6 +447,9 @@ def cohorts_collection():
 
 @app.route("/api/cohorts/<int:cohort_id>", methods=["PUT", "DELETE"])
 def cohort_item(cohort_id):
+    user, err = auth_error("beheerder")
+    if err:
+        return err
     db = get_db()
     if request.method == "PUT":
         data = request.get_json(force=True)
@@ -283,6 +464,9 @@ def cohort_item(cohort_id):
 
 @app.route("/api/niveaus", methods=["GET", "POST"])
 def niveaus_collection():
+    user, err = auth_error("beheerder", "mentor", "docent", "administratie") if request.method == "GET" else auth_error("beheerder")
+    if err:
+        return err
     db = get_db()
     if request.method == "POST":
         data = request.get_json(force=True)
@@ -305,6 +489,9 @@ def niveau_item(niveau_id):
 
 @app.route("/api/classes", methods=["GET", "POST"])
 def classes_collection():
+    user, err = auth_error("beheerder", "mentor", "docent", "administratie") if request.method == "GET" else auth_error("beheerder")
+    if err:
+        return err
     db = get_db()
     if request.method == "POST":
         data = request.get_json(force=True)
@@ -313,19 +500,22 @@ def classes_collection():
             return jsonify({"error": "Naam is verplicht"}), 400
         niveau_id = data.get("niveau_id") or None
         cohort_id = data.get("cohort_id") or None
+        mentor_id = data.get("mentor_id") or None
         cur = db.execute(
-            "INSERT INTO classes (name, niveau_id, cohort_id) VALUES (?, ?, ?)",
-            (name, niveau_id, cohort_id),
+            "INSERT INTO classes (name, niveau_id, cohort_id, mentor_id) VALUES (?, ?, ?, ?)",
+            (name, niveau_id, cohort_id, mentor_id),
         )
         db.commit()
         return jsonify(class_with_niveau(db, cur.lastrowid)), 201
     archived = 1 if request.args.get("archived") == "1" else 0
     rows = db.execute(
         """SELECT c.id, c.name, n.name AS niveau, c.niveau_id,
-                  co.name AS cohort, c.cohort_id, c.archived
+                  co.name AS cohort, c.cohort_id, c.archived,
+                  c.mentor_id, m.username AS mentor
            FROM classes c
            LEFT JOIN niveaus n ON n.id = c.niveau_id
            LEFT JOIN cohorts co ON co.id = c.cohort_id
+           LEFT JOIN users m ON m.id = c.mentor_id
            WHERE c.archived = ?
            ORDER BY c.name""",
         (archived,),
@@ -335,6 +525,9 @@ def classes_collection():
 
 @app.route("/api/classes/<int:class_id>", methods=["PUT", "DELETE"])
 def class_item(class_id):
+    user, err = auth_error("beheerder")
+    if err:
+        return err
     db = get_db()
     if request.method == "PUT":
         data = request.get_json(force=True)
@@ -346,6 +539,9 @@ def class_item(class_id):
             cohort_id = data.get("cohort_id") or None
             db.execute("UPDATE classes SET name = ?, niveau_id = ?, cohort_id = ? WHERE id = ?",
                        (name, niveau_id, cohort_id, class_id))
+        if "mentor_id" in data:
+            db.execute("UPDATE classes SET mentor_id = ? WHERE id = ?",
+                       (data.get("mentor_id") or None, class_id))
         if "archived" in data:
             db.execute("UPDATE classes SET archived = ? WHERE id = ?",
                        (1 if data.get("archived") else 0, class_id))
@@ -362,6 +558,9 @@ def class_item(class_id):
 
 @app.route("/api/students", methods=["GET", "POST"])
 def students_collection():
+    user, err = auth_error("beheerder", "mentor", "docent", "administratie") if request.method == "GET" else auth_error("beheerder", "mentor")
+    if err:
+        return err
     db = get_db()
     if request.method == "POST":
         data = request.get_json(force=True)
@@ -370,6 +569,8 @@ def students_collection():
             return jsonify({"error": "Naam is verplicht"}), 400
         number = (data.get("student_number") or "").strip()
         class_id = data.get("class_id") or None
+        if user["role"] == "mentor" and not mentor_owns_student(user, None, class_id):
+            return jsonify({"error": "Als mentor kun je alleen studenten in je eigen klas toevoegen"}), 403
         cur = db.execute(
             "INSERT INTO students (name, student_number, class_id) VALUES (?, ?, ?)",
             (name, number, class_id),
@@ -387,9 +588,19 @@ def students_collection():
 
 @app.route("/api/students/<int:student_id>", methods=["PUT", "DELETE"])
 def student_item(student_id):
+    user, err = auth_error("beheerder")
+    if err:
+        return err
     db = get_db()
     if request.method == "PUT":
         data = request.get_json(force=True)
+        existing = db.execute("SELECT * FROM students WHERE id = ?", (student_id,)).fetchone()
+        if existing is None:
+            return jsonify({"error": "Student bestaat niet"}), 404
+        if user["role"] == "mentor":
+            target_class = data.get("class_id", existing["class_id"]) or None
+            if not mentor_owns_student(user, existing, target_class):
+                return jsonify({"error": "Als mentor kun je alleen studenten van je eigen klas wijzigen"}), 403
         if "name" in data or "student_number" in data or "class_id" in data:
             name = (data.get("name") or "").strip()
             if "name" in data and not name:
@@ -437,6 +648,9 @@ def subject_with_periods(db, subject_id):
 
 @app.route("/api/subjects", methods=["GET", "POST"])
 def subjects_collection():
+    user, err = auth_error("beheerder", "mentor", "docent", "administratie") if request.method == "GET" else auth_error("beheerder")
+    if err:
+        return err
     db = get_db()
     if request.method == "POST":
         data = request.get_json(force=True)
@@ -474,6 +688,9 @@ def subjects_collection():
 
 @app.route("/api/subjects/<int:subject_id>", methods=["DELETE", "PUT"])
 def subject_item(subject_id):
+    user, err = auth_error("beheerder")
+    if err:
+        return err
     db = get_db()
     if request.method == "PUT":
         data = request.get_json(force=True)
@@ -518,6 +735,9 @@ def subject_item(subject_id):
 
 @app.route("/api/periods", methods=["GET", "POST"])
 def periods_collection():
+    user, err = auth_error("beheerder", "mentor", "docent", "administratie") if request.method == "GET" else auth_error("beheerder")
+    if err:
+        return err
     db = get_db()
     if request.method == "POST":
         data = request.get_json(force=True)
@@ -536,6 +756,9 @@ def periods_collection():
 
 @app.route("/api/periods/<int:period_id>", methods=["PUT", "DELETE"])
 def period_item(period_id):
+    user, err = auth_error("beheerder")
+    if err:
+        return err
     db = get_db()
     if request.method == "PUT":
         data = request.get_json(force=True)
@@ -558,6 +781,9 @@ def period_item(period_id):
 
 @app.route("/api/grades")
 def grades_list():
+    user, err = auth_error("beheerder", "mentor", "docent", "administratie")
+    if err:
+        return err
     period_id = request.args.get("period_id", type=int)
     if not period_id:
         return jsonify({"error": "period_id is verplicht"}), 400
@@ -571,6 +797,9 @@ def grades_list():
 
 @app.route("/api/grades", methods=["POST"])
 def grade_set():
+    user, err = auth_error("beheerder", "docent")
+    if err:
+        return err
     data = request.get_json(force=True)
     student_id = data.get("student_id")
     subject_id = data.get("subject_id")
@@ -636,6 +865,9 @@ def split_line(line):
 
 @app.route("/api/import", methods=["POST"])
 def import_grades():
+    user, err = auth_error("beheerder", "docent")
+    if err:
+        return err
     period_id = request.form.get("period_id", type=int)
     create_missing = request.form.get("create_missing") == "1"
     if not period_id:
@@ -768,6 +1000,9 @@ def rows_from_upload(file_storage):
 
 @app.route("/api/import/students", methods=["POST"])
 def import_students():
+    user, err = auth_error("beheerder")
+    if err:
+        return err
     file = request.files.get("file")
     if not file:
         return jsonify({"error": "Geen bestand meegestuurd"}), 400
@@ -859,6 +1094,9 @@ def import_students():
 
 @app.route("/api/import/subjects", methods=["POST"])
 def import_subjects():
+    user, err = auth_error("beheerder")
+    if err:
+        return err
     file = request.files.get("file")
     if not file:
         return jsonify({"error": "Geen bestand meegestuurd"}), 400
@@ -895,6 +1133,9 @@ def import_subjects():
 
 @app.route("/api/notes")
 def notes_list():
+    user, err = auth_error("beheerder", "mentor", "docent", "administratie")
+    if err:
+        return err
     period_id = request.args.get("period_id", type=int)
     if not period_id:
         return jsonify({"error": "period_id is verplicht"}), 400
@@ -909,6 +1150,9 @@ def notes_list():
 
 @app.route("/api/notes", methods=["POST"])
 def note_set():
+    user, err = auth_error("beheerder", "docent", "mentor")
+    if err:
+        return err
     data = request.get_json(force=True)
     student_id = data.get("student_id")
     period_id = data.get("period_id")
@@ -952,6 +1196,9 @@ def parse_percent(raw):
 
 @app.route("/api/attendance")
 def attendance_list():
+    user, err = auth_error("beheerder", "mentor", "docent", "administratie")
+    if err:
+        return err
     period_id = request.args.get("period_id", type=int)
     if not period_id:
         return jsonify({"error": "period_id is verplicht"}), 400
@@ -966,6 +1213,9 @@ def attendance_list():
 
 @app.route("/api/attendance", methods=["POST"])
 def attendance_set():
+    user, err = auth_error("beheerder", "docent", "mentor")
+    if err:
+        return err
     data = request.get_json(force=True)
     student_id = data.get("student_id")
     period_id = data.get("period_id")
@@ -1009,8 +1259,20 @@ def attendance_set():
 
 @app.route("/api/report")
 def report():
+    user, err = auth_error()
+    if err:
+        return err
     period_id = request.args.get("period_id", type=int)
     student_id = request.args.get("student_id", type=int)
+    if user["role"] == "student":
+        if not user.get("student_id"):
+            return jsonify({"error": "Dit account is niet aan een student gekoppeld"}), 403
+        student_id = user["student_id"]
+        class_id = None
+        cohort_id = None
+    else:
+        class_id = request.args.get("class_id", type=int)
+        cohort_id = request.args.get("cohort_id", type=int)
     class_id = request.args.get("class_id", type=int)
     cohort_id = request.args.get("cohort_id", type=int)
     if not period_id:
@@ -1071,7 +1333,7 @@ def report():
         class_map[r["sid"]] = (
             {"name": r["cname"], "niveau": r["cniveau"]} if r["cname"] else None
         )
-    audience = request.args.get("audience", "staff")
+    audience = "student" if user["role"] == "student" else request.args.get("audience", "staff")
     notes_map = {}
     for r in db.execute(
         """SELECT student_id, comment, teacher_comment FROM notes

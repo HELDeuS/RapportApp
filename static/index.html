@@ -7,7 +7,17 @@
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<header>
+<div id="login-screen" class="login-screen hidden">
+  <h1>RapportApp &mdash; MBO ICT</h1>
+  <form id="login-form">
+    <input id="login-username" placeholder="Gebruikersnaam" autocomplete="username">
+    <input id="login-password" type="password" placeholder="Wachtwoord" autocomplete="current-password">
+    <button type="submit">Inloggen</button>
+    <div id="login-error" class="login-error hidden"></div>
+  </form>
+</div>
+
+<header id="app-header" class="hidden">
   <h1>RapportApp &mdash; MBO ICT</h1>
   <nav>
     <button data-tab="cijfers" class="tab active">Cijfers</button>
@@ -17,7 +27,10 @@
     <button data-tab="periodes" class="tab">Modules</button>
     <button data-tab="rapport" class="tab">Rapport</button>
     <button data-tab="archief" class="tab">Archief</button>
+    <button data-tab="gebruikers" class="tab">Gebruikers</button>
     <button id="btn-theme" class="theme-toggle" title="Donker/licht thema wisselen">&#9681;</button>
+    <span id="user-info" class="user-info"></span>
+    <button id="btn-logout" class="secondary">Uitloggen</button>
   </nav>
 </header>
 
@@ -115,7 +128,7 @@
     <button id="btn-archive-cohort" class="secondary">Archiveren</button>
   </div>
   <table class="list" id="classes-table">
-    <thead><tr><th>Klas</th><th>Niveau</th><th>Startcohort</th><th></th></tr></thead>
+    <thead><tr><th>Klas</th><th>Niveau</th><th>Startcohort</th><th>Mentor</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
 </section>
@@ -175,6 +188,28 @@
     <button id="btn-print" class="secondary">Afdrukken / PDF</button>
   </div>
   <div id="report-output"></div>
+</section>
+
+<!-- Gebruikers -->
+<section id="tab-gebruikers" class="panel">
+  <div class="toolbar">
+    <input id="user-username" placeholder="Gebruikersnaam">
+    <input id="user-password" type="password" placeholder="Wachtwoord">
+    <select id="user-role">
+      <option value="beheerder">Beheerder</option>
+      <option value="mentor">Mentor</option>
+      <option value="docent">Docent</option>
+      <option value="administratie">Administratie</option>
+      <option value="student">Student</option>
+    </select>
+    <select id="user-student"><option value="">Alleen bij rol Student: koppel student</option></select>
+    <button id="btn-add-user">Account aanmaken</button>
+  </div>
+  <table class="list" id="users-table">
+    <thead><tr><th>Gebruikersnaam</th><th>Rol</th><th>Student</th><th>Actief</th><th></th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <p class="hint">Wachtwoord wijzigen: typ een nieuw wachtwoord in de kolom en klik buiten het veld.</p>
 </section>
 
 <!-- Archief -->

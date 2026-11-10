@@ -2,3 +2,4 @@ rapportapp.db
 *.db
 __pycache__/
 .venv/
+.secret_key

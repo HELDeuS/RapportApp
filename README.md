@@ -26,6 +26,24 @@ Webapp voor het bijhouden van rapportcijfers van de opleiding MBO ICT.
 - **Twee rapportvarianten**: een rapport voor **docenten/medewerkers** (toont beide opmerkingvelden) en een rapport voor **student/ouders** (toont alleen Opmerkingen). Kies het publiek in de rapportbalk; de server stuurt de docentenopmerking bij het studentrapport niet eens mee.
 - **Rapport** per student per module, netjes vormgegeven en printklaar (afdrukken als PDF via de browser).
 
+## Inloggen en rollen
+
+De app vereist inloggen. Bij de eerste start wordt automatisch het account **`beheerder`** aangemaakt met wachtwoord **`rapportapp`** — wijzig dit direct na de eerste login via het tabblad Gebruikers.
+
+| Rol | Rechten |
+|---|---|
+| **Beheerder** | Alles: vakken, klassen, studenten, cohorten, niveaus, modules, gebruikers en archiveren |
+| **Mentor** | Studenten van zijn eigen klassen toevoegen, aanpassen en archiveren; aanwezigheid en opmerkingen invoeren; rapporten genereren |
+| **Docent** | Cijfers (en aanwezigheid/opmerkingen) invoeren en rapporten genereren |
+| **Administratie** | Alle overzichten en rapporten raadplegen (straks statistieken), geen mutaties |
+| **Student** | Alleen het eigen rapport (studentvariant, zonder opmerking docenten) |
+
+- Elke klas kan een **mentor** gekoppeld krijgen (beheerder, op het tabblad Klassen).
+- Studentaccounts worden op het tabblad **Gebruikers** aan een student gekoppeld.
+- Rollen worden server-side afgedwongen op elk API-endpoint; de UI verbergt alleen wat niet mag.
+
+> **Let op:** gebruik voor het live gaan van studentaccounts HTTPS (bijv. via Caddy of nginx), zodat wachtwoorden niet als platte tekst over het netwerk gaan.
+
 ## Installatie op een Ubuntu-server (in `/opt/RapportApp`)
 
 De app wordt geïnstalleerd in `/opt/RapportApp` en draait als systemd-service onder een eigen gebruiker.

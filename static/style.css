@@ -83,6 +83,24 @@ nav { display: flex; gap: 6px; flex-wrap: wrap; }
 
 .subtoolbar { padding: 8px 12px; }
 
+.login-screen {
+  max-width: 340px;
+  margin: 80px auto;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 28px;
+  text-align: center;
+}
+
+.login-screen h1 { font-size: 1.2rem; margin: 0 0 18px; }
+
+.login-screen form { display: flex; flex-direction: column; gap: 10px; }
+
+.login-error { color: var(--onv); font-size: .9rem; }
+
+.user-info { color: #fff; margin-left: 8px; font-size: .9rem; }
+
 .toolbar {
   display: flex;
   gap: 10px;
