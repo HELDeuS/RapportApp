@@ -1,6 +1,6 @@
-# RapportApp — Mob ICT
+# RapportApp — MBO ICT
 
-Webapp voor het bijhouden van rapportcijfers van de opleiding Mob ICT.
+Webapp voor het bijhouden van rapportcijfers van de opleiding MBO ICT.
 
 ## Functies
 
@@ -41,7 +41,7 @@ sudo -u rapportapp venv/bin/pip install gunicorn
 # 5. systemd-service aanmaken
 sudo tee /etc/systemd/system/rapportapp.service > /dev/null <<'EOF'
 [Unit]
-Description=RapportApp (Mob ICT cijferregistratie)
+Description=RapportApp (MBO ICT cijferregistratie)
 After=network.target
 
 [Service]
