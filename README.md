@@ -4,7 +4,7 @@ Webapp voor het bijhouden van rapportcijfers van de opleiding MBO ICT.
 
 ## Functies
 
-- **Studenten, vakken, modules en klassen** beheren (CRUD). Klassen hebben een naam en een niveau (bijv. IAO4A, niveau 4). Modules (voorheen periodes) hebben een naam en een studiejaar (bijv. M1, 2025-2026). Niet elk vak hoeft in elke module cijfers te hebben.
+- **Studenten, vakken, modules en klassen** beheren (CRUD). Klassen hebben een naam en een niveau; niveaus zijn een vaste, beheerde lijst (dropdown) die je op het tabblad Klassen onderhoudt. Modules (voorheen periodes) hebben een naam en een studiejaar (bijv. M1, 2025-2026). Niet elk vak hoeft in elke module cijfers te hebben.
 - **Overzicht per klas**: filter de cijfermatrix en het rapport op klas; het rapport toont klas en niveau per student.
 - **Vak-module-koppeling**: per vak geef je met vinkjes aan in welke module(s) het gegeven wordt. De cijfermatrix en het rapport tonen per module alléén de vakken waarvoor die module is aangevinkt. De vakkenlijst heeft een zoekfilter.
 - **Vak-klasse-koppeling**: per vak geef je aan aan welke klas(sen) het gegeven wordt (gefilterd per niveau, in uitklapmenu's). Een vak zonder aangevinkte klassen is voor alle klassen zichtbaar; een vak met aangevinkte klassen alleen voor die klassen. Dit geldt voor de cijfermatrix en het rapport.
@@ -138,7 +138,7 @@ Engels
 
 ## API (kort)
 
-- `GET/POST /api/classes`, `PUT/DELETE /api/classes/<id>`
+- `GET/POST /api/classes`, `PUT/DELETE /api/classes/<id>` (met `niveau_id`); `GET/POST /api/niveaus`, `DELETE /api/niveaus/<id>`
 - `GET/POST /api/students`, `PUT/DELETE /api/students/<id>` (met optioneel `class_id`)
 - `GET/POST /api/subjects`, `PUT/DELETE /api/subjects/<id>` (met optioneel `period_ids`: modules en `class_ids`: klassen waarin het vak gegeven wordt)
 - `GET/POST /api/periods`, `PUT/DELETE /api/periods/<id>`

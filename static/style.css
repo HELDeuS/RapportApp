@@ -73,6 +73,8 @@ nav { display: flex; gap: 6px; flex-wrap: wrap; }
 .panel { display: none; padding: 20px; max-width: 1200px; margin: 0 auto; }
 .panel.active { display: block; }
 
+.subtoolbar { padding: 8px 12px; }
+
 .toolbar {
   display: flex;
   gap: 10px;

@@ -3,6 +3,7 @@ const $$ = (sel) => document.querySelectorAll(sel);
 
 let students = [];
 let classes = [];
+let niveaus = [];
 let subjects = [];
 let periods = [];
 let grades = {}; // "studentId:subjectId" -> value
@@ -27,11 +28,12 @@ $$(".tab").forEach((btn) => {
 
 // ---------- Loaders ----------
 async function loadAll() {
-  [students, classes, subjects, periods] = await Promise.all([
-    api("/api/students"), api("/api/classes"), api("/api/subjects"), api("/api/periods"),
+  [students, classes, niveaus, subjects, periods] = await Promise.all([
+    api("/api/students"), api("/api/classes"), api("/api/niveaus"), api("/api/subjects"), api("/api/periods"),
   ]);
   students.sort((a, b) => a.name.localeCompare(b.name, "nl"));
   classes.sort((a, b) => a.name.localeCompare(b.name, "nl"));
+  niveaus.sort((a, b) => a.name.localeCompare(b.name, "nl"));
   subjects.sort((a, b) => a.name.localeCompare(b.name, "nl"));
   renderPeriodSelects();
   renderStudents();
@@ -261,13 +263,22 @@ $("#students-table tbody").addEventListener("change", async (e) => {
 });
 
 // ---------- Klassen ----------
+function niveauOptions(sel) {
+  return `<option value="">Geen niveau</option>` +
+    niveaus.map((n) => `<option value="${n.id}"${String(sel) === String(n.id) ? " selected" : ""}>${esc(n.name)}</option>`).join("");
+}
+
 function renderClasses() {
   $("#classes-table tbody").innerHTML = classes.map((c) => `
     <tr data-id="${c.id}">
       <td><input data-field="name" value="${esc(c.name)}"></td>
-      <td><input data-field="niveau" value="${esc(c.niveau || "")}"></td>
+      <td><select data-field="niveau_id">${niveauOptions(c.niveau_id)}</select></td>
       <td><button class="danger" data-del>Verwijderen</button></td>
     </tr>`).join("");
+  $("#class-niveau").innerHTML = niveauOptions("");
+  $("#niveau-manage").innerHTML = niveaus.length
+    ? niveaus.map((n) => `<option value="${n.id}">${esc(n.name)}</option>`).join("")
+    : `<option value="">(geen niveaus)</option>`;
 }
 
 $("#btn-add-class").addEventListener("click", async () => {
@@ -276,10 +287,29 @@ $("#btn-add-class").addEventListener("click", async () => {
   await api("/api/classes", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, niveau: $("#class-niveau").value.trim() }),
+    body: JSON.stringify({ name, niveau_id: $("#class-niveau").value || null }),
   });
   $("#class-name").value = "";
-  $("#class-niveau").value = "";
+  await loadAll();
+});
+
+$("#btn-add-niveau").addEventListener("click", async () => {
+  const name = $("#niveau-name").value.trim();
+  if (!name) return;
+  await api("/api/niveaus", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  $("#niveau-name").value = "";
+  await loadAll();
+});
+
+$("#btn-del-niveau").addEventListener("click", async () => {
+  const id = $("#niveau-manage").value;
+  if (!id) return;
+  if (!confirm("Niveau verwijderen? Klassen met dit niveau verliezen hun niveau.")) return;
+  await api(`/api/niveaus/${id}`, { method: "DELETE" });
   await loadAll();
 });
 
@@ -287,7 +317,7 @@ $("#classes-table tbody").addEventListener("change", async (e) => {
   const tr = e.target.closest("tr");
   const c = classes.find((x) => x.id === +tr.dataset.id);
   if (!c) return;
-  c[e.target.dataset.field] = e.target.value;
+  c[e.target.dataset.field] = e.target.value === "" ? null : e.target.value;
   await api(`/api/classes/${c.id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },

@@ -30,10 +30,15 @@ app.teardown_appcontext(close_db)
 
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS niveaus (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE
+);
 CREATE TABLE IF NOT EXISTS classes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    niveau TEXT DEFAULT ''
+    niveau TEXT DEFAULT '',
+    niveau_id INTEGER REFERENCES niveaus(id) ON DELETE SET NULL
 );
 CREATE TABLE IF NOT EXISTS students (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -84,6 +89,18 @@ def init_db():
     pcols = [r[1] for r in db.execute("PRAGMA table_info(periods)").fetchall()]
     if "year" not in pcols:
         db.execute("ALTER TABLE periods ADD COLUMN year TEXT DEFAULT ''")
+    ccols = [r[1] for r in db.execute("PRAGMA table_info(classes)").fetchall()]
+    if "niveau_id" not in ccols:
+        db.execute("ALTER TABLE classes ADD COLUMN niveau_id INTEGER "
+                   "REFERENCES niveaus(id) ON DELETE SET NULL")
+        # Bestaande vrije-tekst niveaus overzetten naar de niveaulijst.
+        for (cname,) in db.execute(
+            "SELECT DISTINCT niveau FROM classes WHERE niveau IS NOT NULL AND niveau != ''"
+        ).fetchall():
+            cur = db.execute("INSERT OR IGNORE INTO niveaus (name) VALUES (?)", (cname,))
+            db.execute(
+                "UPDATE classes SET niveau_id = (SELECT id FROM niveaus WHERE name = ?) "
+                "WHERE niveau = ?", (cname, cname))
     db.commit()
     db.close()
 
@@ -161,6 +178,38 @@ def index():
 # Classes (klassen met niveau)
 # ---------------------------------------------------------------------------
 
+def class_with_niveau(db, class_id):
+    row = db.execute(
+        """SELECT c.id, c.name, n.name AS niveau, c.niveau_id
+           FROM classes c LEFT JOIN niveaus n ON n.id = c.niveau_id
+           WHERE c.id = ?""",
+        (class_id,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+@app.route("/api/niveaus", methods=["GET", "POST"])
+def niveaus_collection():
+    db = get_db()
+    if request.method == "POST":
+        data = request.get_json(force=True)
+        name = (data.get("name") or "").strip()
+        if not name:
+            return jsonify({"error": "Naam is verplicht"}), 400
+        db.execute("INSERT OR IGNORE INTO niveaus (name) VALUES (?)", (name,))
+        db.commit()
+    rows = db.execute("SELECT * FROM niveaus ORDER BY name").fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/niveaus/<int:niveau_id>", methods=["DELETE"])
+def niveau_item(niveau_id):
+    db = get_db()
+    db.execute("DELETE FROM niveaus WHERE id = ?", (niveau_id,))
+    db.commit()
+    return jsonify({"ok": True})
+
+
 @app.route("/api/classes", methods=["GET", "POST"])
 def classes_collection():
     db = get_db()
@@ -169,15 +218,17 @@ def classes_collection():
         name = (data.get("name") or "").strip()
         if not name:
             return jsonify({"error": "Naam is verplicht"}), 400
-        niveau = (data.get("niveau") or "").strip()
+        niveau_id = data.get("niveau_id") or None
         cur = db.execute(
-            "INSERT INTO classes (name, niveau) VALUES (?, ?)", (name, niveau)
+            "INSERT INTO classes (name, niveau_id) VALUES (?, ?)", (name, niveau_id)
         )
         db.commit()
-        return jsonify(dict(db.execute(
-            "SELECT * FROM classes WHERE id = ?", (cur.lastrowid,)
-        ).fetchone())), 201
-    rows = db.execute("SELECT * FROM classes ORDER BY name").fetchall()
+        return jsonify(class_with_niveau(db, cur.lastrowid)), 201
+    rows = db.execute(
+        """SELECT c.id, c.name, n.name AS niveau, c.niveau_id
+           FROM classes c LEFT JOIN niveaus n ON n.id = c.niveau_id
+           ORDER BY c.name"""
+    ).fetchall()
     return jsonify([dict(r) for r in rows])
 
 
@@ -189,9 +240,9 @@ def class_item(class_id):
         name = (data.get("name") or "").strip()
         if not name:
             return jsonify({"error": "Naam is verplicht"}), 400
-        niveau = (data.get("niveau") or "").strip()
-        db.execute("UPDATE classes SET name = ?, niveau = ? WHERE id = ?",
-                   (name, niveau, class_id))
+        niveau_id = data.get("niveau_id") or None
+        db.execute("UPDATE classes SET name = ?, niveau_id = ? WHERE id = ?",
+                   (name, niveau_id, class_id))
         db.commit()
     else:
         db.execute("DELETE FROM classes WHERE id = ?", (class_id,))
@@ -623,17 +674,31 @@ def import_students():
         if class_name:
             key = class_name.lower()
             if key not in classes:
+                niveau_id = None
+                if niveau:
+                    db.execute("INSERT OR IGNORE INTO niveaus (name) VALUES (?)",
+                               (niveau,))
+                    db.commit()
+                    niveau_id = db.execute(
+                        "SELECT id FROM niveaus WHERE name = ?", (niveau,)
+                    ).fetchone()["id"]
                 cur = db.execute(
-                    "INSERT INTO classes (name, niveau) VALUES (?, ?)",
-                    (class_name, niveau),
+                    "INSERT INTO classes (name, niveau_id) VALUES (?, ?)",
+                    (class_name, niveau_id),
                 )
                 db.commit()
                 classes[key] = {"id": cur.lastrowid, "name": class_name,
-                                "niveau": niveau}
-            elif niveau and not classes[key]["niveau"]:
-                db.execute("UPDATE classes SET niveau = ? WHERE id = ?",
-                           (niveau, classes[key]["id"]))
+                                "niveau_id": niveau_id}
+            elif niveau and not classes[key].get("niveau_id"):
+                db.execute("INSERT OR IGNORE INTO niveaus (name) VALUES (?)",
+                           (niveau,))
                 db.commit()
+                nrow = db.execute("SELECT id FROM niveaus WHERE name = ?",
+                                  (niveau,)).fetchone()
+                db.execute("UPDATE classes SET niveau_id = ? WHERE id = ?",
+                           (nrow["id"], classes[key]["id"]))
+                db.commit()
+                classes[key]["niveau_id"] = nrow["id"]
             class_id = classes[key]["id"]
         if name.lower() in existing:
             skipped += 1
@@ -722,8 +787,10 @@ def report():
         subject_class_map.setdefault(r["subject_id"], set()).add(r["class_id"])
     class_map = {}
     for r in db.execute(
-        """SELECT st.id AS sid, c.name AS cname, c.niveau AS cniveau
-           FROM students st LEFT JOIN classes c ON c.id = st.class_id"""
+        """SELECT st.id AS sid, c.name AS cname, n.name AS cniveau
+           FROM students st
+           LEFT JOIN classes c ON c.id = st.class_id
+           LEFT JOIN niveaus n ON n.id = c.niveau_id"""
     ).fetchall():
         class_map[r["sid"]] = (
             {"name": r["cname"], "niveau": r["cniveau"]} if r["cname"] else None

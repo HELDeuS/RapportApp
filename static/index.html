@@ -78,8 +78,17 @@
 <section id="tab-klassen" class="panel">
   <div class="toolbar">
     <input id="class-name" placeholder="Klasnaam (bijv. IAO4A)">
-    <input id="class-niveau" placeholder="Niveau (bijv. niveau 4)">
+    <label>Niveau:
+      <select id="class-niveau"><option value="">Geen niveau</option></select>
+    </label>
     <button id="btn-add-class">Toevoegen</button>
+  </div>
+  <div class="toolbar subtoolbar">
+    <strong>Niveaus:</strong>
+    <input id="niveau-name" placeholder="Nieuw niveau (bijv. niveau 4)">
+    <button id="btn-add-niveau" class="secondary">Niveau toevoegen</button>
+    <select id="niveau-manage"></select>
+    <button id="btn-del-niveau" class="danger">Verwijderen</button>
   </div>
   <table class="list" id="classes-table">
     <thead><tr><th>Klas</th><th>Niveau</th><th></th></tr></thead>
