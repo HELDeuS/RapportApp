@@ -6,7 +6,7 @@ Webapp voor het bijhouden van rapportcijfers van de opleiding MBO ICT.
 
 - **Studenten, vakken, periodes en klassen** beheren (CRUD). Klassen hebben een naam en een niveau (bijv. IAO4A, niveau 4). Niet elk vak hoeft in elke periode cijfers te hebben.
 - **Overzicht per klas**: filter de cijfermatrix en het rapport op klas; het rapport toont klas en niveau per student.
-- **Vak-periode-koppeling**: per vak kun je aangeven in welke periode(s) het gegeven wordt. De cijfermatrix en het rapport tonen per periode alleen de vakken die in die periode gegeven worden. Een vak zonder koppeling is in alle periodes zichtbaar.
+- **Vak-periode-koppeling**: per vak geef je met vinkjes aan in welke periode(s) het gegeven wordt. De cijfermatrix en het rapport tonen per periode alléén de vakken waarvoor die periode is aangevinkt. De vakkenlijst heeft een zoekfilter.
 - **Darkmode**: donker thema (automatisch volgens systeeminstelling, handmatig te wisselen); invoervelden hebben een subtiel contrast met de regel.
 - **Cijfermatrix per periode**: voer per vak een cijfer (1–10) of een beoordelingscode in:
   - `V` = voldoende, `G` = goed, `VS` = vrijstelling — alle drie tellen als voldoende: **0 tekorten**.

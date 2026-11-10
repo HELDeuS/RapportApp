@@ -677,13 +677,12 @@ def report():
         students = db.execute("SELECT * FROM students ORDER BY name").fetchall()
 
     subjects = db.execute("SELECT * FROM subjects ORDER BY name").fetchall()
-    # Vakken die aan periodes zijn gekoppeld, alleen in die periodes tonen;
-    # vakken zonder koppeling in alle periodes (achterwaarts compatibel).
+    # Alleen vakken tonen waarvan de periode expliciet is aangevinkt.
     subject_period_map = {}
     for r in db.execute("SELECT subject_id, period_id FROM subject_periods").fetchall():
         subject_period_map.setdefault(r["subject_id"], set()).add(r["period_id"])
     subjects = [s for s in subjects
-                if not subject_period_map.get(s["id"]) or period_id in subject_period_map[s["id"]]]
+                if period_id in subject_period_map.get(s["id"], set())]
     class_map = {}
     for r in db.execute(
         """SELECT st.id AS sid, c.name AS cname, c.niveau AS cniveau

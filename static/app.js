@@ -72,8 +72,7 @@ function visibleStudents() {
 
 function subjectsForPeriod() {
   if (!currentPeriod) return subjects;
-  return subjects.filter((s) => !s.period_ids || !s.period_ids.length ||
-    s.period_ids.includes(currentPeriod));
+  return subjects.filter((s) => (s.period_ids || []).includes(currentPeriod));
 }
 
 async function loadGrades() {
@@ -352,7 +351,9 @@ $("#import-subjects-file").addEventListener("change", async (e) => {
 
 // ---------- Vakken ----------
 function renderSubjects() {
-  $("#subjects-table tbody").innerHTML = subjects.map((s) => `
+  const q = $("#subject-filter").value.trim().toLowerCase();
+  const visible = q ? subjects.filter((s) => s.name.toLowerCase().includes(q)) : subjects;
+  $("#subjects-table tbody").innerHTML = visible.map((s) => `
     <tr data-id="${s.id}">
       <td><input data-field="name" value="${esc(s.name)}"></td>
       <td class="period-checks">${periods.map((p) => `
@@ -360,6 +361,8 @@ function renderSubjects() {
       <td><button class="danger" data-del>Verwijderen</button></td>
     </tr>`).join("");
 }
+
+$("#subject-filter").addEventListener("input", renderSubjects);
 
 $("#btn-add-subject").addEventListener("click", async () => {
   const name = $("#subject-name").value.trim();
