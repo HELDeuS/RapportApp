@@ -22,6 +22,44 @@ const api = async (url, opts) => {
 
 let currentUser = null;
 
+const listSort = {
+  students: { key: "name", dir: 1 },
+  classes: { key: "name", dir: 1 },
+  subjects: { key: "name", dir: 1 },
+  periods: { key: "year", dir: 1 },
+  grades: { key: "name", dir: 1 },
+};
+
+function sortRows(rows, state, fieldOf) {
+  if (!state || !state.key) return rows;
+  const dir = state.dir;
+  return [...rows].sort((a, b) => {
+    const av = (fieldOf(a, state.key) || "").toString().toLowerCase();
+    const bv = (fieldOf(b, state.key) || "").toString().toLowerCase();
+    return av < bv ? -dir : av > bv ? dir : 0;
+  });
+}
+
+function updateSortArrows(tableSel, state) {
+  document.querySelectorAll(tableSel + " thead th[data-key]").forEach((th) => {
+    const base = th.textContent.replace(/ [\u25B4\u25BE]$/, "");
+    th.textContent = th.dataset.key === state.key
+      ? base + (state.dir === 1 ? " \u25BE" : " \u25B4")
+      : base;
+  });
+}
+
+function bindTableSort(tableSel, stateKey, rerender) {
+  document.querySelector(tableSel + " thead").addEventListener("click", (e) => {
+    const key = e.target.dataset.key;
+    if (key === undefined) return;
+    const state = listSort[stateKey];
+    if (state.key === key) state.dir = state.dir === 1 ? -1 : 1;
+    else { state.key = key; state.dir = 1; }
+    rerender();
+  });
+}
+
 const ROLE_LABELS = {
   beheerder: "Beheerder", mentor: "Mentor", docent: "Docent",
   administratie: "Administratie", student: "Student",
@@ -229,16 +267,21 @@ function renderGradeTable() {
   }
   const periodSubjects = subjectsForPeriod();
   const typeShort = { cijfer: "1-10", letter: "V/G/O/VS", vnv: "V/NV" };
-  thead.innerHTML = `<tr><th>Student</th>` +
+  thead.innerHTML = `<tr><th data-key="name">Student</th>` +
     periodSubjects.map((s) => `<th title="Beoordeling: ${typeShort[s.assessment_type] || "1-10"}">${esc(s.name)}<br><small>${typeShort[s.assessment_type] || "1-10"}</small></th>`).join("") +
     `<th title="Aanwezigheid">Aanw. %</th>` +
     `<th title="Geoorloofd afwezig">Geoorl. afw. %</th>` +
     `<th title="Ongeoorloofd afwezig">Ongeoorl. afw. %</th>` +
     `<th title="Opmerkingen (zichtbaar op studentrapport)">Opmerkingen</th>` +
     `<th title="Opmerking docenten (alleen op docentenrapport)">Opm. docenten</th>` +
-    `<th>Tekorten</th></tr>`;
+    `<th data-key="tekorten">Tekorten</th></tr>`;
 
-  tbody.innerHTML = visibleStudents().map((st) => {
+  const periodSubjectsForSort = periodSubjects;
+  const tekortTotal = (st) => periodSubjectsForSort.reduce(
+    (sum, su) => sum + tekorten(grades[`${st.id}:${su.id}`] || ""), 0);
+  const gradeRows = sortRows(visibleStudents(), listSort.grades, (st, key) =>
+    key === "tekorten" ? String(tekortTotal(st)).padStart(3, "0") : st.name);
+  tbody.innerHTML = gradeRows.map((st) => {
     let total = 0;
     const cells = periodSubjects.map((su) => {
       const key = `${st.id}:${su.id}`;
@@ -388,6 +431,15 @@ $("#student-search").addEventListener("input", renderStudents);
 $("#student-cohort").addEventListener("change", renderStudents);
 $("#student-class-filter").addEventListener("change", renderStudents);
 
+bindTableSort("#students-table", "students", renderStudents);
+bindTableSort("#classes-table", "classes", renderClasses);
+bindTableSort("#subjects-table", "subjects", renderSubjects);
+bindTableSort("#periods-table", "periods", renderPeriods);
+bindTableSort("#grade-table", "grades", renderGradeTable);
+
+$("#class-search").addEventListener("input", renderClasses);
+$("#period-search").addEventListener("input", renderPeriods);
+
 // ---------- Import: bestand ----------
 $("#import-file").addEventListener("change", async (e) => {
   const file = e.target.files[0];
@@ -459,7 +511,16 @@ function visibleStudentsList() {
 function renderStudents() {
   const classOptions = (sel) => `<option value="">Geen klas</option>` +
     classes.map((c) => `<option value="${c.id}"${String(sel) === String(c.id) ? " selected" : ""}>${esc(classLabel(c))}</option>`).join("");
-  $("#students-table tbody").innerHTML = visibleStudentsList().map((s) => `
+  const classOf = (s) => {
+    const c = classes.find((x) => x.id === s.class_id);
+    return c ? c.name : "";
+  };
+  const rows = sortRows(visibleStudentsList(), listSort.students, (s, key) =>
+    key === "class" ? classOf(s)
+    : key === "login_enabled" ? (s.login_enabled ? "1" : "0")
+    : s[key]);
+  updateSortArrows("#students-table", listSort.students);
+  $("#students-table tbody").innerHTML = rows.map((s) => `
     <tr data-id="${s.id}">
       <td><input data-field="name" value="${esc(s.name)}"></td>
       <td><input data-field="student_number" value="${esc(s.student_number || "")}"></td>
@@ -533,7 +594,15 @@ function optList(sel, items, emptyLabel) {
 }
 
 function renderClasses() {
-  $("#classes-table tbody").innerHTML = classes.map((c) => `
+  const q = ($("#class-search") ? $("#class-search").value : "").trim().toLowerCase();
+  const visible = q ? classes.filter((c) =>
+    (c.name || "").toLowerCase().includes(q) ||
+    (c.niveau || "").toLowerCase().includes(q) ||
+    (c.cohort || "").toLowerCase().includes(q) ||
+    (c.mentor || "").toLowerCase().includes(q)) : classes;
+  const rows = sortRows(visible, listSort.classes, (c, key) => c[key]);
+  updateSortArrows("#classes-table", listSort.classes);
+  $("#classes-table tbody").innerHTML = rows.map((c) => `
     <tr data-id="${c.id}">
       <td><input data-field="name" value="${esc(c.name)}"></td>
       <td><select data-field="niveau_id">${niveauOptions(c.niveau_id)}</select></td>
@@ -731,7 +800,9 @@ function renderSubjects() {
           <label class="check"><input type="checkbox" data-period="${p.id}"${(s.period_ids || []).includes(p.id) ? " checked" : ""}> ${esc(p.name)}</label>`).join("")}</div>
       </details>`;
   }).join("");
-  $("#subjects-table tbody").innerHTML = visible.map((s) => `
+  const rows = sortRows(visible, listSort.subjects, (s, key) => s[key]);
+  updateSortArrows("#subjects-table", listSort.subjects);
+  $("#subjects-table tbody").innerHTML = rows.map((s) => `
     <tr data-id="${s.id}">
       <td><input data-field="name" value="${esc(s.name)}"></td>
       <td><select data-field="assessment_type">
@@ -821,7 +892,13 @@ function periodLabel(p) {
 }
 
 function renderPeriods() {
-  $("#periods-table tbody").innerHTML = periods.map((p) => `
+  const q = ($("#period-search") ? $("#period-search").value : "").trim().toLowerCase();
+  const visible = q ? periods.filter((p) =>
+    (p.name || "").toLowerCase().includes(q) ||
+    (p.year || "").toLowerCase().includes(q)) : periods;
+  const rows = sortRows(visible, listSort.periods, (p, key) => p[key]);
+  updateSortArrows("#periods-table", listSort.periods);
+  $("#periods-table tbody").innerHTML = rows.map((p) => `
     <tr data-id="${p.id}">
       <td><input data-field="name" value="${esc(p.name)}"></td>
       <td><input data-field="year" value="${esc(p.year || "")}"></td>

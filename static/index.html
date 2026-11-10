@@ -94,8 +94,8 @@
       <select id="student-class-filter"><option value="">Alle klassen</option></select>
     </label>
   </div>
-  <table class="list" id="students-table">
-    <thead><tr><th>Naam</th><th>Studentnummer</th><th>Klas</th><th title="Account mag inloggen">Inlog</th><th></th></tr></thead>
+  <table class="list sortable" id="students-table">
+    <thead><tr><th data-key="name">Naam</th><th data-key="student_number">Studentnummer</th><th data-key="class">Klas</th><th data-key="login_enabled" title="Account mag inloggen">Inlog</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
 </section>
@@ -111,6 +111,7 @@
       <select id="class-cohort"><option value="">Geen cohort</option></select>
     </label>
     <button id="btn-add-class">Toevoegen</button>
+    <input id="class-search" placeholder="&#9906; Zoek klas..." style="margin-left:auto;">
   </div>
   <div class="toolbar subtoolbar">
     <strong>Niveaus:</strong>
@@ -127,8 +128,8 @@
     <button id="btn-del-cohort" class="danger">Verwijderen</button>
     <button id="btn-archive-cohort" class="secondary">Archiveren</button>
   </div>
-  <table class="list" id="classes-table">
-    <thead><tr><th>Klas</th><th>Niveau</th><th>Startcohort</th><th>Mentor</th><th></th></tr></thead>
+  <table class="list sortable" id="classes-table">
+    <thead><tr><th data-key="name">Klas</th><th data-key="niveau">Niveau</th><th data-key="cohort">Startcohort</th><th data-key="mentor">Mentor</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
 </section>
@@ -144,8 +145,8 @@
     </label>
   </div>
   <div id="subjects-import-result" class="result hidden"></div>
-  <table class="list" id="subjects-table">
-    <thead><tr><th>Vak</th><th>Beoordeling</th><th>Gegeven in module(s)</th><th>Gegeven aan klas(sen)</th><th></th></tr></thead>
+  <table class="list sortable" id="subjects-table">
+    <thead><tr><th data-key="name">Vak</th><th data-key="assessment_type">Beoordeling</th><th>Gegeven in module(s)</th><th>Gegeven aan klas(sen)</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
 </section>
@@ -156,9 +157,10 @@
     <input id="period-name" placeholder="Modulenaam (bijv. M1)">
     <input id="period-year" placeholder="Studiejaar (bijv. 2025-2026)">
     <button id="btn-add-period">Toevoegen</button>
+    <input id="period-search" placeholder="&#9906; Zoek module..." style="margin-left:auto;">
   </div>
-  <table class="list" id="periods-table">
-    <thead><tr><th>Module</th><th>Studiejaar</th><th></th></tr></thead>
+  <table class="list sortable" id="periods-table">
+    <thead><tr><th data-key="name">Module</th><th data-key="year">Studiejaar</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
 </section>
