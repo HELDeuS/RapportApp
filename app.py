@@ -63,6 +63,11 @@ CREATE TABLE IF NOT EXISTS subject_periods (
     period_id INTEGER NOT NULL REFERENCES periods(id) ON DELETE CASCADE,
     UNIQUE (subject_id, period_id)
 );
+CREATE TABLE IF NOT EXISTS subject_classes (
+    subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    class_id INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+    UNIQUE (subject_id, class_id)
+);
 """
 
 
@@ -256,6 +261,12 @@ def subject_with_periods(db, subject_id):
             (subject_id,),
         ).fetchall()
     ]
+    result["class_ids"] = [
+        r["class_id"] for r in db.execute(
+            "SELECT class_id FROM subject_classes WHERE subject_id = ? ORDER BY class_id",
+            (subject_id,),
+        ).fetchall()
+    ]
     return result
 
 
@@ -268,12 +279,18 @@ def subjects_collection():
         if not name:
             return jsonify({"error": "Naam is verplicht"}), 400
         period_ids = data.get("period_ids") or []
+        class_ids = data.get("class_ids") or []
         cur = db.execute("INSERT INTO subjects (name) VALUES (?)", (name,))
         subject_id = cur.lastrowid
         for pid in period_ids:
             db.execute(
                 "INSERT OR IGNORE INTO subject_periods (subject_id, period_id) VALUES (?, ?)",
                 (subject_id, pid),
+            )
+        for cid in class_ids:
+            db.execute(
+                "INSERT OR IGNORE INTO subject_classes (subject_id, class_id) VALUES (?, ?)",
+                (subject_id, cid),
             )
         db.commit()
         return jsonify(subject_with_periods(db, subject_id)), 201
@@ -297,6 +314,13 @@ def subject_item(subject_id):
                 db.execute(
                     "INSERT OR IGNORE INTO subject_periods (subject_id, period_id) VALUES (?, ?)",
                     (subject_id, pid),
+                )
+        if "class_ids" in data:
+            db.execute("DELETE FROM subject_classes WHERE subject_id = ?", (subject_id,))
+            for cid in (data.get("class_ids") or []):
+                db.execute(
+                    "INSERT OR IGNORE INTO subject_classes (subject_id, class_id) VALUES (?, ?)",
+                    (subject_id, cid),
                 )
         db.commit()
     else:
@@ -691,6 +715,11 @@ def report():
         subject_period_map.setdefault(r["subject_id"], set()).add(r["period_id"])
     subjects = [s for s in subjects
                 if period_id in subject_period_map.get(s["id"], set())]
+    # Vak-klasse-koppeling: alleen vakken waarvan de klas is aangevinkt.
+    # Bepaal per student de relevante klas (of de geselecteerde klas van het rapport).
+    subject_class_map = {}
+    for r in db.execute("SELECT subject_id, class_id FROM subject_classes").fetchall():
+        subject_class_map.setdefault(r["subject_id"], set()).add(r["class_id"])
     class_map = {}
     for r in db.execute(
         """SELECT st.id AS sid, c.name AS cname, c.niveau AS cniveau
@@ -710,7 +739,14 @@ def report():
     for s in students:
         entries = []
         total = 0
+        student_class = s["class_id"] if "class_id" in s.keys() else None
+        if student_class is None and class_id:
+            student_class = class_id
         for sub in subjects:
+            if student_class is not None:
+                allowed = subject_class_map.get(sub["id"], set())
+                if allowed and student_class not in allowed:
+                    continue
             value = grades.get((s["id"], sub["id"]))
             if value is None:
                 continue

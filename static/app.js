@@ -72,7 +72,11 @@ function visibleStudents() {
 
 function subjectsForPeriod() {
   if (!currentPeriod) return subjects;
-  return subjects.filter((s) => (s.period_ids || []).includes(currentPeriod));
+  const classId = +($("#grade-class").value || 0) || null;
+  return subjects.filter((s) =>
+    (s.period_ids || []).includes(currentPeriod) &&
+    (!classId || !(s.class_ids || []).length || s.class_ids.includes(classId))
+  );
 }
 
 async function loadGrades() {
@@ -358,6 +362,20 @@ function renderSubjects() {
     const y = p.year || "Zonder studiejaar";
     (years[y] = years[y] || []).push(p);
   }
+  const niveaus = {};
+  for (const c of classes) {
+    const n = c.niveau || "Zonder niveau";
+    (niveaus[n] = niveaus[n] || []).push(c);
+  }
+  const classChecks = (s) => Object.entries(niveaus).map(([niveau, cls]) => {
+    const anyChecked = cls.some((c) => (s.class_ids || []).includes(c.id));
+    return `
+      <details class="year-group"${anyChecked ? " open" : ""}>
+        <summary>${esc(niveau)}${anyChecked ? ` <span class="badge">${cls.filter((c) => (s.class_ids || []).includes(c.id)).length}</span>` : ""}</summary>
+        <div class="year-modules">${cls.map((c) => `
+          <label class="check"><input type="checkbox" data-class="${c.id}"${(s.class_ids || []).includes(c.id) ? " checked" : ""}> ${esc(c.name)}</label>`).join("")}</div>
+      </details>`;
+  }).join("");
   const checks = (s) => Object.entries(years).map(([year, mods]) => {
     const anyChecked = mods.some((p) => (s.period_ids || []).includes(p.id));
     return `
@@ -371,6 +389,7 @@ function renderSubjects() {
     <tr data-id="${s.id}">
       <td><input data-field="name" value="${esc(s.name)}"></td>
       <td class="period-checks">${checks(s)}</td>
+      <td class="period-checks">${classChecks(s)}</td>
       <td><button class="danger" data-del>Verwijderen</button></td>
     </tr>`).join("");
 }
@@ -392,21 +411,23 @@ $("#btn-add-subject").addEventListener("click", async () => {
 $("#subjects-table tbody").addEventListener("change", async (e) => {
   const tr = e.target.closest("tr");
   const id = tr.dataset.id;
-  if (e.target.dataset.period !== undefined) {
+  if (e.target.dataset.period !== undefined || e.target.dataset.class !== undefined) {
     const periodIds = [...tr.querySelectorAll("input[data-period]:checked")]
       .map((c) => +c.dataset.period);
+    const classIds = [...tr.querySelectorAll("input[data-class]:checked")]
+      .map((c) => +c.dataset.class);
     try {
       await api(`/api/subjects/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ period_ids: periodIds }),
+        body: JSON.stringify({ period_ids: periodIds, class_ids: classIds }),
       });
       const s = subjects.find((x) => x.id === +id);
-      if (s) s.period_ids = periodIds;
+      if (s) { s.period_ids = periodIds; s.class_ids = classIds; }
       renderSubjects();
       renderGradeTable();
     } catch (err) {
-      alert("Opslaan van module-koppeling mislukt: " + err.message);
+      alert("Opslaan van koppeling mislukt: " + err.message);
       await loadAll();
     }
   } else {
