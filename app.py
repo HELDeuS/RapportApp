@@ -30,10 +30,16 @@ app.teardown_appcontext(close_db)
 
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS classes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    niveau TEXT DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS students (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    student_number TEXT DEFAULT ''
+    student_number TEXT DEFAULT '',
+    class_id INTEGER REFERENCES classes(id) ON DELETE SET NULL
 );
 CREATE TABLE IF NOT EXISTS subjects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,6 +63,13 @@ CREATE TABLE IF NOT EXISTS grades (
 def init_db():
     db = sqlite3.connect(DB_PATH)
     db.executescript(SCHEMA)
+    # Migratie voor bestaande databases: class_id-kolom toevoegen.
+    cols = [r[1] for r in db.execute("PRAGMA table_info(students)").fetchall()]
+    if "class_id" not in cols:
+        db.execute(
+            "ALTER TABLE students ADD COLUMN class_id INTEGER "
+            "REFERENCES classes(id) ON DELETE SET NULL"
+        )
     db.commit()
     db.close()
 
@@ -131,6 +144,48 @@ def index():
 
 
 # ---------------------------------------------------------------------------
+# Classes (klassen met niveau)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/classes", methods=["GET", "POST"])
+def classes_collection():
+    db = get_db()
+    if request.method == "POST":
+        data = request.get_json(force=True)
+        name = (data.get("name") or "").strip()
+        if not name:
+            return jsonify({"error": "Naam is verplicht"}), 400
+        niveau = (data.get("niveau") or "").strip()
+        cur = db.execute(
+            "INSERT INTO classes (name, niveau) VALUES (?, ?)", (name, niveau)
+        )
+        db.commit()
+        return jsonify(dict(db.execute(
+            "SELECT * FROM classes WHERE id = ?", (cur.lastrowid,)
+        ).fetchone())), 201
+    rows = db.execute("SELECT * FROM classes ORDER BY name").fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/classes/<int:class_id>", methods=["PUT", "DELETE"])
+def class_item(class_id):
+    db = get_db()
+    if request.method == "PUT":
+        data = request.get_json(force=True)
+        name = (data.get("name") or "").strip()
+        if not name:
+            return jsonify({"error": "Naam is verplicht"}), 400
+        niveau = (data.get("niveau") or "").strip()
+        db.execute("UPDATE classes SET name = ?, niveau = ? WHERE id = ?",
+                   (name, niveau, class_id))
+        db.commit()
+    else:
+        db.execute("DELETE FROM classes WHERE id = ?", (class_id,))
+        db.commit()
+    return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------------------
 # Students
 # ---------------------------------------------------------------------------
 
@@ -143,9 +198,10 @@ def students_collection():
         if not name:
             return jsonify({"error": "Naam is verplicht"}), 400
         number = (data.get("student_number") or "").strip()
+        class_id = data.get("class_id") or None
         cur = db.execute(
-            "INSERT INTO students (name, student_number) VALUES (?, ?)",
-            (name, number),
+            "INSERT INTO students (name, student_number, class_id) VALUES (?, ?, ?)",
+            (name, number, class_id),
         )
         db.commit()
         return jsonify(dict(db.execute(
@@ -164,9 +220,10 @@ def student_item(student_id):
         if not name:
             return jsonify({"error": "Naam is verplicht"}), 400
         number = (data.get("student_number") or "").strip()
+        class_id = data.get("class_id") or None
         db.execute(
-            "UPDATE students SET name = ?, student_number = ? WHERE id = ?",
-            (name, number, student_id),
+            "UPDATE students SET name = ?, student_number = ?, class_id = ? WHERE id = ?",
+            (name, number, class_id, student_id),
         )
         db.commit()
     else:
@@ -433,7 +490,8 @@ def import_grades():
 # ---------------------------------------------------------------------------
 # Import van studenten en vakken (CSV/Excel)
 # ---------------------------------------------------------------------------
-# Studenten: eerste kolom = naam, tweede kolom (optioneel) = studentnummer.
+# Studenten: eerste kolom = naam, daarna optioneel studentnummer en klas.
+# Met kopregel worden de kolommen op naam herkend (Naam/Nummer/Klas/Niveau).
 # Vakken: eerste kolom = vaknaam.
 # Een kopregel (bijv. "Naam,Nummer" of "Vak") wordt automatisch herkend.
 # ---------------------------------------------------------------------------
@@ -460,29 +518,72 @@ def import_students():
     if not rows:
         return jsonify({"error": "Geen data gevonden"}), 400
 
-    first = rows[0][0].strip().lower()
-    if first in ("naam", "name", "student", "leerling", "studentnaam"):
+    name_words = ("naam", "name", "student", "leerling", "studentnaam")
+    number_words = ("nummer", "studentnummer", "number", "nr", "id")
+    class_words = ("klas", "class", "groep")
+    niveau_words = ("niveau", "level")
+
+    header = [c.strip().lower() for c in rows[0]]
+    has_header = header and header[0] in name_words
+    col = {"name": 0, "number": 1, "class": 2, "niveau": None}
+    if has_header:
+        for i, h in enumerate(header):
+            if h in number_words:
+                col["number"] = i
+            elif h in class_words:
+                col["class"] = i
+            elif h in niveau_words:
+                col["niveau"] = i
         rows = rows[1:]
 
     db = get_db()
+    classes = {r["name"].strip().lower(): r for r in
+               db.execute("SELECT * FROM classes").fetchall()}
     existing = {r["name"].strip().lower() for r in
                 db.execute("SELECT name FROM students").fetchall()}
     imported, skipped = 0, 0
+    errors = []
+
+    def cell(row, idx):
+        return row[idx].strip() if idx is not None and len(row) > idx else ""
+
     for row in rows:
         if not row or not row[0].strip():
             continue
-        name = row[0].strip()
-        number = row[1].strip() if len(row) > 1 else ""
+        name = cell(row, col["name"])
+        number = cell(row, col["number"])
+        class_name = cell(row, col["class"])
+        niveau = cell(row, col["niveau"])
+        if not name:
+            continue
+        class_id = None
+        if class_name:
+            key = class_name.lower()
+            if key not in classes:
+                cur = db.execute(
+                    "INSERT INTO classes (name, niveau) VALUES (?, ?)",
+                    (class_name, niveau),
+                )
+                db.commit()
+                classes[key] = {"id": cur.lastrowid, "name": class_name,
+                                "niveau": niveau}
+            elif niveau and not classes[key]["niveau"]:
+                db.execute("UPDATE classes SET niveau = ? WHERE id = ?",
+                           (niveau, classes[key]["id"]))
+                db.commit()
+            class_id = classes[key]["id"]
         if name.lower() in existing:
             skipped += 1
             continue
-        db.execute("INSERT INTO students (name, student_number) VALUES (?, ?)",
-                   (name, number))
+        db.execute(
+            "INSERT INTO students (name, student_number, class_id) VALUES (?, ?, ?)",
+            (name, number, class_id),
+        )
         existing.add(name.lower())
         imported += 1
     db.commit()
     return jsonify({"imported": imported, "skipped": skipped,
-                     "errors": []})
+                     "errors": errors})
 
 
 @app.route("/api/import/subjects", methods=["POST"])
@@ -525,6 +626,7 @@ def import_subjects():
 def report():
     period_id = request.args.get("period_id", type=int)
     student_id = request.args.get("student_id", type=int)
+    class_id = request.args.get("class_id", type=int)
     if not period_id:
         return jsonify({"error": "period_id is verplicht"}), 400
     db = get_db()
@@ -536,10 +638,22 @@ def report():
         students = db.execute(
             "SELECT * FROM students WHERE id = ?", (student_id,)
         ).fetchall()
+    elif class_id:
+        students = db.execute(
+            "SELECT * FROM students WHERE class_id = ? ORDER BY name", (class_id,)
+        ).fetchall()
     else:
         students = db.execute("SELECT * FROM students ORDER BY name").fetchall()
 
     subjects = db.execute("SELECT * FROM subjects ORDER BY name").fetchall()
+    class_map = {}
+    for r in db.execute(
+        """SELECT st.id AS sid, c.name AS cname, c.niveau AS cniveau
+           FROM students st LEFT JOIN classes c ON c.id = st.class_id"""
+    ).fetchall():
+        class_map[r["sid"]] = (
+            {"name": r["cname"], "niveau": r["cniveau"]} if r["cname"] else None
+        )
     grades = {}
     for r in db.execute(
         "SELECT student_id, subject_id, value FROM grades WHERE period_id = ?",
@@ -564,6 +678,7 @@ def report():
             })
         result.append({
             "student": dict(s),
+            "class": class_map.get(s["id"]),
             "entries": entries,
             "total_tekorten": total,
         })

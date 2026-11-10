@@ -12,6 +12,7 @@
   <nav>
     <button data-tab="cijfers" class="tab active">Cijfers</button>
     <button data-tab="studenten" class="tab">Studenten</button>
+    <button data-tab="klassen" class="tab">Klassen</button>
     <button data-tab="vakken" class="tab">Vakken</button>
     <button data-tab="periodes" class="tab">Periodes</button>
     <button data-tab="rapport" class="tab">Rapport</button>
@@ -23,6 +24,9 @@
   <div class="toolbar">
     <label>Periode:
       <select id="grade-period"></select>
+    </label>
+    <label>Klas:
+      <select id="grade-class"><option value="">Alle klassen</option></select>
     </label>
     <button id="btn-paste-open">Plakken uit Excel</button>
     <label class="file-label">Import (CSV/Excel)
@@ -56,6 +60,7 @@
   <div class="toolbar">
     <input id="student-name" placeholder="Naam">
     <input id="student-number" placeholder="Studentnummer">
+    <select id="student-class"><option value="">Geen klas</option></select>
     <button id="btn-add-student">Toevoegen</button>
     <label class="file-label">Import CSV/Excel
       <input type="file" id="import-students-file" accept=".csv,.txt,.tsv,.xlsx,.xlsm">
@@ -63,7 +68,20 @@
   </div>
   <div id="students-import-result" class="result hidden"></div>
   <table class="list" id="students-table">
-    <thead><tr><th>Naam</th><th>Studentnummer</th><th></th></tr></thead>
+    <thead><tr><th>Naam</th><th>Studentnummer</th><th>Klas</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+<!-- Klassen -->
+<section id="tab-klassen" class="panel">
+  <div class="toolbar">
+    <input id="class-name" placeholder="Klasnaam (bijv. IAO4A)">
+    <input id="class-niveau" placeholder="Niveau (bijv. niveau 4)">
+    <button id="btn-add-class">Toevoegen</button>
+  </div>
+  <table class="list" id="classes-table">
+    <thead><tr><th>Klas</th><th>Niveau</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
 </section>
@@ -104,6 +122,9 @@
     </label>
     <label>Student:
       <select id="report-student"><option value="">Alle studenten</option></select>
+    </label>
+    <label>Klas:
+      <select id="report-class"><option value="">Alle klassen</option></select>
     </label>
     <button id="btn-report" class="primary">Rapport tonen</button>
     <button id="btn-print" class="secondary">Afdrukken / PDF</button>

@@ -4,7 +4,8 @@ Webapp voor het bijhouden van rapportcijfers van de opleiding MBO ICT.
 
 ## Functies
 
-- **Studenten, vakken en periodes** beheren (CRUD). Niet elk vak hoeft in elke periode cijfers te hebben.
+- **Studenten, vakken, periodes en klassen** beheren (CRUD). Klassen hebben een naam en een niveau (bijv. IAO4A, niveau 4). Niet elk vak hoeft in elke periode cijfers te hebben.
+- **Overzicht per klas**: filter de cijfermatrix en het rapport op klas; het rapport toont klas en niveau per student.
 - **Cijfermatrix per periode**: voer per vak een cijfer (1–10) of een beoordelingscode in:
   - `V` = voldoende, `G` = goed, `VS` = vrijstelling — alle drie tellen als voldoende: **0 tekorten**.
   - `O` = onvoldoende — telt als **1 tekort**.
@@ -111,13 +112,15 @@ Zowel bestanden als geplakte tekst volgen dezelfde tabelvorm:
 
 ### Studenten importeren
 
-CSV met per rij: naam, (optioneel) studentnummer. Een kopregel zoals `Naam,Nummer` wordt automatisch herkend:
+CSV met per rij: naam, (optioneel) studentnummer, (optioneel) klas en (optioneel) niveau. Een kopregel zoals `Naam,Nummer,Klas,Niveau` wordt automatisch herkend en de kolommen worden op naam gematched; onbekende klassen worden aangemaakt:
 
 ```csv
-Naam,Nummer
-Jan Jansen,1001
-Piet Pietersen,1002
+Naam,Nummer,Klas,Niveau
+Jan Jansen,1001,IAO4A,niveau 4
+Piet Pietersen,1002,IAO3B,niveau 3
 ```
+
+Zonder kopregel zijn de kolommen: naam, studentnummer, klas.
 
 ### Vakken importeren
 
@@ -132,11 +135,12 @@ Engels
 
 ## API (kort)
 
-- `GET/POST /api/students`, `PUT/DELETE /api/students/<id>`
+- `GET/POST /api/classes`, `PUT/DELETE /api/classes/<id>`
+- `GET/POST /api/students`, `PUT/DELETE /api/students/<id>` (met optioneel `class_id`)
 - `GET/POST /api/subjects`, `PUT/DELETE /api/subjects/<id>`
 - `GET/POST /api/periods`, `PUT/DELETE /api/periods/<id>`
 - `GET /api/grades?period_id=…`, `POST /api/grades` (één cijfer zetten/wissen)
 - `POST /api/import` (bestand of tekst, form-data: `period_id`, `file` of `text`, `create_missing`)
 - `POST /api/import/students` (form-data: `file` — CSV/Excel met naam + optioneel studentnummer)
 - `POST /api/import/subjects` (form-data: `file` — CSV/Excel met vaknamen)
-- `GET /api/report?period_id=…&student_id=…` (rapport met tekorten)
+- `GET /api/report?period_id=…&student_id=…&class_id=…` (rapport met tekorten, filterbaar op klas)

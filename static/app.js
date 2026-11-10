@@ -2,6 +2,7 @@ const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
 
 let students = [];
+let classes = [];
 let subjects = [];
 let periods = [];
 let grades = {}; // "studentId:subjectId" -> value
@@ -26,15 +27,18 @@ $$(".tab").forEach((btn) => {
 
 // ---------- Loaders ----------
 async function loadAll() {
-  [students, subjects, periods] = await Promise.all([
-    api("/api/students"), api("/api/subjects"), api("/api/periods"),
+  [students, classes, subjects, periods] = await Promise.all([
+    api("/api/students"), api("/api/classes"), api("/api/subjects"), api("/api/periods"),
   ]);
   students.sort((a, b) => a.name.localeCompare(b.name, "nl"));
+  classes.sort((a, b) => a.name.localeCompare(b.name, "nl"));
   subjects.sort((a, b) => a.name.localeCompare(b.name, "nl"));
   renderPeriodSelects();
   renderStudents();
+  renderClasses();
   renderSubjects();
   renderPeriods();
+  renderGradeTable();
   if (periods.length && !currentPeriod) {
     currentPeriod = periods[0].id;
     $("#grade-period").value = currentPeriod;
@@ -49,6 +53,21 @@ function renderPeriodSelects() {
   const rs = $("#report-student");
   rs.innerHTML = `<option value="">Alle studenten</option>` +
     students.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join("");
+  for (const sel of [$("#grade-class"), $("#report-class")]) {
+    sel.innerHTML = `<option value="">Alle klassen</option>` +
+      classes.map((c) => `<option value="${c.id}">${esc(classLabel(c))}</option>`).join("");
+  }
+  $("#student-class").innerHTML = `<option value="">Geen klas</option>` +
+    classes.map((c) => `<option value="${c.id}">${esc(classLabel(c))}</option>`).join("");
+}
+
+function classLabel(c) {
+  return c.niveau ? `${c.name} (${c.niveau})` : c.name;
+}
+
+function visibleStudents() {
+  const classId = $("#grade-class").value;
+  return classId ? students.filter((s) => String(s.class_id) === classId) : students;
 }
 
 async function loadGrades() {
@@ -72,7 +91,7 @@ function renderGradeTable() {
     subjects.map((s) => `<th>${esc(s.name)}</th>`).join("") +
     `<th>Tekorten</th></tr>`;
 
-  tbody.innerHTML = students.map((st) => {
+  tbody.innerHTML = visibleStudents().map((st) => {
     let total = 0;
     const cells = subjects.map((su) => {
       const key = `${st.id}:${su.id}`;
@@ -82,7 +101,7 @@ function renderGradeTable() {
       return `<td${cls}><input class="cell" data-sid="${st.id}" data-suid="${su.id}" value="${esc(v)}"></td>`;
     }).join("");
     return `<tr><td>${esc(st.name)}${st.student_number ? ` <small>(${esc(st.student_number)})</small>` : ""}</td>${cells}` +
-      `<td class="total" data-total="${st.id}">${total}</td></tr>`;
+      `<td class="total" data-total="${st.id}" data-name="${esc(st.name)}">${total}</td></tr>`;
   }).join("");
 
   tbody.querySelectorAll("input.cell").forEach((inp) => {
@@ -134,6 +153,8 @@ $("#grade-period").addEventListener("change", async (e) => {
   currentPeriod = +e.target.value;
   await loadGrades();
 });
+
+$("#grade-class").addEventListener("change", () => renderGradeTable());
 
 // ---------- Import: bestand ----------
 $("#import-file").addEventListener("change", async (e) => {
@@ -189,10 +210,13 @@ function showImportResult(res) {
 
 // ---------- Studenten ----------
 function renderStudents() {
+  const classOptions = (sel) => `<option value="">Geen klas</option>` +
+    classes.map((c) => `<option value="${c.id}"${String(sel) === String(c.id) ? " selected" : "">${esc(classLabel(c))}</option>`).join("");
   $("#students-table tbody").innerHTML = students.map((s) => `
     <tr data-id="${s.id}">
       <td><input data-field="name" value="${esc(s.name)}"></td>
       <td><input data-field="student_number" value="${esc(s.student_number || "")}"></td>
+      <td><select data-field="class_id">${classOptions(s.class_id)}</select></td>
       <td><button class="danger" data-del>Verwijderen</button></td>
     </tr>`).join("");
 }
@@ -203,7 +227,11 @@ $("#btn-add-student").addEventListener("click", async () => {
   await api("/api/students", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, student_number: $("#student-number").value.trim() }),
+    body: JSON.stringify({
+      name,
+      student_number: $("#student-number").value.trim(),
+      class_id: $("#student-class").value || null,
+    }),
   });
   $("#student-name").value = "";
   $("#student-number").value = "";
@@ -214,12 +242,56 @@ $("#students-table tbody").addEventListener("change", async (e) => {
   const tr = e.target.closest("tr");
   const s = students.find((x) => x.id === +tr.dataset.id);
   if (!s) return;
-  s[e.target.dataset.field] = e.target.value;
+  s[e.target.dataset.field] = e.target.value === "" ? null : e.target.value;
   await api(`/api/students/${s.id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(s),
   });
+});
+
+// ---------- Klassen ----------
+function renderClasses() {
+  $("#classes-table tbody").innerHTML = classes.map((c) => `
+    <tr data-id="${c.id}">
+      <td><input data-field="name" value="${esc(c.name)}"></td>
+      <td><input data-field="niveau" value="${esc(c.niveau || "")}"></td>
+      <td><button class="danger" data-del>Verwijderen</button></td>
+    </tr>`).join("");
+}
+
+$("#btn-add-class").addEventListener("click", async () => {
+  const name = $("#class-name").value.trim();
+  if (!name) return;
+  await api("/api/classes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, niveau: $("#class-niveau").value.trim() }),
+  });
+  $("#class-name").value = "";
+  $("#class-niveau").value = "";
+  await loadAll();
+});
+
+$("#classes-table tbody").addEventListener("change", async (e) => {
+  const tr = e.target.closest("tr");
+  const c = classes.find((x) => x.id === +tr.dataset.id);
+  if (!c) return;
+  c[e.target.dataset.field] = e.target.value;
+  await api(`/api/classes/${c.id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(c),
+  });
+  await loadAll();
+});
+
+$("#classes-table tbody").addEventListener("click", async (e) => {
+  if (!e.target.dataset.del) return;
+  const id = e.target.closest("tr").dataset.id;
+  if (!confirm("Klas verwijderen? Studenten blijven bestaan maar verliezen hun klas.")) return;
+  await api(`/api/classes/${id}`, { method: "DELETE" });
+  await loadAll();
 });
 
 $("#students-table tbody").addEventListener("click", async (e) => {
@@ -356,13 +428,16 @@ async function showReport() {
   const periodId = $("#report-period").value;
   if (!periodId) return;
   const studentId = $("#report-student").value;
-  const url = `/api/report?period_id=${periodId}` + (studentId ? `&student_id=${studentId}` : "");
+  const classId = $("#report-class").value;
+  let url = `/api/report?period_id=${periodId}`;
+  if (studentId) url += `&student_id=${studentId}`;
+  if (classId) url += `&class_id=${classId}`;
   const data = await api(url);
   const out = $("#report-output");
   out.innerHTML = data.students.map((s) => `
     <div class="report-card">
       <h2>${esc(s.student.name)}</h2>
-      <div class="sub">${s.student.student_number ? `Nr. ${esc(s.student.student_number)} &mdash; ` : ""}Periode: ${esc(data.period.name)}</div>
+      <div class="sub">${s.class ? `${esc(s.class.name)}${s.class.niveau ? ` &mdash; ${esc(s.class.niveau)}` : ""} &mdash; ` : ""}${s.student.student_number ? `Nr. ${esc(s.student.student_number)} &mdash; ` : ""}Periode: ${esc(data.period.name)}</div>
       ${s.entries.length ? `
       <table>
         <thead><tr><th>Vak</th><th>Beoordeling</th><th>Tekorten</th></tr></thead>
