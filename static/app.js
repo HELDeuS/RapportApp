@@ -7,6 +7,7 @@ let niveaus = [];
 let subjects = [];
 let periods = [];
 let grades = {}; // "studentId:subjectId" -> value
+let attendance = {}; // studentId -> {present, absent_allowed, absent_unallowed}
 let currentPeriod = null;
 
 const api = async (url, opts) => {
@@ -86,6 +87,9 @@ async function loadGrades() {
   const rows = await api(`/api/grades?period_id=${currentPeriod}`);
   grades = {};
   for (const r of rows) grades[`${r.student_id}:${r.subject_id}`] = r.value;
+  const attRows = await api(`/api/attendance?period_id=${currentPeriod}`);
+  attendance = {};
+  for (const r of attRows) attendance[r.student_id] = r;
   renderGradeTable();
 }
 
@@ -101,6 +105,9 @@ function renderGradeTable() {
   const periodSubjects = subjectsForPeriod();
   thead.innerHTML = `<tr><th>Student</th>` +
     periodSubjects.map((s) => `<th>${esc(s.name)}</th>`).join("") +
+    `<th title="Aanwezigheid">Aanw. %</th>` +
+    `<th title="Geoorloofd afwezig">Geoorl. afw. %</th>` +
+    `<th title="Ongeoorloofd afwezig">Ongeoorl. afw. %</th>` +
     `<th>Tekorten</th></tr>`;
 
   tbody.innerHTML = visibleStudents().map((st) => {
@@ -113,12 +120,21 @@ function renderGradeTable() {
       const kind = gradeKind(v);
       return `<td${cls}><input class="cell${kind ? " val-" + kind : ""}" data-sid="${st.id}" data-suid="${su.id}" value="${esc(v)}"></td>`;
     }).join("");
+    const att = attendance[st.id] || {};
+    const attCell = (field, cls) => {
+      const v = att[field] === null || att[field] === undefined ? "" : att[field];
+      const kind = cls === "att-present" && v !== "" && parseFloat(v) < 85 ? " att-onv" : "";
+      return `<td><input class="cell ${cls}${kind}" data-att="${field}" data-sid="${st.id}" value="${esc(v)}"></td>`;
+    };
     return `<tr><td>${esc(st.name)}${st.student_number ? ` <small>(${esc(st.student_number)})</small>` : ""}</td>${cells}` +
+      attCell("present", "att-present") +
+      attCell("absent_allowed", "att-allowed") +
+      attCell("absent_unallowed", "att-unallowed") +
       `<td class="total" data-total="${st.id}" data-name="${esc(st.name)}">${total}</td></tr>`;
   }).join("");
 
   tbody.querySelectorAll("input.cell").forEach((inp) => {
-    inp.addEventListener("change", () => saveCell(inp));
+    inp.addEventListener("change", () => inp.dataset.att ? saveAttendance(inp) : saveCell(inp));
     inp.addEventListener("focus", () => inp.select());
   });
 }
@@ -157,6 +173,34 @@ async function saveCell(inp) {
   } catch (e) {
     alert(e.message);
     inp.value = grades[`${body.student_id}:${body.subject_id}`] || "";
+  }
+}
+
+async function saveAttendance(inp) {
+  const sid = +inp.dataset.sid;
+  const att = attendance[sid] || { present: null, absent_allowed: null, absent_unallowed: null };
+  att[inp.dataset.att] = inp.value;
+  try {
+    const res = await api("/api/attendance", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        student_id: sid,
+        period_id: currentPeriod,
+        present: att.present ?? "",
+        absent_allowed: att.absent_allowed ?? "",
+        absent_unallowed: att.absent_unallowed ?? "",
+      }),
+    });
+    if (res.ok) {
+      const fresh = await api(`/api/attendance?period_id=${currentPeriod}`);
+      attendance = {};
+      for (const r of fresh) attendance[r.student_id] = r;
+      renderGradeTable();
+    }
+  } catch (e) {
+    alert(e.message);
+    renderGradeTable();
   }
 }
 
@@ -563,6 +607,15 @@ async function showReport() {
     <div class="report-card">
       <h2>${esc(s.student.name)}</h2>
       <div class="sub">${s.class ? `${esc(s.class.name)}${s.class.niveau ? ` &mdash; ${esc(s.class.niveau)}` : ""} &mdash; ` : ""}${s.student.student_number ? `Nr. ${esc(s.student.student_number)} &mdash; ` : ""}Module: ${esc(periodLabel(data.period))}</div>
+      ${s.attendance ? `
+      <table class="att-table">
+        <thead><tr><th>Aanwezigheid</th><th>Geoorloofd afwezig</th><th>Ongeoorloofd afwezig</th></tr></thead>
+        <tbody><tr>
+          <td class="${s.attendance.present !== null && s.attendance.present !== undefined ? (s.attendance.present >= 85 ? "val-vol" : "val-onv") : ""}">${fmtPct(s.attendance.present)}</td>
+          <td class="att-allowed">${fmtPct(s.attendance.absent_allowed)}</td>
+          <td class="val-onv">${fmtPct(s.attendance.absent_unallowed)}</td>
+        </tr></tbody>
+      </table>` : ""}
       ${s.entries.length ? `
       <table>
         <thead><tr><th>Vak</th><th>Beoordeling</th><th>Tekorten</th></tr></thead>
@@ -591,6 +644,11 @@ themeBtn.addEventListener("click", () => {
   const cur = document.documentElement.getAttribute("data-theme");
   applyTheme(cur === "dark" ? "light" : "dark");
 });
+
+function fmtPct(v) {
+  if (v === null || v === undefined || v === "") return "";
+  return String(v).replace(".", ",") + "%";
+}
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) =>

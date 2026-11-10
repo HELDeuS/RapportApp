@@ -3,6 +3,7 @@
   --onv: #c0392b;
   --vol: #1e7e34;
   --vs: #1e5aa8;
+  --geel: #9a7d0a;
   --bg: #f4f6f9;
   --card: #ffffff;
   --border: #d7dde5;
@@ -21,6 +22,7 @@
   --onv: #ff6b5e;
   --vol: #5ec97b;
   --vs: #6db3f2;
+  --geel: #d4b106;
   --bg: #14181f;
   --card: #1d232d;
   --border: #38414e;
@@ -214,6 +216,15 @@ input.cell.val-vs { color: var(--vs); font-weight: 700; }
 .val-onv { color: var(--onv); font-weight: 700; }
 .val-vol { color: var(--vol); }
 .val-vs { color: var(--vs); font-weight: 700; }
+
+input.cell.att-present { color: var(--vol); }
+input.cell.att-present.att-onv { color: var(--onv); font-weight: 700; }
+input.cell.att-allowed, .att-allowed { color: var(--geel); font-weight: 700; }
+input.cell.att-unallowed { color: var(--onv); font-weight: 700; }
+
+.att-table { margin-bottom: 12px; }
+.att-table td { text-align: center; }
+.att-table th { text-align: center; }
 
 td.tekort-0 { color: var(--voldoende); font-weight: 600; }
 td.tekort-1 { color: #b26a00; font-weight: 600; }

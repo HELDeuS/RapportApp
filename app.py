@@ -68,6 +68,15 @@ CREATE TABLE IF NOT EXISTS subject_periods (
     period_id INTEGER NOT NULL REFERENCES periods(id) ON DELETE CASCADE,
     UNIQUE (subject_id, period_id)
 );
+CREATE TABLE IF NOT EXISTS attendance (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    period_id INTEGER NOT NULL REFERENCES periods(id) ON DELETE CASCADE,
+    present REAL,
+    absent_allowed REAL,
+    absent_unallowed REAL,
+    UNIQUE (student_id, period_id)
+);
 CREATE TABLE IF NOT EXISTS subject_classes (
     subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
     class_id INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
@@ -747,6 +756,68 @@ def import_subjects():
 
 
 # ---------------------------------------------------------------------------
+# Aanwezigheid (per student per module, percentages)
+# ---------------------------------------------------------------------------
+
+def parse_percent(raw):
+    if raw is None or str(raw).strip() == "":
+        return None
+    s = str(raw).strip().rstrip("%").replace(",", ".")
+    try:
+        num = float(s)
+    except ValueError:
+        raise ValueError(f"Ongeldig percentage: {raw!r}")
+    if not (0.0 <= num <= 100.0):
+        raise ValueError(f"Percentage moet tussen 0 en 100 liggen: {raw!r}")
+    return num
+
+
+@app.route("/api/attendance")
+def attendance_list():
+    period_id = request.args.get("period_id", type=int)
+    if not period_id:
+        return jsonify({"error": "period_id is verplicht"}), 400
+    db = get_db()
+    rows = db.execute(
+        """SELECT student_id, present, absent_allowed, absent_unallowed
+           FROM attendance WHERE period_id = ?""",
+        (period_id,),
+    ).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/attendance", methods=["POST"])
+def attendance_set():
+    data = request.get_json(force=True)
+    student_id = data.get("student_id")
+    period_id = data.get("period_id")
+    if not (student_id and period_id):
+        return jsonify({"error": "student_id en period_id zijn verplicht"}), 400
+    try:
+        present = parse_percent(data.get("present"))
+        allowed = parse_percent(data.get("absent_allowed"))
+        unallowed = parse_percent(data.get("absent_unallowed"))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    db = get_db()
+    if present is None and allowed is None and unallowed is None:
+        db.execute("DELETE FROM attendance WHERE student_id = ? AND period_id = ?",
+                   (student_id, period_id))
+    else:
+        db.execute(
+            """INSERT INTO attendance (student_id, period_id, present, absent_allowed, absent_unallowed)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT (student_id, period_id) DO UPDATE SET
+                 present = excluded.present,
+                 absent_allowed = excluded.absent_allowed,
+                 absent_unallowed = excluded.absent_unallowed""",
+            (student_id, period_id, present, allowed, unallowed),
+        )
+    db.commit()
+    return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------------------
 # Reports
 # ---------------------------------------------------------------------------
 
@@ -795,6 +866,17 @@ def report():
         class_map[r["sid"]] = (
             {"name": r["cname"], "niveau": r["cniveau"]} if r["cname"] else None
         )
+    attendance = {}
+    for r in db.execute(
+        """SELECT student_id, present, absent_allowed, absent_unallowed
+           FROM attendance WHERE period_id = ?""",
+        (period_id,),
+    ).fetchall():
+        attendance[r["student_id"]] = {
+            "present": r["present"],
+            "absent_allowed": r["absent_allowed"],
+            "absent_unallowed": r["absent_unallowed"],
+        }
     grades = {}
     for r in db.execute(
         "SELECT student_id, subject_id, value FROM grades WHERE period_id = ?",
@@ -824,11 +906,15 @@ def report():
                 "value": display_value(value),
                 "tekorten": t,
             })
+        att = attendance.get(s["id"])
+        if att is not None and all(v is None for v in att.values()):
+            att = None
         result.append({
             "student": dict(s),
             "class": class_map.get(s["id"]),
             "entries": entries,
             "total_tekorten": total,
+            "attendance": att,
         })
     return jsonify({"period": dict(period), "students": result})
 

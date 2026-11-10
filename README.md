@@ -18,6 +18,7 @@ Webapp voor het bijhouden van rapportcijfers van de opleiding MBO ICT.
   - `O` telt als 1 tekort.
 - **Import** van cijfers via CSV- of Excel-bestand (`.csv`, `.tsv`, `.txt`, `.xlsx`), of via **kopiëren en plakken** direct uit Excel.
 - **Import van studenten en vakken** via CSV- of Excel-bestand, met automatische herkenning van een kopregel. Bestaande studenten/vakken worden overgeslagen.
+- **Aanwezigheid** per student per module: aanwezigheid, geoorloofd afwezig en ongeoorloofd afwezig als percentages. Aanwezigheid is groen vanaf 85% (daaronder rood); geoorloofd afwezig is donkergeel en ongeoorloofd afwezig rood. Komt terug in de cijfermatrix en het rapport.
 - **Rapport** per student per module, netjes vormgegeven en printklaar (afdrukken als PDF via de browser).
 
 ## Installatie op een Ubuntu-server (in `/opt/RapportApp`)
@@ -147,3 +148,4 @@ Engels
 - `POST /api/import/students` (form-data: `file` — CSV/Excel met naam + optioneel studentnummer)
 - `POST /api/import/subjects` (form-data: `file` — CSV/Excel met vaknamen)
 - `GET /api/report?period_id=…&student_id=…&class_id=…` (rapport met tekorten, filterbaar op klas)
+- `GET /api/attendance?period_id=…`, `POST /api/attendance` (aanwezigheid per student per module, percentages 0–100)
