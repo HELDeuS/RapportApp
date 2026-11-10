@@ -57,6 +57,11 @@ CREATE TABLE IF NOT EXISTS grades (
     value TEXT NOT NULL,
     UNIQUE (student_id, subject_id, period_id)
 );
+CREATE TABLE IF NOT EXISTS subject_periods (
+    subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    period_id INTEGER NOT NULL REFERENCES periods(id) ON DELETE CASCADE,
+    UNIQUE (subject_id, period_id)
+);
 """
 
 
@@ -236,6 +241,20 @@ def student_item(student_id):
 # Subjects
 # ---------------------------------------------------------------------------
 
+def subject_with_periods(db, subject_id):
+    row = db.execute("SELECT * FROM subjects WHERE id = ?", (subject_id,)).fetchone()
+    if row is None:
+        return None
+    result = dict(row)
+    result["period_ids"] = [
+        r["period_id"] for r in db.execute(
+            "SELECT period_id FROM subject_periods WHERE subject_id = ? ORDER BY period_id",
+            (subject_id,),
+        ).fetchall()
+    ]
+    return result
+
+
 @app.route("/api/subjects", methods=["GET", "POST"])
 def subjects_collection():
     db = get_db()
@@ -244,13 +263,18 @@ def subjects_collection():
         name = (data.get("name") or "").strip()
         if not name:
             return jsonify({"error": "Naam is verplicht"}), 400
+        period_ids = data.get("period_ids") or []
         cur = db.execute("INSERT INTO subjects (name) VALUES (?)", (name,))
+        subject_id = cur.lastrowid
+        for pid in period_ids:
+            db.execute(
+                "INSERT OR IGNORE INTO subject_periods (subject_id, period_id) VALUES (?, ?)",
+                (subject_id, pid),
+            )
         db.commit()
-        return jsonify(dict(db.execute(
-            "SELECT * FROM subjects WHERE id = ?", (cur.lastrowid,)
-        ).fetchone())), 201
+        return jsonify(subject_with_periods(db, subject_id)), 201
     rows = db.execute("SELECT * FROM subjects ORDER BY name").fetchall()
-    return jsonify([dict(r) for r in rows])
+    return jsonify([subject_with_periods(db, r["id"]) for r in rows])
 
 
 @app.route("/api/subjects/<int:subject_id>", methods=["DELETE", "PUT"])
@@ -262,6 +286,13 @@ def subject_item(subject_id):
         if not name:
             return jsonify({"error": "Naam is verplicht"}), 400
         db.execute("UPDATE subjects SET name = ? WHERE id = ?", (name, subject_id))
+        if "period_ids" in data:
+            db.execute("DELETE FROM subject_periods WHERE subject_id = ?", (subject_id,))
+            for pid in (data.get("period_ids") or []):
+                db.execute(
+                    "INSERT OR IGNORE INTO subject_periods (subject_id, period_id) VALUES (?, ?)",
+                    (subject_id, pid),
+                )
         db.commit()
     else:
         db.execute("DELETE FROM subjects WHERE id = ?", (subject_id,))
@@ -646,6 +677,13 @@ def report():
         students = db.execute("SELECT * FROM students ORDER BY name").fetchall()
 
     subjects = db.execute("SELECT * FROM subjects ORDER BY name").fetchall()
+    # Vakken die aan periodes zijn gekoppeld, alleen in die periodes tonen;
+    # vakken zonder koppeling in alle periodes (achterwaarts compatibel).
+    subject_period_map = {}
+    for r in db.execute("SELECT subject_id, period_id FROM subject_periods").fetchall():
+        subject_period_map.setdefault(r["subject_id"], set()).add(r["period_id"])
+    subjects = [s for s in subjects
+                if not subject_period_map.get(s["id"]) or period_id in subject_period_map[s["id"]]]
     class_map = {}
     for r in db.execute(
         """SELECT st.id AS sid, c.name AS cname, c.niveau AS cniveau

@@ -5,6 +5,27 @@
   --border: #d7dde5;
   --tekort: #c0392b;
   --voldoende: #1e7e34;
+  --text: #222;
+  --subtext: #555;
+  --th-bg: #eef2f7;
+  --input-bg: #f6f8fb;
+  --input-border: #c9d2dd;
+  --row-input-bg: #f1f4f8;
+}
+
+[data-theme="dark"] {
+  --accent: #4d8fdd;
+  --bg: #14181f;
+  --card: #1d232d;
+  --border: #38414e;
+  --tekort: #e74c3c;
+  --voldoende: #4caf50;
+  --text: #e6e9ee;
+  --subtext: #9aa4b2;
+  --th-bg: #262e3a;
+  --input-bg: #232b36;
+  --input-border: #46515f;
+  --row-input-bg: #28303c;
 }
 
 * { box-sizing: border-box; }
@@ -13,7 +34,15 @@ body {
   margin: 0;
   font-family: "Segoe UI", system-ui, sans-serif;
   background: var(--bg);
-  color: #222;
+  color: var(--text);
+}
+
+.theme-toggle {
+  margin-left: auto;
+  background: rgba(255, 255, 255, .15);
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 1.05rem;
 }
 
 header {
@@ -68,10 +97,26 @@ button.danger { background: var(--tekort); padding: 4px 10px; font-size: .85rem;
 
 input, select {
   padding: 7px 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--input-border);
   border-radius: 6px;
   font-size: .95rem;
+  background: var(--input-bg);
+  color: var(--text);
 }
+
+.list td input, .list td select {
+  background: var(--row-input-bg);
+  border-color: transparent;
+}
+
+.list td input:focus, .list td select:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.period-checks { white-space: normal; }
+
+.check { margin-right: 10px; white-space: nowrap; }
 
 .file-label {
   background: var(--accent);
@@ -90,18 +135,19 @@ table { border-collapse: collapse; width: 100%; }
 
 th, td { border-bottom: 1px solid var(--border); padding: 6px 10px; text-align: left; white-space: nowrap; }
 
-th { background: #eef2f7; position: sticky; top: 0; }
+th { background: var(--th-bg); position: sticky; top: 0; }
 
 td input.cell {
   width: 70px;
   padding: 4px 6px;
   border: 1px solid transparent;
   border-radius: 4px;
-  background: #fbfcfe;
+  background: var(--row-input-bg);
+  color: var(--text);
   text-align: center;
 }
 
-td input.cell:focus { border-color: var(--accent); outline: none; background: #fff; }
+td input.cell:focus { border-color: var(--accent); outline: none; background: var(--input-bg); }
 
 td.tekort-0 { color: var(--voldoende); font-weight: 600; }
 td.tekort-1 { color: #b26a00; font-weight: 600; }
@@ -111,7 +157,7 @@ td.tekort-2, td.tekort-3, td.tekort-4, td.tekort-5 { color: var(--tekort); font-
 
 .list { background: var(--card); border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
 
-.hint { color: #555; font-size: .9rem; }
+.hint { color: var(--subtext); font-size: .9rem; }
 
 .result {
   background: #fff8e1;
@@ -155,15 +201,19 @@ td.tekort-2, td.tekort-3, td.tekort-4, td.tekort-5 { color: var(--tekort); font-
 }
 
 .report-card h2 { margin: 0 0 2px; font-size: 1.15rem; }
-.report-card .sub { color: #555; font-size: .9rem; margin-bottom: 12px; }
+.report-card .sub { color: var(--subtext); font-size: .9rem; margin-bottom: 12px; }
 
 .report-card table { width: 100%; }
 
-.report-card tfoot td { border-top: 2px solid #333; font-weight: 700; }
+.report-card tfoot td { border-top: 2px solid var(--text); font-weight: 700; }
 
 @media print {
   header, .toolbar, .tab, button, #import-result { display: none !important; }
   .panel { display: block; }
-  body { background: #fff; }
+  body { background: #fff; color: #000; }
   .report-card { border: none; }
+  [data-theme="dark"] {
+    --bg: #fff; --card: #fff; --text: #000; --subtext: #444;
+    --th-bg: #fff; --border: #999; --row-input-bg: #fff;
+  }
 }

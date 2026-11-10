@@ -70,6 +70,12 @@ function visibleStudents() {
   return classId ? students.filter((s) => String(s.class_id) === classId) : students;
 }
 
+function subjectsForPeriod() {
+  if (!currentPeriod) return subjects;
+  return subjects.filter((s) => !s.period_ids || !s.period_ids.length ||
+    s.period_ids.includes(currentPeriod));
+}
+
 async function loadGrades() {
   if (!currentPeriod) { renderGradeTable(); return; }
   const rows = await api(`/api/grades?period_id=${currentPeriod}`);
@@ -87,13 +93,14 @@ function renderGradeTable() {
     tbody.innerHTML = `<tr><td>Voeg eerst ${subjects.length ? "studenten" : "vakken"} toe.</td></tr>`;
     return;
   }
+  const periodSubjects = subjectsForPeriod();
   thead.innerHTML = `<tr><th>Student</th>` +
-    subjects.map((s) => `<th>${esc(s.name)}</th>`).join("") +
+    periodSubjects.map((s) => `<th>${esc(s.name)}</th>`).join("") +
     `<th>Tekorten</th></tr>`;
 
   tbody.innerHTML = visibleStudents().map((st) => {
     let total = 0;
-    const cells = subjects.map((su) => {
+    const cells = periodSubjects.map((su) => {
       const key = `${st.id}:${su.id}`;
       const v = grades[key] || "";
       total += tekorten(v);
@@ -144,7 +151,7 @@ function updateTotals() {
   for (const cell of $$("td[data-total]")) {
     const sid = +cell.dataset.total;
     let total = 0;
-    for (const su of subjects) total += tekorten(grades[`${sid}:${su.id}`] || "");
+    for (const su of subjectsForPeriod()) total += tekorten(grades[`${sid}:${su.id}`] || "");
     cell.textContent = total;
   }
 }
@@ -348,6 +355,8 @@ function renderSubjects() {
   $("#subjects-table tbody").innerHTML = subjects.map((s) => `
     <tr data-id="${s.id}">
       <td><input data-field="name" value="${esc(s.name)}"></td>
+      <td class="period-checks">${periods.map((p) => `
+        <label class="check"><input type="checkbox" data-period="${p.id}"${(s.period_ids || []).includes(p.id) ? " checked" : ""}> ${esc(p.name)}</label>`).join("")}</td>
       <td><button class="danger" data-del>Verwijderen</button></td>
     </tr>`).join("");
 }
@@ -365,12 +374,26 @@ $("#btn-add-subject").addEventListener("click", async () => {
 });
 
 $("#subjects-table tbody").addEventListener("change", async (e) => {
-  const id = e.target.closest("tr").dataset.id;
-  await api(`/api/subjects/${id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: e.target.value }),
-  });
+  const tr = e.target.closest("tr");
+  const id = tr.dataset.id;
+  if (e.target.dataset.period !== undefined) {
+    const periodIds = [...tr.querySelectorAll("input[data-period]:checked")]
+      .map((c) => +c.dataset.period);
+    await api(`/api/subjects/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ period_ids: periodIds }),
+    });
+    const s = subjects.find((x) => x.id === +id);
+    if (s) s.period_ids = periodIds;
+    renderGradeTable();
+  } else {
+    await api(`/api/subjects/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: e.target.value }),
+    });
+  }
 });
 
 $("#subjects-table tbody").addEventListener("click", async (e) => {
@@ -453,6 +476,19 @@ async function showReport() {
       </table>` : `<p>Geen cijfers bekend in deze periode.</p>`}
     </div>`).join("");
 }
+
+// ---------- Darkmode ----------
+const themeBtn = $("#btn-theme");
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  localStorage.setItem("rapportapp-theme", theme);
+}
+applyTheme(localStorage.getItem("rapportapp-theme") ||
+  (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
+themeBtn.addEventListener("click", () => {
+  const cur = document.documentElement.getAttribute("data-theme");
+  applyTheme(cur === "dark" ? "light" : "dark");
+});
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) =>
