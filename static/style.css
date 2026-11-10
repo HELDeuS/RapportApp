@@ -253,6 +253,9 @@ input.cell.att-unallowed { color: var(--onv); font-weight: 700; }
 }
 .notes-block p { margin: 4px 0; }
 
+.sort-indicator { color: var(--subtext); font-size: .75em; margin-left: 3px; opacity: .7; }
+.sort-indicator.active { color: var(--accent); opacity: 1; font-size: .9em; }
+
 .sortable th[data-key] { cursor: pointer; user-select: none; }
 .sortable th[data-key]:hover { text-decoration: underline; }
 .att-table td { text-align: center; }

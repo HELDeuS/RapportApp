@@ -40,12 +40,18 @@ function sortRows(rows, state, fieldOf) {
   });
 }
 
+const SORT_LABELS = {};
+
 function updateSortArrows(tableSel, state) {
   document.querySelectorAll(tableSel + " thead th[data-key]").forEach((th) => {
-    const base = th.textContent.replace(/ [\u25B4\u25BE]$/, "");
-    th.textContent = th.dataset.key === state.key
-      ? base + (state.dir === 1 ? " \u25BE" : " \u25B4")
-      : base;
+    const key = th.dataset.key;
+    if (!(key in SORT_LABELS)) SORT_LABELS[key] = th.textContent.trim();
+    const label = SORT_LABELS[key];
+    const mark = th.dataset.key === state.key
+      ? (state.dir === 1 ? "\u25BE" : "\u25B4")
+      : "\u21C5";
+    const cls = th.dataset.key === state.key ? "sort-indicator active" : "sort-indicator";
+    th.innerHTML = esc(label) + ` <span class="${cls}">${mark}</span>`;
   });
 }
 
@@ -1041,10 +1047,14 @@ function renderArchTable(tableId) {
   }
   // sorteer-indicator in de kop
   table.querySelectorAll("thead th[data-key]").forEach((th) => {
-    const base = th.textContent.replace(/ [\u25B4\u25BE]$/, "");
-    th.textContent = th.dataset.key === state.sortKey
-      ? base + (state.sortDir === 1 ? " \u25BE" : " \u25B4")
-      : base;
+    const key = th.dataset.key;
+    if (!(key in SORT_LABELS)) SORT_LABELS[key] = th.textContent.trim();
+    const label = SORT_LABELS[key];
+    const mark = key === state.sortKey
+      ? (state.sortDir === 1 ? "\u25BE" : "\u25B4")
+      : "\u21C5";
+    const cls = key === state.sortKey ? "sort-indicator active" : "sort-indicator";
+    th.innerHTML = esc(label) + ` <span class="${cls}">${mark}</span>`;
   });
   const kind = table.dataset.kind;
   const unarchiveBtn = `<button class="secondary" data-unarchive>Terugzetten</button>`;
