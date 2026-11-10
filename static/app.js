@@ -368,12 +368,17 @@ function renderSubjects() {
     (niveaus[n] = niveaus[n] || []).push(c);
   }
   const classChecks = (s) => Object.entries(niveaus).map(([niveau, cls]) => {
-    const anyChecked = cls.some((c) => (s.class_ids || []).includes(c.id));
+    const checkedCount = cls.filter((c) => (s.class_ids || []).includes(c.id)).length;
+    const anyChecked = checkedCount > 0;
+    const allChecked = checkedCount === cls.length;
     return `
       <details class="year-group"${anyChecked ? " open" : ""}>
-        <summary>${esc(niveau)}${anyChecked ? ` <span class="badge">${cls.filter((c) => (s.class_ids || []).includes(c.id)).length}</span>` : ""}</summary>
-        <div class="year-modules">${cls.map((c) => `
-          <label class="check"><input type="checkbox" data-class="${c.id}"${(s.class_ids || []).includes(c.id) ? " checked" : ""}> ${esc(c.name)}</label>`).join("")}</div>
+        <summary>${esc(niveau)}${anyChecked ? ` <span class="badge">${checkedCount}</span>` : ""}</summary>
+        <div class="year-modules">
+          <label class="check check-all"><input type="checkbox" data-classgroup="1"${allChecked ? " checked" : ""}> <em>Heel niveau</em></label>
+          ${cls.map((c) => `
+          <label class="check"><input type="checkbox" data-class="${c.id}"${(s.class_ids || []).includes(c.id) ? " checked" : ""}> ${esc(c.name)}</label>`).join("")}
+        </div>
       </details>`;
   }).join("");
   const checks = (s) => Object.entries(years).map(([year, mods]) => {
@@ -411,7 +416,14 @@ $("#btn-add-subject").addEventListener("click", async () => {
 $("#subjects-table tbody").addEventListener("change", async (e) => {
   const tr = e.target.closest("tr");
   const id = tr.dataset.id;
-  if (e.target.dataset.period !== undefined || e.target.dataset.class !== undefined) {
+  if (e.target.dataset.classgroup !== undefined) {
+    const group = e.target.closest(".year-modules");
+    group.querySelectorAll("input[data-class]").forEach((cb) => {
+      cb.checked = e.target.checked;
+    });
+  }
+  if (e.target.dataset.period !== undefined || e.target.dataset.class !== undefined ||
+      e.target.dataset.classgroup !== undefined) {
     const periodIds = [...tr.querySelectorAll("input[data-period]:checked")]
       .map((c) => +c.dataset.period);
     const classIds = [...tr.querySelectorAll("input[data-class]:checked")]

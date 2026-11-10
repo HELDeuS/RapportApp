@@ -121,6 +121,8 @@ input, select {
 
 .check { margin-right: 10px; white-space: nowrap; display: inline-block; margin-top: 4px; }
 
+.check-all { display: block; border-bottom: 1px solid var(--border); padding-bottom: 4px; margin-bottom: 2px; }
+
 .year-group {
   border: 1px solid var(--border);
   border-radius: 6px;
