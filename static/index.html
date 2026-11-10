@@ -26,6 +26,9 @@
     <label>Module:
       <select id="grade-period"></select>
     </label>
+    <label>Cohort:
+      <select id="grade-cohort"><option value="">Alle cohorten</option></select>
+    </label>
     <label>Klas:
       <select id="grade-class"><option value="">Alle klassen</option></select>
     </label>
@@ -68,6 +71,15 @@
     </label>
   </div>
   <div id="students-import-result" class="result hidden"></div>
+  <div class="toolbar">
+    <input id="student-search" placeholder="&#9906; Zoek student...">
+    <label>Cohort:
+      <select id="student-cohort"><option value="">Alle cohorten</option></select>
+    </label>
+    <label>Klas:
+      <select id="student-class-filter"><option value="">Alle klassen</option></select>
+    </label>
+  </div>
   <table class="list" id="students-table">
     <thead><tr><th>Naam</th><th>Studentnummer</th><th>Klas</th><th></th></tr></thead>
     <tbody></tbody>
@@ -81,6 +93,9 @@
     <label>Niveau:
       <select id="class-niveau"><option value="">Geen niveau</option></select>
     </label>
+    <label>Startcohort:
+      <select id="class-cohort"><option value="">Geen cohort</option></select>
+    </label>
     <button id="btn-add-class">Toevoegen</button>
   </div>
   <div class="toolbar subtoolbar">
@@ -90,8 +105,15 @@
     <select id="niveau-manage"></select>
     <button id="btn-del-niveau" class="danger">Verwijderen</button>
   </div>
+  <div class="toolbar subtoolbar">
+    <strong>Startcohorten:</strong>
+    <input id="cohort-name" placeholder="Nieuw cohort (bijv. 25-26)">
+    <button id="btn-add-cohort" class="secondary">Cohort toevoegen</button>
+    <select id="cohort-manage"></select>
+    <button id="btn-del-cohort" class="danger">Verwijderen</button>
+  </div>
   <table class="list" id="classes-table">
-    <thead><tr><th>Klas</th><th>Niveau</th><th></th></tr></thead>
+    <thead><tr><th>Klas</th><th>Niveau</th><th>Startcohort</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
 </section>
@@ -134,6 +156,9 @@
     </label>
     <label>Student:
       <select id="report-student"><option value="">Alle studenten</option></select>
+    </label>
+    <label>Cohort:
+      <select id="report-cohort"><option value="">Alle cohorten</option></select>
     </label>
     <label>Klas:
       <select id="report-class"><option value="">Alle klassen</option></select>

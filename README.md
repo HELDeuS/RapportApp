@@ -4,7 +4,8 @@ Webapp voor het bijhouden van rapportcijfers van de opleiding MBO ICT.
 
 ## Functies
 
-- **Studenten, vakken, modules en klassen** beheren (CRUD). Klassen hebben een naam en een niveau; niveaus zijn een vaste, beheerde lijst (dropdown) die je op het tabblad Klassen onderhoudt. Modules (voorheen periodes) hebben een naam en een studiejaar (bijv. M1, 2025-2026). Niet elk vak hoeft in elke module cijfers te hebben.
+- **Studenten, vakken, modules en klassen** beheren (CRUD). Klassen hebben een naam, een niveau en een **startcohort** (bijv. 25-26); niveaus en cohorten zijn vaste, beheerde lijsten (dropdowns) die je op het tabblad Klassen onderhoudt. Modules (voorheen periodes) hebben een naam en een studiejaar (bijv. M1, 2025-2026). Niet elk vak hoeft in elke module cijfers te hebben.
+- **Gemaakt voor meerdere jaren**: met ~120 studenten per startcohort groeit het aantal studenten snel. Daarom heeft het studenten-tabblad een zoekveld en filters op cohort en klas, zijn de klas-dropdowns gegroepeerd per cohort, en kun je in de cijfermatrix en rapporten vooraf op cohort filteren. Modules zijn gekoppeld aan studiejaren, zodat gegevens van oudere cohorten gescheiden blijven.
 - **Overzicht per klas**: filter de cijfermatrix en het rapport op klas; het rapport toont klas en niveau per student.
 - **Vak-module-koppeling**: per vak geef je met vinkjes aan in welke module(s) het gegeven wordt. De cijfermatrix en het rapport tonen per module alléén de vakken waarvoor die module is aangevinkt. De vakkenlijst heeft een zoekfilter.
 - **Vak-klasse-koppeling**: per vak geef je aan aan welke klas(sen) het gegeven wordt (gefilterd per niveau, in uitklapmenu's). Een vak zonder aangevinkte klassen is voor alle klassen zichtbaar; een vak met aangevinkte klassen alleen voor die klassen. Dit geldt voor de cijfermatrix en het rapport.
@@ -139,7 +140,7 @@ Engels
 
 ## API (kort)
 
-- `GET/POST /api/classes`, `PUT/DELETE /api/classes/<id>` (met `niveau_id`); `GET/POST /api/niveaus`, `DELETE /api/niveaus/<id>`
+- `GET/POST /api/classes`, `PUT/DELETE /api/classes/<id>` (met `niveau_id` en `cohort_id`); `GET/POST /api/niveaus`, `DELETE /api/niveaus/<id>`; `GET/POST /api/cohorts`, `DELETE /api/cohorts/<id>`
 - `GET/POST /api/students`, `PUT/DELETE /api/students/<id>` (met optioneel `class_id`)
 - `GET/POST /api/subjects`, `PUT/DELETE /api/subjects/<id>` (met optioneel `period_ids`: modules en `class_ids`: klassen waarin het vak gegeven wordt)
 - `GET/POST /api/periods`, `PUT/DELETE /api/periods/<id>`
@@ -147,5 +148,5 @@ Engels
 - `POST /api/import` (bestand of tekst, form-data: `period_id`, `file` of `text`, `create_missing`)
 - `POST /api/import/students` (form-data: `file` — CSV/Excel met naam + optioneel studentnummer)
 - `POST /api/import/subjects` (form-data: `file` — CSV/Excel met vaknamen)
-- `GET /api/report?period_id=…&student_id=…&class_id=…` (rapport met tekorten, filterbaar op klas)
+- `GET /api/report?period_id=…&student_id=…&class_id=…&cohort_id=…` (rapport met tekorten, filterbaar op klas en cohort)
 - `GET /api/attendance?period_id=…`, `POST /api/attendance` (aanwezigheid per student per module, percentages 0–100)

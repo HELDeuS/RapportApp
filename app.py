@@ -34,11 +34,16 @@ CREATE TABLE IF NOT EXISTS niveaus (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE
 );
+CREATE TABLE IF NOT EXISTS cohorts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE
+);
 CREATE TABLE IF NOT EXISTS classes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     niveau TEXT DEFAULT '',
-    niveau_id INTEGER REFERENCES niveaus(id) ON DELETE SET NULL
+    niveau_id INTEGER REFERENCES niveaus(id) ON DELETE SET NULL,
+    cohort_id INTEGER REFERENCES cohorts(id) ON DELETE SET NULL
 );
 CREATE TABLE IF NOT EXISTS students (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -110,6 +115,9 @@ def init_db():
             db.execute(
                 "UPDATE classes SET niveau_id = (SELECT id FROM niveaus WHERE name = ?) "
                 "WHERE niveau = ?", (cname, cname))
+    if "cohort_id" not in ccols:
+        db.execute("ALTER TABLE classes ADD COLUMN cohort_id INTEGER "
+                   "REFERENCES cohorts(id) ON DELETE SET NULL")
     db.commit()
     db.close()
 
@@ -189,12 +197,37 @@ def index():
 
 def class_with_niveau(db, class_id):
     row = db.execute(
-        """SELECT c.id, c.name, n.name AS niveau, c.niveau_id
-           FROM classes c LEFT JOIN niveaus n ON n.id = c.niveau_id
+        """SELECT c.id, c.name, n.name AS niveau, c.niveau_id,
+                  co.name AS cohort, c.cohort_id
+           FROM classes c
+           LEFT JOIN niveaus n ON n.id = c.niveau_id
+           LEFT JOIN cohorts co ON co.id = c.cohort_id
            WHERE c.id = ?""",
         (class_id,),
     ).fetchone()
     return dict(row) if row else None
+
+
+@app.route("/api/cohorts", methods=["GET", "POST"])
+def cohorts_collection():
+    db = get_db()
+    if request.method == "POST":
+        data = request.get_json(force=True)
+        name = (data.get("name") or "").strip()
+        if not name:
+            return jsonify({"error": "Naam is verplicht"}), 400
+        db.execute("INSERT OR IGNORE INTO cohorts (name) VALUES (?)", (name,))
+        db.commit()
+    rows = db.execute("SELECT * FROM cohorts ORDER BY name DESC").fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/cohorts/<int:cohort_id>", methods=["DELETE"])
+def cohort_item(cohort_id):
+    db = get_db()
+    db.execute("DELETE FROM cohorts WHERE id = ?", (cohort_id,))
+    db.commit()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/niveaus", methods=["GET", "POST"])
@@ -228,14 +261,19 @@ def classes_collection():
         if not name:
             return jsonify({"error": "Naam is verplicht"}), 400
         niveau_id = data.get("niveau_id") or None
+        cohort_id = data.get("cohort_id") or None
         cur = db.execute(
-            "INSERT INTO classes (name, niveau_id) VALUES (?, ?)", (name, niveau_id)
+            "INSERT INTO classes (name, niveau_id, cohort_id) VALUES (?, ?, ?)",
+            (name, niveau_id, cohort_id),
         )
         db.commit()
         return jsonify(class_with_niveau(db, cur.lastrowid)), 201
     rows = db.execute(
-        """SELECT c.id, c.name, n.name AS niveau, c.niveau_id
-           FROM classes c LEFT JOIN niveaus n ON n.id = c.niveau_id
+        """SELECT c.id, c.name, n.name AS niveau, c.niveau_id,
+                  co.name AS cohort, c.cohort_id
+           FROM classes c
+           LEFT JOIN niveaus n ON n.id = c.niveau_id
+           LEFT JOIN cohorts co ON co.id = c.cohort_id
            ORDER BY c.name"""
     ).fetchall()
     return jsonify([dict(r) for r in rows])
@@ -250,8 +288,9 @@ def class_item(class_id):
         if not name:
             return jsonify({"error": "Naam is verplicht"}), 400
         niveau_id = data.get("niveau_id") or None
-        db.execute("UPDATE classes SET name = ?, niveau_id = ? WHERE id = ?",
-                   (name, niveau_id, class_id))
+        cohort_id = data.get("cohort_id") or None
+        db.execute("UPDATE classes SET name = ?, niveau_id = ?, cohort_id = ? WHERE id = ?",
+                   (name, niveau_id, cohort_id, class_id))
         db.commit()
     else:
         db.execute("DELETE FROM classes WHERE id = ?", (class_id,))
@@ -826,6 +865,7 @@ def report():
     period_id = request.args.get("period_id", type=int)
     student_id = request.args.get("student_id", type=int)
     class_id = request.args.get("class_id", type=int)
+    cohort_id = request.args.get("cohort_id", type=int)
     if not period_id:
         return jsonify({"error": "period_id is verplicht"}), 400
     db = get_db()
@@ -836,6 +876,13 @@ def report():
     if student_id:
         students = db.execute(
             "SELECT * FROM students WHERE id = ?", (student_id,)
+        ).fetchall()
+    elif cohort_id:
+        students = db.execute(
+            """SELECT st.* FROM students st
+               JOIN classes c ON c.id = st.class_id
+               WHERE c.cohort_id = ? ORDER BY st.name""",
+            (cohort_id,),
         ).fetchall()
     elif class_id:
         students = db.execute(

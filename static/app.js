@@ -4,6 +4,7 @@ const $$ = (sel) => document.querySelectorAll(sel);
 let students = [];
 let classes = [];
 let niveaus = [];
+let cohorts = [];
 let subjects = [];
 let periods = [];
 let grades = {}; // "studentId:subjectId" -> value
@@ -29,8 +30,8 @@ $$(".tab").forEach((btn) => {
 
 // ---------- Loaders ----------
 async function loadAll() {
-  [students, classes, niveaus, subjects, periods] = await Promise.all([
-    api("/api/students"), api("/api/classes"), api("/api/niveaus"), api("/api/subjects"), api("/api/periods"),
+  [students, classes, niveaus, cohorts, subjects, periods] = await Promise.all([
+    api("/api/students"), api("/api/classes"), api("/api/niveaus"), api("/api/cohorts"), api("/api/subjects"), api("/api/periods"),
   ]);
   students.sort((a, b) => a.name.localeCompare(b.name, "nl"));
   classes.sort((a, b) => a.name.localeCompare(b.name, "nl"));
@@ -56,12 +57,40 @@ function renderPeriodSelects() {
   const rs = $("#report-student");
   rs.innerHTML = `<option value="">Alle studenten</option>` +
     students.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join("");
-  for (const sel of [$("#grade-class"), $("#report-class")]) {
-    sel.innerHTML = `<option value="">Alle klassen</option>` +
-      classes.map((c) => `<option value="${c.id}">${esc(classLabel(c))}</option>`).join("");
+  renderClassSelects();
+  for (const sel of [$("#student-cohort"), $("#report-cohort"), $("#grade-cohort")]) {
+    sel.innerHTML = `<option value="">Alle cohorten</option>` +
+      cohorts.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("");
   }
-  $("#student-class").innerHTML = `<option value="">Geen klas</option>` +
+  $("#student-class-filter").innerHTML = `<option value="">Alle klassen</option>` +
     classes.map((c) => `<option value="${c.id}">${esc(classLabel(c))}</option>`).join("");
+}
+
+function renderClassSelects() {
+  const cohortFilter = $("#grade-cohort").value;
+  const visibleClasses = cohortFilter
+    ? classes.filter((c) => String(c.cohort_id) === cohortFilter)
+    : classes;
+  const grouped = (sel) => {
+    const byCohort = {};
+    for (const c of visibleClasses) {
+      const key = c.cohort || "Zonder cohort";
+      (byCohort[key] = byCohort[key] || []).push(c);
+    }
+    const groups = Object.entries(byCohort).map(([cohort, cls]) =>
+      `<optgroup label="Cohort ${esc(cohort)}">` +
+      cls.map((c) => `<option value="${c.id}"${String(sel) === String(c.id) ? " selected" : ""}>${esc(classLabel(c))}</option>`).join("") +
+      `</optgroup>`).join("");
+    return `<option value="">Alle klassen</option>` + groups;
+  };
+  const gradeSel = $("#grade-class");
+  const prevGrade = gradeSel.value;
+  gradeSel.innerHTML = grouped(prevGrade);
+  const reportSel = $("#report-class");
+  const prevReport = reportSel.value;
+  reportSel.innerHTML = grouped(prevReport);
+  $("#student-class").innerHTML = `<option value="">Geen klas</option>` +
+    visibleClasses.map((c) => `<option value="${c.id}">${esc(classLabel(c))}</option>`).join("");
 }
 
 function classLabel(c) {
@@ -220,6 +249,15 @@ $("#grade-period").addEventListener("change", async (e) => {
 
 $("#grade-class").addEventListener("change", () => renderGradeTable());
 
+$("#grade-cohort").addEventListener("change", () => {
+  renderClassSelects();
+  renderGradeTable();
+});
+
+$("#student-search").addEventListener("input", renderStudents);
+$("#student-cohort").addEventListener("change", renderStudents);
+$("#student-class-filter").addEventListener("change", renderStudents);
+
 // ---------- Import: bestand ----------
 $("#import-file").addEventListener("change", async (e) => {
   const file = e.target.files[0];
@@ -273,10 +311,25 @@ function showImportResult(res) {
 }
 
 // ---------- Studenten ----------
+function visibleStudentsList() {
+  const q = $("#student-search").value.trim().toLowerCase();
+  const cohortId = $("#student-cohort").value;
+  const classId = $("#student-class-filter").value;
+  return students.filter((s) => {
+    if (q && !s.name.toLowerCase().includes(q) && !(s.student_number || "").toLowerCase().includes(q)) return false;
+    if (classId && String(s.class_id) !== classId) return false;
+    if (cohortId) {
+      const c = classes.find((x) => x.id === s.class_id);
+      if (!c || String(c.cohort_id) !== cohortId) return false;
+    }
+    return true;
+  });
+}
+
 function renderStudents() {
   const classOptions = (sel) => `<option value="">Geen klas</option>` +
     classes.map((c) => `<option value="${c.id}"${String(sel) === String(c.id) ? " selected" : ""}>${esc(classLabel(c))}</option>`).join("");
-  $("#students-table tbody").innerHTML = students.map((s) => `
+  $("#students-table tbody").innerHTML = visibleStudentsList().map((s) => `
     <tr data-id="${s.id}">
       <td><input data-field="name" value="${esc(s.name)}"></td>
       <td><input data-field="student_number" value="${esc(s.student_number || "")}"></td>
@@ -339,9 +392,33 @@ $("#btn-add-class").addEventListener("click", async () => {
   await api("/api/classes", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, niveau_id: $("#class-niveau").value || null }),
+    body: JSON.stringify({
+      name,
+      niveau_id: $("#class-niveau").value || null,
+      cohort_id: $("#class-cohort").value || null,
+    }),
   });
   $("#class-name").value = "";
+  await loadAll();
+});
+
+$("#btn-add-cohort").addEventListener("click", async () => {
+  const name = $("#cohort-name").value.trim();
+  if (!name) return;
+  await api("/api/cohorts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  $("#cohort-name").value = "";
+  await loadAll();
+});
+
+$("#btn-del-cohort").addEventListener("click", async () => {
+  const id = $("#cohort-manage").value;
+  if (!id) return;
+  if (!confirm("Cohort verwijderen? Klassen met dit cohort verliezen hun cohort.")) return;
+  await api(`/api/cohorts/${id}`, { method: "DELETE" });
   await loadAll();
 });
 
@@ -601,9 +678,11 @@ async function showReport() {
   if (!periodId) return;
   const studentId = $("#report-student").value;
   const classId = $("#report-class").value;
+  const cohortId = $("#report-cohort").value;
   let url = `/api/report?period_id=${periodId}`;
   if (studentId) url += `&student_id=${studentId}`;
   if (classId) url += `&class_id=${classId}`;
+  if (cohortId) url += `&cohort_id=${cohortId}`;
   const data = await api(url);
   const out = $("#report-output");
   out.innerHTML = data.students.map((s) => `
