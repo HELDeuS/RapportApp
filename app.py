@@ -871,6 +871,14 @@ def attendance_set():
         unallowed = parse_percent(data.get("absent_unallowed"))
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
+    if present is not None or allowed is not None or unallowed is not None:
+        total = (present or 0) + (allowed or 0) + (unallowed or 0)
+        if abs(total - 100.0) > 0.01:
+            return jsonify({
+                "error": (f"Aanwezigheid ({present or 0}%) + geoorloofd afwezig "
+                          f"({allowed or 0}%) + ongeoorloofd afwezig "
+                          f"({unallowed or 0}%) = {total}% — samen moet dit 100% zijn.")
+            }), 400
     db = get_db()
     if present is None and allowed is None and unallowed is None:
         db.execute("DELETE FROM attendance WHERE student_id = ? AND period_id = ?",
