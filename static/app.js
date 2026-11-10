@@ -488,7 +488,7 @@ $("#classes-table tbody").addEventListener("change", async (e) => {
 });
 
 $("#classes-table tbody").addEventListener("click", async (e) => {
-  if (!e.target.dataset.del) return;
+  if (e.target.dataset.del === undefined) return;
   const id = e.target.closest("tr").dataset.id;
   if (!confirm("Klas verwijderen? Studenten blijven bestaan maar verliezen hun klas.")) return;
   await api(`/api/classes/${id}`, { method: "DELETE" });
@@ -496,7 +496,7 @@ $("#classes-table tbody").addEventListener("click", async (e) => {
 });
 
 $("#students-table tbody").addEventListener("click", async (e) => {
-  if (!e.target.dataset.del) return;
+  if (e.target.dataset.del === undefined) return;
   const id = e.target.closest("tr").dataset.id;
   if (!confirm("Student verwijderen? Alle cijfers van deze student vervallen.")) return;
   await api(`/api/students/${id}`, { method: "DELETE" });
@@ -644,7 +644,7 @@ $("#subjects-table tbody").addEventListener("change", async (e) => {
 });
 
 $("#subjects-table tbody").addEventListener("click", async (e) => {
-  if (!e.target.dataset.del) return;
+  if (e.target.dataset.del === undefined) return;
   const id = e.target.closest("tr").dataset.id;
   if (!confirm("Vak verwijderen? Alle cijfers voor dit vak vervallen.")) return;
   await api(`/api/subjects/${id}`, { method: "DELETE" });
@@ -692,7 +692,7 @@ $("#periods-table tbody").addEventListener("change", async (e) => {
 });
 
 $("#periods-table tbody").addEventListener("click", async (e) => {
-  if (!e.target.dataset.del) return;
+  if (e.target.dataset.del === undefined) return;
   const id = e.target.closest("tr").dataset.id;
   if (!confirm("Module verwijderen? Alle cijfers in deze module vervallen.")) return;
   await api(`/api/periods/${id}`, { method: "DELETE" });
@@ -786,7 +786,7 @@ $$(".tab").forEach((btn) => {
 
 for (const sel of ["#students-table tbody", "#classes-table tbody", "#subjects-table tbody"]) {
   $(sel).addEventListener("click", async (e) => {
-    if (!e.target.dataset.archive) return;
+    if (e.target.dataset.archive === undefined) return;
     const tr = e.target.closest("tr");
     const kind = sel.includes("students") ? "students"
       : sel.includes("classes") ? "classes" : "subjects";
@@ -798,7 +798,7 @@ for (const sel of ["#students-table tbody", "#classes-table tbody", "#subjects-t
 for (const sel of ["#arch-students-table tbody", "#arch-classes-table tbody",
                    "#arch-subjects-table tbody", "#arch-cohorts-table tbody"]) {
   $(sel).addEventListener("click", async (e) => {
-    if (!e.target.dataset.unarchive) return;
+    if (e.target.dataset.unarchive === undefined) return;
     const tr = e.target.closest("tr");
     await setArchived(tr.dataset.kind, tr.dataset.id, false);
   });
