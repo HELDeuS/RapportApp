@@ -20,7 +20,14 @@ pip install -r requirements.txt
 python app.py
 ```
 
-Open daarna <http://127.0.0.1:5000>. De SQLite-database `rapportapp.db` wordt automatisch aangemaakt.
+De app luistert op alle netwerkinterfaces (poort 5000). Open daarna <http://127.0.0.1:5000> lokaal, of vanaf een andere machine <http://<server-ip>:5000>. De SQLite-database `rapportapp.db` wordt automatisch aangemaakt.
+
+> Tip voor productie/gebruik op een server: draai de app achter `gunicorn` of `waitress` en gebruik een firewall zodat alleen vertrouwd verkeer poort 5000 kan bereiken, bijvoorbeeld:
+>
+> ```bash
+> pip install gunicorn
+> gunicorn -w 2 -b 0.0.0.0:5000 app:app
+> ```
 
 ## Importformaat
 
