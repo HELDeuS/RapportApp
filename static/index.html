@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RapportApp &mdash; Mob ICT</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <h1>RapportApp &mdash; Mob ICT</h1>
+  <nav>
+    <button data-tab="cijfers" class="tab active">Cijfers</button>
+    <button data-tab="studenten" class="tab">Studenten</button>
+    <button data-tab="vakken" class="tab">Vakken</button>
+    <button data-tab="periodes" class="tab">Periodes</button>
+    <button data-tab="rapport" class="tab">Rapport</button>
+  </nav>
+</header>
+
+<!-- Cijfers -->
+<section id="tab-cijfers" class="panel active">
+  <div class="toolbar">
+    <label>Periode:
+      <select id="grade-period"></select>
+    </label>
+    <button id="btn-paste-open">Plakken uit Excel</button>
+    <label class="file-label">Import (CSV/Excel)
+      <input type="file" id="import-file" accept=".csv,.txt,.tsv,.xlsx,.xlsm">
+    </label>
+    <label><input type="checkbox" id="create-missing" checked> Ontbrekende vakken/studenten aanmaken</label>
+  </div>
+  <div id="import-result" class="result hidden"></div>
+
+  <div id="paste-dialog" class="dialog hidden">
+    <h3>Plak hier cijfers uit Excel</h3>
+    <p>Eerste kolom = studentnaam of nummer, volgende kolommen = vakken (met kopregel, zoals in Excel geselecteerd).</p>
+    <textarea id="paste-area" rows="8" placeholder="Naam&#9;Nederlands&#9;Rekenen&#10;Jan&#9;7,5&#9;V&#10;Piet&#9;O&#9;5,2"></textarea>
+    <div class="dialog-actions">
+      <button id="btn-paste-import">Importeren</button>
+      <button id="btn-paste-cancel" class="secondary">Annuleren</button>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table id="grade-table">
+      <thead></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <p class="hint">Waarden: cijfer (1&ndash;10), <b>V</b> = vrijstelling (telt als voldoende), <b>O</b> = onvoldoende (1 tekort). Een cijfer dat afgerond onder 6 is, geeft 6 &minus; afgerond cijfer tekorten (5 &rarr; 1, 4 &rarr; 2).</p>
+</section>
+
+<!-- Studenten -->
+<section id="tab-studenten" class="panel">
+  <div class="toolbar">
+    <input id="student-name" placeholder="Naam">
+    <input id="student-number" placeholder="Studentnummer">
+    <button id="btn-add-student">Toevoegen</button>
+  </div>
+  <table class="list" id="students-table">
+    <thead><tr><th>Naam</th><th>Studentnummer</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+<!-- Vakken -->
+<section id="tab-vakken" class="panel">
+  <div class="toolbar">
+    <input id="subject-name" placeholder="Vaknaam">
+    <button id="btn-add-subject">Toevoegen</button>
+  </div>
+  <table class="list" id="subjects-table">
+    <thead><tr><th>Vak</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+<!-- Periodes -->
+<section id="tab-periodes" class="panel">
+  <div class="toolbar">
+    <input id="period-name" placeholder="Periodenaam (bijv. P1 2025)">
+    <button id="btn-add-period">Toevoegen</button>
+  </div>
+  <table class="list" id="periods-table">
+    <thead><tr><th>Periode</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+<!-- Rapport -->
+<section id="tab-rapport" class="panel">
+  <div class="toolbar">
+    <label>Periode:
+      <select id="report-period"></select>
+    </label>
+    <label>Student:
+      <select id="report-student"><option value="">Alle studenten</option></select>
+    </label>
+    <button id="btn-report" class="primary">Rapport tonen</button>
+    <button id="btn-print" class="secondary">Afdrukken / PDF</button>
+  </div>
+  <div id="report-output"></div>
+</section>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

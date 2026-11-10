@@ -1,0 +1,346 @@
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => document.querySelectorAll(sel);
+
+let students = [];
+let subjects = [];
+let periods = [];
+let grades = {}; // "studentId:subjectId" -> value
+let currentPeriod = null;
+
+const api = async (url, opts) => {
+  const res = await fetch(url, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+};
+
+// ---------- Tabs ----------
+$$(".tab").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    $$(".tab").forEach((b) => b.classList.remove("active"));
+    $$(".panel").forEach((p) => p.classList.remove("active"));
+    btn.classList.add("active");
+    $(`#tab-${btn.dataset.tab}`).classList.add("active");
+  });
+});
+
+// ---------- Loaders ----------
+async function loadAll() {
+  [students, subjects, periods] = await Promise.all([
+    api("/api/students"), api("/api/subjects"), api("/api/periods"),
+  ]);
+  students.sort((a, b) => a.name.localeCompare(b.name, "nl"));
+  subjects.sort((a, b) => a.name.localeCompare(b.name, "nl"));
+  renderPeriodSelects();
+  renderStudents();
+  renderSubjects();
+  renderPeriods();
+  if (periods.length && !currentPeriod) {
+    currentPeriod = periods[0].id;
+    $("#grade-period").value = currentPeriod;
+  }
+  await loadGrades();
+}
+
+function renderPeriodSelects() {
+  for (const sel of [$("#grade-period"), $("#report-period")]) {
+    sel.innerHTML = periods.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("");
+  }
+  const rs = $("#report-student");
+  rs.innerHTML = `<option value="">Alle studenten</option>` +
+    students.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join("");
+}
+
+async function loadGrades() {
+  if (!currentPeriod) { renderGradeTable(); return; }
+  const rows = await api(`/api/grades?period_id=${currentPeriod}`);
+  grades = {};
+  for (const r of rows) grades[`${r.student_id}:${r.subject_id}`] = r.value;
+  renderGradeTable();
+}
+
+// ---------- Cijfermatrix ----------
+function renderGradeTable() {
+  const thead = $("#grade-table thead");
+  const tbody = $("#grade-table tbody");
+  if (!subjects.length || !students.length) {
+    thead.innerHTML = "";
+    tbody.innerHTML = `<tr><td>Voeg eerst ${subjects.length ? "studenten" : "vakken"} toe.</td></tr>`;
+    return;
+  }
+  thead.innerHTML = `<tr><th>Student</th>` +
+    subjects.map((s) => `<th>${esc(s.name)}</th>`).join("") +
+    `<th>Tekorten</th></tr>`;
+
+  tbody.innerHTML = students.map((st) => {
+    let total = 0;
+    const cells = subjects.map((su) => {
+      const key = `${st.id}:${su.id}`;
+      const v = grades[key] || "";
+      total += tekorten(v);
+      const cls = v && tekorten(v) > 0 ? ` class="tekort-${tekorten(v)}"` : "";
+      return `<td${cls}><input class="cell" data-sid="${st.id}" data-suid="${su.id}" value="${esc(v)}"></td>`;
+    }).join("");
+    return `<tr><td>${esc(st.name)}${st.student_number ? ` <small>(${esc(st.student_number)})</small>` : ""}</td>${cells}` +
+      `<td class="total" data-total="${st.id}">${total}</td></tr>`;
+  }).join("");
+
+  tbody.querySelectorAll("input.cell").forEach((inp) => {
+    inp.addEventListener("change", () => saveCell(inp));
+    inp.addEventListener("focus", () => inp.select());
+  });
+}
+
+function tekorten(v) {
+  if (!v) return 0;
+  if (v === "V") return 0;
+  if (v === "O") return 1;
+  const n = Math.round(parseFloat(v));
+  return n < 6 ? 6 - n : 0;
+}
+
+async function saveCell(inp) {
+  const body = {
+    student_id: +inp.dataset.sid,
+    subject_id: +inp.dataset.suid,
+    period_id: currentPeriod,
+    value: inp.value,
+  };
+  try {
+    const res = await api("/api/grades", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    grades[`${body.student_id}:${body.subject_id}`] = res.value;
+    inp.value = res.value;
+    updateTotals();
+  } catch (e) {
+    alert(e.message);
+    inp.value = grades[`${body.student_id}:${body.subject_id}`] || "";
+  }
+}
+
+function updateTotals() {
+  for (const cell of $$("td[data-total]")) {
+    const sid = +cell.dataset.total;
+    let total = 0;
+    for (const su of subjects) total += tekorten(grades[`${sid}:${su.id}`] || "");
+    cell.textContent = total;
+  }
+}
+
+$("#grade-period").addEventListener("change", async (e) => {
+  currentPeriod = +e.target.value;
+  await loadGrades();
+});
+
+// ---------- Import: bestand ----------
+$("#import-file").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file || !currentPeriod) return;
+  const fd = new FormData();
+  fd.append("period_id", currentPeriod);
+  fd.append("file", file);
+  fd.append("create_missing", $("#create-missing").checked ? "1" : "0");
+  try {
+    const res = await api("/api/import", { method: "POST", body: fd });
+    showImportResult(res);
+    await loadAll();
+  } catch (err) {
+    showImportResult({ errors: [err.message] });
+  }
+  e.target.value = "";
+});
+
+// ---------- Import: plakken ----------
+$("#btn-paste-open").addEventListener("click", () => {
+  $("#paste-dialog").classList.remove("hidden");
+  $("#paste-area").value = "";
+  $("#paste-area").focus();
+});
+$("#btn-paste-cancel").addEventListener("click", () => $("#paste-dialog").classList.add("hidden"));
+$("#btn-paste-import").addEventListener("click", async () => {
+  const text = $("#paste-area").value.trim();
+  if (!text || !currentPeriod) return;
+  const fd = new FormData();
+  fd.append("period_id", currentPeriod);
+  fd.append("text", text);
+  fd.append("create_missing", $("#create-missing").checked ? "1" : "0");
+  try {
+    const res = await api("/api/import", { method: "POST", body: fd });
+    showImportResult(res);
+    $("#paste-dialog").classList.add("hidden");
+    await loadAll();
+  } catch (err) {
+    showImportResult({ errors: [err.message] });
+  }
+});
+
+function showImportResult(res) {
+  const el = $("#import-result");
+  el.classList.remove("hidden");
+  let msg = `Geïmporteerd: ${res.imported} cijfers`;
+  if (res.skipped) msg += `, overgeslagen: ${res.skipped}`;
+  if (res.new_subjects && res.new_subjects.length) msg += `\nNieuwe vakken: ${res.new_subjects.join(", ")}`;
+  if (res.errors && res.errors.length) msg += `\nFouten:\n` + res.errors.join("\n");
+  el.textContent = msg;
+}
+
+// ---------- Studenten ----------
+function renderStudents() {
+  $("#students-table tbody").innerHTML = students.map((s) => `
+    <tr data-id="${s.id}">
+      <td><input data-field="name" value="${esc(s.name)}"></td>
+      <td><input data-field="student_number" value="${esc(s.student_number || "")}"></td>
+      <td><button class="danger" data-del>Verwijderen</button></td>
+    </tr>`).join("");
+}
+
+$("#btn-add-student").addEventListener("click", async () => {
+  const name = $("#student-name").value.trim();
+  if (!name) return;
+  await api("/api/students", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, student_number: $("#student-number").value.trim() }),
+  });
+  $("#student-name").value = "";
+  $("#student-number").value = "";
+  await loadAll();
+});
+
+$("#students-table tbody").addEventListener("change", async (e) => {
+  const tr = e.target.closest("tr");
+  const s = students.find((x) => x.id === +tr.dataset.id);
+  if (!s) return;
+  s[e.target.dataset.field] = e.target.value;
+  await api(`/api/students/${s.id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(s),
+  });
+});
+
+$("#students-table tbody").addEventListener("click", async (e) => {
+  if (!e.target.dataset.del) return;
+  const id = e.target.closest("tr").dataset.id;
+  if (!confirm("Student verwijderen? Alle cijfers van deze student vervallen.")) return;
+  await api(`/api/students/${id}`, { method: "DELETE" });
+  await loadAll();
+});
+
+// ---------- Vakken ----------
+function renderSubjects() {
+  $("#subjects-table tbody").innerHTML = subjects.map((s) => `
+    <tr data-id="${s.id}">
+      <td><input data-field="name" value="${esc(s.name)}"></td>
+      <td><button class="danger" data-del>Verwijderen</button></td>
+    </tr>`).join("");
+}
+
+$("#btn-add-subject").addEventListener("click", async () => {
+  const name = $("#subject-name").value.trim();
+  if (!name) return;
+  await api("/api/subjects", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  $("#subject-name").value = "";
+  await loadAll();
+});
+
+$("#subjects-table tbody").addEventListener("change", async (e) => {
+  const id = e.target.closest("tr").dataset.id;
+  await api(`/api/subjects/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: e.target.value }),
+  });
+});
+
+$("#subjects-table tbody").addEventListener("click", async (e) => {
+  if (!e.target.dataset.del) return;
+  const id = e.target.closest("tr").dataset.id;
+  if (!confirm("Vak verwijderen? Alle cijfers voor dit vak vervallen.")) return;
+  await api(`/api/subjects/${id}`, { method: "DELETE" });
+  await loadAll();
+});
+
+// ---------- Periodes ----------
+function renderPeriods() {
+  $("#periods-table tbody").innerHTML = periods.map((p) => `
+    <tr data-id="${p.id}">
+      <td><input data-field="name" value="${esc(p.name)}"></td>
+      <td><button class="danger" data-del>Verwijderen</button></td>
+    </tr>`).join("");
+}
+
+$("#btn-add-period").addEventListener("click", async () => {
+  const name = $("#period-name").value.trim();
+  if (!name) return;
+  await api("/api/periods", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  $("#period-name").value = "";
+  await loadAll();
+});
+
+$("#periods-table tbody").addEventListener("change", async (e) => {
+  const id = e.target.closest("tr").dataset.id;
+  await api(`/api/periods/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: e.target.value }),
+  });
+  await loadAll();
+});
+
+$("#periods-table tbody").addEventListener("click", async (e) => {
+  if (!e.target.dataset.del) return;
+  const id = e.target.closest("tr").dataset.id;
+  if (!confirm("Periode verwijderen? Alle cijfers in deze periode vervallen.")) return;
+  await api(`/api/periods/${id}`, { method: "DELETE" });
+  await loadAll();
+});
+
+// ---------- Rapport ----------
+$("#btn-report").addEventListener("click", showReport);
+$("#btn-print").addEventListener("click", () => window.print());
+
+async function showReport() {
+  const periodId = $("#report-period").value;
+  if (!periodId) return;
+  const studentId = $("#report-student").value;
+  const url = `/api/report?period_id=${periodId}` + (studentId ? `&student_id=${studentId}` : "");
+  const data = await api(url);
+  const out = $("#report-output");
+  out.innerHTML = data.students.map((s) => `
+    <div class="report-card">
+      <h2>${esc(s.student.name)}</h2>
+      <div class="sub">${s.student.student_number ? `Nr. ${esc(s.student.student_number)} &mdash; ` : ""}Periode: ${esc(data.period.name)}</div>
+      ${s.entries.length ? `
+      <table>
+        <thead><tr><th>Vak</th><th>Beoordeling</th><th>Tekorten</th></tr></thead>
+        <tbody>
+          ${s.entries.map((e) => `
+          <tr>
+            <td>${esc(e.subject)}</td>
+            <td>${esc(e.value)}</td>
+            <td>${e.tekorten}</td>
+          </tr>`).join("")}
+        </tbody>
+        <tfoot><tr><td colspan="2">Totaal tekorten</td><td>${s.total_tekorten}</td></tr></tfoot>
+      </table>` : `<p>Geen cijfers bekend in deze periode.</p>`}
+    </div>`).join("");
+}
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+loadAll().catch((e) => alert("Laden mislukt: " + e.message));
