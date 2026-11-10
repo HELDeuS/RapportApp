@@ -461,6 +461,63 @@ def ensure_student_account(db, student_row):
     return username
 
 
+@app.route("/api/users/import", methods=["POST"])
+def users_import():
+    user, err = auth_error("beheerder")
+    if err:
+        return err
+    file = request.files.get("file")
+    if not file:
+        return jsonify({"error": "Geen bestand meegestuurd"}), 400
+    rows = rows_from_upload(file)
+    if not rows:
+        return jsonify({"error": "Geen data gevonden"}), 400
+    header = [c.strip().lower() for c in rows[0]]
+    expected = {"gebruikersnaam": "username", "username": "username",
+                "wachtwoord": "password", "password": "password",
+                "rol": "role", "role": "role",
+                "voornaam": "first_name", "first_name": "first_name",
+                "achternaam": "last_name", "last_name": "last_name",
+                "e-mail": "email", "email": "email", "mail": "email"}
+    if any(h in expected for h in header):
+        col = {}
+        for i, h in enumerate(header):
+            if h in expected:
+                col[expected[h]] = i
+        rows = rows[1:]
+    else:
+        col = {"username": 0, "password": 1, "role": 2,
+               "first_name": 3, "last_name": 4, "email": 5}
+    db = get_db()
+    imported, skipped, errors = 0, 0, []
+    for row in rows:
+        if not row or not row[0].strip():
+            continue
+        def cell(key):
+            return row[col[key]].strip() if key in col and len(row) > col[key] else ""
+        username = cell("username")
+        password = cell("password")
+        role = cell("role") or "docent"
+        if not username or not password:
+            errors.append(f"Rij overgeslagen (geen gebruikersnaam/wachtwoord): {row[:2]}")
+            continue
+        if role not in ROLES:
+            errors.append(f"Onbekende rol '{role}' bij {username}")
+            continue
+        if db.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone():
+            skipped += 1
+            continue
+        db.execute(
+            """INSERT INTO users (username, password_hash, role, first_name, last_name, email)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (username, generate_password_hash(password), role,
+             cell("first_name"), cell("last_name"), cell("email")),
+        )
+        imported += 1
+    db.commit()
+    return jsonify({"imported": imported, "skipped": skipped, "errors": errors[:50]})
+
+
 def mentor_class_ids(user):
     if user["role"] != "mentor":
         return None

@@ -41,6 +41,18 @@ De app vereist inloggen. Bij de eerste start wordt automatisch het account **`be
 - Elke klas kan een **mentor** gekoppeld krijgen (beheerder, op het tabblad Klassen).
 - **Studentaccounts** worden beheerd via het vinkje **"Inlog"** op het tabblad Studenten: aanvinken maakt automatisch een account aan (gebruikersnaam = studentnummer, anders `student<id>`; standaardwachtwoord `welkom`), afvinken blokkeert het account. In de gebruikerslijst op het tabblad Gebruikers kun je studentwachtwoorden resetten.
 - Rollen worden server-side afgedwongen op elk API-endpoint; de UI verbergt alleen wat niet mag.
+- **Gebruikers importeren** (beheerder, tabblad Gebruikers): CSV met kolommen `Gebruikersnaam,Wachtwoord,Rol,Voornaam,Achternaam,Email` (kopregel wordt herkend; zonder kopregel: die volgorde). Bestaande gebruikersnamen worden overgeslagen.
+
+### Dummydata voor tests
+
+Vul een lege database met een complete testset (12 modules, 39 vakken, 6 klassen met elk 25 studenten, mentoren, docenten, cijfers, aanwezigheid en opmerkingen):
+
+```bash
+cd /opt/RapportApp
+sudo -u rapportapp venv/bin/python seed_dummy.py --url http://127.0.0.1:5000 --username beheerder --password <jouw-wachtwoord>
+```
+
+Opbouw: 3 leerjaren van 4 modules (M1 t/m M12, modules tellen door); M5, M6, M11 en M12 zijn stagemodules met één vak (Stage 1 t/m 4); 8 vakken per gewone module (5 technisch, 3 niet-technisch, sommige vakken starten later of stoppen eerder); 2 klassen per leerjaar met unieke klascodes en eigen mentor; alle dummy-accounts hebben wachtwoord `welkom` (studenten loggen in met hun studentnummer).
 
 > **Let op:** gebruik voor het live gaan van studentaccounts HTTPS (bijv. via Caddy of nginx), zodat wachtwoorden niet als platte tekst over het netwerk gaan.
 

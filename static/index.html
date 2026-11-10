@@ -217,7 +217,11 @@
       <option value="administratie">Administratie</option>
     </select>
     <button id="btn-add-user">Account aanmaken</button>
+    <label class="file-label">Import CSV
+      <input type="file" id="import-users-file" accept=".csv,.txt,.tsv,.xlsx,.xlsm">
+    </label>
   </div>
+  <div id="users-import-result" class="result hidden"></div>
   <table class="list" id="users-table">
     <thead><tr><th>Gebruikersnaam</th><th>Voornaam</th><th>Achternaam</th><th>E-mail</th><th>Rol</th><th>Student</th><th>Actief</th><th></th><th></th></tr></thead>
     <tbody></tbody>

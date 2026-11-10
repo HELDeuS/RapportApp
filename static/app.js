@@ -1246,6 +1246,27 @@ function renderUsers() {
     </tr>`).join("");
 }
 
+$("#import-users-file").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const res = await api("/api/users/import", {
+      method: "POST",
+      body: (() => { const fd = new FormData(); fd.append("file", file); return fd; })(),
+    });
+    const el = $("#users-import-result");
+    el.classList.remove("hidden");
+    let msg = `Toegevoegd: ${res.imported}`;
+    if (res.skipped) msg += `, overgeslagen (bestaat al): ${res.skipped}`;
+    if (res.errors && res.errors.length) msg += "\nFouten:\n" + res.errors.join("\n");
+    el.textContent = msg;
+    await loadAll();
+  } catch (err) {
+    alert("Import mislukt: " + err.message);
+  }
+  e.target.value = "";
+});
+
 $("#btn-add-user").addEventListener("click", async () => {
   const username = $("#user-username").value.trim();
   const password = $("#user-password").value;
