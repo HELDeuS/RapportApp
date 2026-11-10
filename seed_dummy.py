@@ -41,6 +41,14 @@ class Client:
                 return resp.status, json.loads(resp.read().decode("utf-8") or "{}")
         except urllib.error.HTTPError as e:
             return e.code, json.loads(e.read().decode("utf-8") or "{}")
+        except urllib.error.URLError as e:
+            if isinstance(e.reason, ConnectionRefusedError):
+                sys.exit(f"Kan geen verbinding maken met {self.base}."
+                         "\nDraait de server? Controleer met:"
+                         "\n  sudo systemctl status rapportapp"
+                         "\nZonodig herstarten:"
+                         "\n  sudo systemctl restart rapportapp")
+            raise
 
     def get(self, path):
         return self.request("GET", path)
