@@ -13,6 +13,7 @@ Webapp voor het bijhouden van rapportcijfers van de opleiding MBO ICT.
 - **Cijfermatrix per module**: voer per vak een cijfer (1–10) of een beoordelingscode in:
   - `V` = voldoende, `G` = goed, `VS` = vrijstelling — alle drie tellen als voldoende: **0 tekorten**.
   - `O` = onvoldoende — telt als **1 tekort**.
+  - `VS` (vrijstelling) is bij elk beoordelingstype toegestaan en telt altijd als voldoende.
 - **Tekortberekening** per student per module:
   - Een cijfer dat afgerond onder 6 is, geeft `6 − afgerond cijfer` tekorten (5 → 1 tekort, 4 → 2 tekorten, enz.).
   - `V`, `G` en `VS` tellen als een voldoende: 0 tekorten.

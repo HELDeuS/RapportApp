@@ -163,6 +163,8 @@ def parse_value(raw, assessment_type="cijfer"):
     if s == "":
         return ""
     upper = s.upper()
+    if upper == "VS":
+        return "VS"
     if assessment_type == "letter":
         if upper in ("V", "G", "VS", "O"):
             return upper
