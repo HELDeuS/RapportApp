@@ -54,6 +54,8 @@ sudo -u rapportapp venv/bin/python seed_dummy.py --url http://127.0.0.1:5000 --u
 
 Opbouw: 3 leerjaren van 4 modules (M1 t/m M12, modules tellen door); M5, M6, M11 en M12 zijn stagemodules met één vak (Stage 1 t/m 4); 8 vakken per gewone module (5 technisch, 3 niet-technisch, sommige vakken starten later of stoppen eerder); 2 klassen per leerjaar met unieke klascodes en eigen mentor; alle dummy-accounts hebben wachtwoord `welkom` (studenten loggen in met hun studentnummer).
 
+Het script gebruikt alleen de Python-standaardbibliotheek; er hoeft niets extra geïnstalleerd te worden in de venv.
+
 > **Let op:** gebruik voor het live gaan van studentaccounts HTTPS (bijv. via Caddy of nginx), zodat wachtwoorden niet als platte tekst over het netwerk gaan.
 
 ## Installatie op een Ubuntu-server (in `/opt/RapportApp`)

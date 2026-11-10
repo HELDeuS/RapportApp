@@ -8,12 +8,45 @@ Draai dit op een lege (of Test-)database; het script controleert niet op bestaan
 """
 
 import argparse
+import http.cookiejar
+import json
 import random
 import sys
-
-import requests
+import urllib.request
 
 random.seed(42)
+
+
+class Client:
+    """Minimale HTTP-client met cookies (geen externe dependencies)."""
+
+    def __init__(self, base):
+        self.base = base.rstrip("/")
+        self.jar = http.cookiejar.CookieJar()
+        self.opener = urllib.request.build_opener(
+            urllib.request.HTTPCookieProcessor(self.jar))
+
+    def request(self, method, path, json_body=None, form=None):
+        url = self.base + path
+        headers = {}
+        data = None
+        if json_body is not None:
+            data = json.dumps(json_body).encode("utf-8")
+            headers["Content-Type"] = "application/json"
+        elif form is not None:
+            data = form
+        req = urllib.request.Request(url, data=data, headers=headers, method=method)
+        try:
+            with self.opener.open(req, timeout=30) as resp:
+                return resp.status, json.loads(resp.read().decode("utf-8") or "{}")
+        except urllib.error.HTTPError as e:
+            return e.code, json.loads(e.read().decode("utf-8") or "{}")
+
+    def get(self, path):
+        return self.request("GET", path)
+
+    def post(self, path, json_body=None):
+        return self.request("POST", path, json_body=json_body)
 
 FIRST_NAMES = ["Emma", "Lucas", "Sophie", "Daan", "Julia", "Sem", "Lisa", "Bram",
                "Sara", "Lars", "Noor", "Finn", "Eva", "Milan", "Anna", "Tijmen",
@@ -40,32 +73,33 @@ def main():
     ap.add_argument("--username", default="beheerder")
     ap.add_argument("--password", required=True)
     args = ap.parse_args()
-    B = args.url.rstrip("/")
-
-    s = requests.Session()
-    r = s.post(f"{B}/api/auth/login",
-               json={"username": args.username, "password": args.password})
-    if r.status_code != 200:
-        sys.exit(f"Inloggen mislukt: {r.text}")
+    s = Client(args.url)
+    status, body = s.post("/api/auth/login",
+                          {"username": args.username, "password": args.password})
+    if status != 200:
+        sys.exit(f"Inloggen mislukt: {body.get('error', body)}")
     print("Ingelogd.")
 
     # ---------------------------------------------------------------- niveaus
-    s.post(f"{B}/api/niveaus", json={"name": "niveau 4"})
-    niveaus = {n["name"]: n["id"] for n in s.get(f"{B}/api/niveaus").json()}
+    s.post("/api/niveaus", {"name": "niveau 4"})
+    _, data = s.get("/api/niveaus")
+    niveaus = {n["name"]: n["id"] for n in data}
     niv = niveaus["niveau 4"]
 
     # --------------------------------------------------------------- cohorten
     for c in ["23-24", "24-25", "25-26"]:
-        s.post(f"{B}/api/cohorts", json={"name": c})
-    cohorts = {c["name"]: c["id"] for c in s.get(f"{B}/api/cohorts").json()}
+        s.post("/api/cohorts", {"name": c})
+    _, data = s.get("/api/cohorts")
+    cohorts = {c["name"]: c["id"] for c in data}
     print("Niveaus en cohorten klaar.")
 
     # ---------------------------------------------------------------- modules
     # 3 leerjaren x 4 modules; modules tellen door (M1..M12).
     for i in range(1, 13):
         leerjaar = (i - 1) // 4 + 1
-        s.post(f"{B}/api/periods", json={"name": f"M{i}", "year": f"Leerjaar {leerjaar}"})
-    periods = {p["name"]: p["id"] for p in s.get(f"{B}/api/periods").json()}
+        s.post("/api/periods", {"name": f"M{i}", "year": f"Leerjaar {leerjaar}"})
+    _, data = s.get("/api/periods")
+    periods = {p["name"]: p["id"] for p in data}
     print("Modules klaar.")
 
     # ----------------------------------------------------------------- vakken
@@ -115,30 +149,31 @@ def main():
         ("Projectmanagement 3", "letter", ["M9", "M10"]),
     ]
     for name, atype, mods in subjects:
-        s.post(f"{B}/api/subjects", json={
+        s.post("/api/subjects", {
             "name": name, "assessment_type": atype,
             "period_ids": [periods[m] for m in mods],
         })
-    subj_list = {x["name"]: x for x in s.get(f"{B}/api/subjects").json()}
+    _, data = s.get("/api/subjects")
+    subj_list = {x["name"]: x for x in data}
     print(f"{len(subjects)} vakken klaar.")
 
     # ---------------------------------------------------------- mentoren/docenten
     for first, prefix, last in MENTOR_NAMES:
-        s.post(f"{B}/api/users", json={
+        s.post("/api/users", {
             "username": (first + "." + last).lower().replace(" ", ""),
             "password": "welkom", "role": "mentor",
             "first_name": first, "last_name": last,
             "email": f"{first.lower()}@school.nl"})
     for first, prefix, last in DOCENT_NAMES:
-        s.post(f"{B}/api/users", json={
+        s.post("/api/users", {
             "username": (first + "." + last).lower().replace(" ", ""),
             "password": "welkom", "role": "docent",
             "first_name": first, "last_name": last,
             "email": f"{first.lower()}@school.nl"})
-    s.post(f"{B}/api/users", json={
+    s.post("/api/users", {
         "username": "administratie", "password": "welkom", "role": "administratie",
         "first_name": "Admin", "last_name": "Medewerker", "email": "administratie@school.nl"})
-    users = s.get(f"{B}/api/users").json()
+    _, users = s.get("/api/users")
     mentors = [u for u in users if u["role"] == "mentor"]
     print(f"{len(mentors)} mentoren en {len(DOCENT_NAMES)} docenten klaar.")
 
@@ -151,10 +186,10 @@ def main():
     ]
     class_ids = []
     for i, (name, leerjaar, cohort) in enumerate(class_specs):
-        r = s.post(f"{B}/api/classes", json={
+        _, body = s.post("/api/classes", {
             "name": name, "niveau_id": niv, "cohort_id": cohorts[cohort],
             "mentor_id": mentors[i]["id"]})
-        class_ids.append((r.json()["id"], leerjaar, name))
+        class_ids.append((body["id"], leerjaar, name))
     print("Klassen klaar.")
 
     # --------------------------------------------------------------- studenten
@@ -166,11 +201,11 @@ def main():
             first = random.choice(FIRST_NAMES)
             prefix = random.choice(PREFIXES)
             last = random.choice(LAST_NAMES)
-            r = s.post(f"{B}/api/students", json={
+            _, body = s.post("/api/students", {
                 "student_number": str(number),
                 "first_name": first, "prefix": prefix, "last_name": last,
                 "email": f"s{number}@school.nl", "class_id": cid})
-            made.append(r.json()["id"])
+            made.append(body["id"])
             number += 1
         students_by_class.append((cid, leerjaar, made))
     print("150 studenten klaar.")
@@ -195,20 +230,20 @@ def main():
             for stid in stids:
                 for name, atype, mods in active:
                     v = grade_for(atype)
-                    s.post(f"{B}/api/grades", json={
+                    s.post("/api/grades", {
                         "student_id": stid, "subject_id": subj_list[name]["id"],
                         "period_id": pid, "value": v})
                     grades += 1
                 present = random.randint(80, 100)
                 rest = 100 - present
                 allowed = random.randint(0, rest)
-                s.post(f"{B}/api/attendance", json={
+                s.post("/api/attendance", {
                     "student_id": stid, "period_id": pid,
                     "present": present, "absent_allowed": allowed,
                     "absent_unallowed": rest - allowed})
                 atts += 1
                 if random.random() < 0.25:
-                    s.post(f"{B}/api/notes", json={
+                    s.post("/api/notes", {
                         "student_id": stid, "period_id": pid,
                         "comment": random.choice([
                             "Goede inzet deze module.",
@@ -223,8 +258,8 @@ def main():
 
     # ------------------------------------------------- inlogaccounts studenten
     all_ids = [sid for _, _, ids in students_by_class for sid in ids]
-    r = s.post(f"{B}/api/students/bulk", json={"ids": all_ids, "action": "login_on"})
-    print(f"Studentaccounts: {r.json().get('affected', '?')}")
+    _, body = s.post("/api/students/bulk", {"ids": all_ids, "action": "login_on"})
+    print(f"Studentaccounts: {body.get('affected', '?')}")
 
     print("\nKlaar! Overzicht:")
     print("  Modules: M1 t/m M12 (stage: M5, M6, M11, M12)")
