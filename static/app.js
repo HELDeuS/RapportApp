@@ -44,7 +44,7 @@ const SORT_LABELS = {};
 
 function updateSortArrows(tableSel, state) {
   document.querySelectorAll(tableSel + " thead th[data-key]").forEach((th) => {
-    const key = th.dataset.key;
+    const key = tableSel + "|" + th.dataset.key;
     if (!(key in SORT_LABELS)) SORT_LABELS[key] = th.textContent.trim();
     const label = SORT_LABELS[key];
     const mark = th.dataset.key === state.key
@@ -1158,10 +1158,10 @@ function renderArchTable(tableId) {
   }
   // sorteer-indicator in de kop
   table.querySelectorAll("thead th[data-key]").forEach((th) => {
-    const key = th.dataset.key;
+    const key = "#" + table.id + "|" + th.dataset.key;
     if (!(key in SORT_LABELS)) SORT_LABELS[key] = th.textContent.trim();
     const label = SORT_LABELS[key];
-    const mark = key === state.sortKey
+    const mark = th.dataset.key === state.sortKey
       ? (state.sortDir === 1 ? "\u25BE" : "\u25B4")
       : "\u21C5";
     const cls = key === state.sortKey ? "sort-indicator active" : "sort-indicator";
