@@ -110,7 +110,8 @@ function renderGradeTable() {
       const v = grades[key] || "";
       total += tekorten(v);
       const cls = v && tekorten(v) > 0 ? ` class="tekort-${tekorten(v)}"` : "";
-      return `<td${cls}><input class="cell" data-sid="${st.id}" data-suid="${su.id}" value="${esc(v)}"></td>`;
+      const kind = gradeKind(v);
+      return `<td${cls}><input class="cell${kind ? " val-" + kind : ""}" data-sid="${st.id}" data-suid="${su.id}" value="${esc(v)}"></td>`;
     }).join("");
     return `<tr><td>${esc(st.name)}${st.student_number ? ` <small>(${esc(st.student_number)})</small>` : ""}</td>${cells}` +
       `<td class="total" data-total="${st.id}" data-name="${esc(st.name)}">${total}</td></tr>`;
@@ -128,6 +129,13 @@ function tekorten(v) {
   if (v === "O") return 1;
   const n = Math.round(parseFloat(v));
   return n < 6 ? 6 - n : 0;
+}
+
+function gradeKind(v) {
+  if (!v) return "";
+  if (v === "VS") return "vs";
+  if (v === "O" || tekorten(v) > 0) return "onv";
+  return "vol";
 }
 
 async function saveCell(inp) {
@@ -562,7 +570,7 @@ async function showReport() {
           ${s.entries.map((e) => `
           <tr>
             <td>${esc(e.subject)}</td>
-            <td>${esc(e.value)}</td>
+            <td class="${e.value ? (e.value === "VS" ? "val-vs" : (e.tekorten > 0 ? "val-onv" : "val-vol")) : ""}">${esc(e.value)}</td>
             <td>${e.tekorten}</td>
           </tr>`).join("")}
         </tbody>
