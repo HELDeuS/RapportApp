@@ -285,8 +285,12 @@ td.tekort-2, td.tekort-3, td.tekort-4, td.tekort-5 { color: var(--tekort); font-
 .report-card tfoot td { border-top: 2px solid var(--text); font-weight: 700; }
 
 @media print {
-  header, .toolbar, .tab, button, #import-result { display: none !important; }
-  .panel { display: block; }
+  header, .toolbar, .tab, button, #import-result,
+  #tab-cijfers, #tab-studenten, #tab-klassen, #tab-vakken, #tab-periodes {
+    display: none !important;
+  }
+  .panel { display: none; }
+  #tab-rapport { display: block; }
   body { background: #fff; color: #000; }
   .report-card { border: none; }
   [data-theme="dark"] {
