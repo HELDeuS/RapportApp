@@ -136,8 +136,9 @@ function renderGradeTable() {
     return;
   }
   const periodSubjects = subjectsForPeriod();
+  const typeShort = { cijfer: "1-10", letter: "V/G/O/VS", vnv: "V/NV" };
   thead.innerHTML = `<tr><th>Student</th>` +
-    periodSubjects.map((s) => `<th>${esc(s.name)}</th>`).join("") +
+    periodSubjects.map((s) => `<th title="Beoordeling: ${typeShort[s.assessment_type] || "1-10"}">${esc(s.name)}<br><small>${typeShort[s.assessment_type] || "1-10"}</small></th>`).join("") +
     `<th title="Aanwezigheid">Aanw. %</th>` +
     `<th title="Geoorloofd afwezig">Geoorl. afw. %</th>` +
     `<th title="Ongeoorloofd afwezig">Ongeoorl. afw. %</th>` +
@@ -185,7 +186,7 @@ function renderGradeTable() {
 function tekorten(v) {
   if (!v) return 0;
   if (v === "V" || v === "G" || v === "VS") return 0;
-  if (v === "O") return 1;
+  if (v === "O" || v === "NV") return 1;
   const n = Math.round(parseFloat(v));
   return n < 6 ? 6 - n : 0;
 }
@@ -193,7 +194,7 @@ function tekorten(v) {
 function gradeKind(v) {
   if (!v) return "";
   if (v === "VS") return "vs";
-  if (v === "O" || tekorten(v) > 0) return "onv";
+  if (v === "O" || v === "NV" || tekorten(v) > 0) return "onv";
   return "vol";
 }
 
@@ -212,6 +213,8 @@ async function saveCell(inp) {
     });
     grades[`${body.student_id}:${body.subject_id}`] = res.value;
     inp.value = res.value;
+    const kind = gradeKind(res.value);
+    inp.className = "cell" + (kind ? " val-" + kind : "");
     updateTotals();
   } catch (e) {
     alert(e.message);
@@ -619,6 +622,11 @@ function renderSubjects() {
   $("#subjects-table tbody").innerHTML = visible.map((s) => `
     <tr data-id="${s.id}">
       <td><input data-field="name" value="${esc(s.name)}"></td>
+      <td><select data-field="assessment_type">
+        <option value="cijfer"${s.assessment_type === "cijfer" ? " selected" : ""}>Cijfer (1-10)</option>
+        <option value="letter"${s.assessment_type === "letter" ? " selected" : ""}>Letter (V/G/O/VS)</option>
+        <option value="vnv"${s.assessment_type === "vnv" ? " selected" : ""}>Voldaan / niet voldaan (V/NV)</option>
+      </select></td>
       <td class="period-checks">${checks(s)}</td>
       <td class="period-checks">${classChecks(s)}</td>
       <td><button class="secondary" data-archive>Archiveren</button></td>
@@ -669,6 +677,15 @@ $("#subjects-table tbody").addEventListener("change", async (e) => {
       alert("Opslaan van koppeling mislukt: " + err.message);
       await loadAll();
     }
+  } else if (e.target.dataset.field === "assessment_type") {
+    await api(`/api/subjects/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assessment_type: e.target.value }),
+    });
+    const s = subjects.find((x) => x.id === +id);
+    if (s) s.assessment_type = e.target.value;
+    renderGradeTable();
   } else {
     await api(`/api/subjects/${id}`, {
       method: "PUT",

@@ -53,7 +53,8 @@ CREATE TABLE IF NOT EXISTS students (
 );
 CREATE TABLE IF NOT EXISTS subjects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL
+    name TEXT NOT NULL,
+    assessment_type TEXT DEFAULT 'cijfer'
 );
 CREATE TABLE IF NOT EXISTS periods (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -130,15 +131,31 @@ def init_db():
         tcols = [r[1] for r in db.execute(f"PRAGMA table_info({table})").fetchall()]
         if "archived" not in tcols:
             db.execute(f"ALTER TABLE {table} ADD COLUMN archived INTEGER DEFAULT 0")
+    scols = [r[1] for r in db.execute("PRAGMA table_info(subjects)").fetchall()]
+    if "assessment_type" not in scols:
+        db.execute("ALTER TABLE subjects ADD COLUMN assessment_type TEXT DEFAULT 'cijfer'")
+        # Bestaande vakken met letterbeoordelingen automatisch op 'letter' zetten.
+        db.execute(
+            """UPDATE subjects SET assessment_type = 'letter'
+               WHERE id IN (
+                 SELECT DISTINCT subject_id FROM grades
+                 WHERE UPPER(value) IN ('V', 'G', 'O', 'VS')
+               )"""
+        )
     db.commit()
     db.close()
 
 
-def parse_value(raw):
-    """Validate a cell value. Returns normalized value or raises ValueError.
+ASSESSMENT_TYPES = ("cijfer", "letter", "vnv")
 
-    Accepted: '' (delete), 'V' (voldoende), 'G' (goed), 'VS' (vrijstelling),
-    'O' (onvoldoende), or a number between 1 and 10 (comma or point decimal).
+
+def parse_value(raw, assessment_type="cijfer"):
+    """Validate a cell value for the subject's assessment type.
+
+    cijfer: number 1-10 (comma or point decimal).
+    letter: V (voldoende), G (goed), O (onvoldoende), VS (vrijstelling).
+    vnv:    V (voldaan) of NV (niet voldaan).
+    Empty string means: delete the grade.
     """
     if raw is None:
         return ""
@@ -146,13 +163,24 @@ def parse_value(raw):
     if s == "":
         return ""
     upper = s.upper()
-    if upper in ("V", "G", "VS", "O"):
-        return upper
-    s = s.replace(",", ".")
+    if assessment_type == "letter":
+        if upper in ("V", "G", "VS", "O"):
+            return upper
+        raise ValueError(
+            f"Dit vak wordt met letters beoordeeld (V, G, O of VS): {raw!r}"
+        )
+    if assessment_type == "vnv":
+        if upper == "NV":
+            return "NV"
+        if upper == "V":
+            return "V"
+        raise ValueError(f"Dit vak wordt met voldaan/niet voldaan beoordeeld (V of NV): {raw!r}")
+    # cijfer
+    s2 = s.replace(",", ".")
     try:
-        num = float(s)
+        num = float(s2)
     except ValueError:
-        raise ValueError(f"Ongeldige waarde: {raw!r}")
+        raise ValueError(f"Dit vak wordt met cijfers beoordeeld (1 t/m 10): {raw!r}")
     if not (1.0 <= num <= 10.0):
         raise ValueError(f"Cijfer moet tussen 1 en 10 liggen: {raw!r}")
     return str(num)
@@ -168,7 +196,7 @@ def tekorten_for_value(value):
         return 0
     if value in ("V", "G", "VS"):
         return 0
-    if value == "O":
+    if value in ("O", "NV"):
         return 1
     try:
         grade = float(value)
@@ -389,6 +417,7 @@ def subject_with_periods(db, subject_id):
     if row is None:
         return None
     result = dict(row)
+    result["assessment_type"] = result.get("assessment_type") or "cijfer"
     result["period_ids"] = [
         r["period_id"] for r in db.execute(
             "SELECT period_id FROM subject_periods WHERE subject_id = ? ORDER BY period_id",
@@ -414,7 +443,13 @@ def subjects_collection():
             return jsonify({"error": "Naam is verplicht"}), 400
         period_ids = data.get("period_ids") or []
         class_ids = data.get("class_ids") or []
-        cur = db.execute("INSERT INTO subjects (name) VALUES (?)", (name,))
+        assessment_type = data.get("assessment_type") or "cijfer"
+        if assessment_type not in ASSESSMENT_TYPES:
+            return jsonify({"error": "Onbekend beoordelingstype"}), 400
+        cur = db.execute(
+            "INSERT INTO subjects (name, assessment_type) VALUES (?, ?)",
+            (name, assessment_type),
+        )
         subject_id = cur.lastrowid
         for pid in period_ids:
             db.execute(
@@ -459,6 +494,12 @@ def subject_item(subject_id):
                     "INSERT OR IGNORE INTO subject_classes (subject_id, class_id) VALUES (?, ?)",
                     (subject_id, cid),
                 )
+        if "assessment_type" in data:
+            assessment_type = data.get("assessment_type") or "cijfer"
+            if assessment_type not in ASSESSMENT_TYPES:
+                return jsonify({"error": "Onbekend beoordelingstype"}), 400
+            db.execute("UPDATE subjects SET assessment_type = ? WHERE id = ?",
+                       (assessment_type, subject_id))
         if "archived" in data:
             db.execute("UPDATE subjects SET archived = ? WHERE id = ?",
                        (1 if data.get("archived") else 0, subject_id))
@@ -534,11 +575,15 @@ def grade_set():
     period_id = data.get("period_id")
     if not (student_id and subject_id and period_id):
         return jsonify({"error": "student_id, subject_id en period_id zijn verplicht"}), 400
+    db = get_db()
+    subject = db.execute(
+        "SELECT assessment_type FROM subjects WHERE id = ?", (subject_id,)
+    ).fetchone()
+    assessment_type = (subject["assessment_type"] if subject else None) or "cijfer"
     try:
-        value = parse_value(data.get("value"))
+        value = parse_value(data.get("value"), assessment_type)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
-    db = get_db()
     if value == "":
         db.execute(
             "DELETE FROM grades WHERE student_id = ? AND subject_id = ? AND period_id = ?",
@@ -628,12 +673,14 @@ def import_grades():
 
     # Resolve subject columns
     subject_ids = []
+    subject_types = []
     errors = []
     new_subjects = []
     for idx, cell in enumerate(subject_cells):
         name = (cell or "").strip()
         if not name:
             subject_ids.append(None)
+            subject_types.append("cijfer")
             continue
         key = name.lower()
         if key in subjects:
@@ -647,6 +694,11 @@ def import_grades():
         else:
             errors.append(f"Onbekend vak in kolom {idx + 2}: {name}")
             subject_ids.append(None)
+        subject_types.append(
+            db.execute("SELECT assessment_type FROM subjects WHERE id = ?",
+                       (subject_ids[-1],)).fetchone()["assessment_type"]
+            if subject_ids[-1] else "cijfer"
+        )
 
     imported, skipped = 0, 0
     for row in data_rows:
@@ -671,7 +723,7 @@ def import_grades():
             if j >= len(subject_ids) or subject_ids[j] is None:
                 continue
             try:
-                value = parse_value(raw)
+                value = parse_value(raw, subject_types[j])
             except ValueError as e:
                 errors.append(f"{ident}: {e}")
                 continue
