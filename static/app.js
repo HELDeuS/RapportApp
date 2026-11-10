@@ -236,7 +236,13 @@ function classLabel(c) {
 
 function visibleStudents() {
   const classId = $("#grade-class").value;
-  return classId ? students.filter((s) => String(s.class_id) === classId) : students;
+  if (classId) return students.filter((s) => String(s.class_id) === classId);
+  const cohortId = $("#grade-cohort").value;
+  if (cohortId) return students.filter((s) => {
+    const c = classes.find((x) => x.id === s.class_id);
+    return c && String(c.cohort_id) === cohortId;
+  });
+  return students;
 }
 
 function subjectsForPeriod() {
