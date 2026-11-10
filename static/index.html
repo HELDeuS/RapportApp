@@ -173,25 +173,41 @@
 
 <!-- Archief -->
 <section id="tab-archief" class="panel">
-  <p class="hint">Gearchiveerde studenten, klassen, vakken en cohorten blijven bewaard (inclusief cijfers) maar zijn niet zichtbaar in de actieve overzichten en rapporten.</p>
-  <h3>Studenten</h3>
-  <table class="list" id="arch-students-table">
-    <thead><tr><th>Naam</th><th>Studentnummer</th><th></th></tr></thead>
+  <p class="hint">Gearchiveerde studenten, klassen, vakken en cohorten blijven bewaard (inclusief cijfers) maar zijn niet zichtbaar in de actieve overzichten en rapporten. Gebruik het zoekveld om te filteren; klik op een kolomkop om te sorteren.</p>
+
+  <div class="toolbar subtoolbar">
+    <strong>Studenten</strong>
+    <input id="arch-students-search" placeholder="&#9906; Zoek in archief...">
+  </div>
+  <table class="list sortable" id="arch-students-table" data-kind="students">
+    <thead><tr><th data-key="name">Naam</th><th data-key="student_number">Studentnummer</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
-  <h3>Klassen</h3>
-  <table class="list" id="arch-classes-table">
-    <thead><tr><th>Klas</th><th>Niveau</th><th>Cohort</th><th></th></tr></thead>
+
+  <div class="toolbar subtoolbar">
+    <strong>Klassen</strong>
+    <input id="arch-classes-search" placeholder="&#9906; Zoek in archief...">
+  </div>
+  <table class="list sortable" id="arch-classes-table" data-kind="classes">
+    <thead><tr><th data-key="name">Klas</th><th data-key="niveau">Niveau</th><th data-key="cohort">Cohort</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
-  <h3>Vakken</h3>
-  <table class="list" id="arch-subjects-table">
-    <thead><tr><th>Vak</th><th></th></tr></thead>
+
+  <div class="toolbar subtoolbar">
+    <strong>Vakken</strong>
+    <input id="arch-subjects-search" placeholder="&#9906; Zoek in archief...">
+  </div>
+  <table class="list sortable" id="arch-subjects-table" data-kind="subjects">
+    <thead><tr><th data-key="name">Vak</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
-  <h3>Cohorten</h3>
-  <table class="list" id="arch-cohorts-table">
-    <thead><tr><th>Cohort</th><th></th></tr></thead>
+
+  <div class="toolbar subtoolbar">
+    <strong>Cohorten</strong>
+    <input id="arch-cohorts-search" placeholder="&#9906; Zoek in archief...">
+  </div>
+  <table class="list sortable" id="arch-cohorts-table" data-kind="cohorts">
+    <thead><tr><th data-key="name">Cohort</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
 </section>

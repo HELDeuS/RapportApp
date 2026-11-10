@@ -223,6 +223,9 @@ input.cell.att-allowed, .att-allowed { color: var(--geel); font-weight: 700; }
 input.cell.att-unallowed { color: var(--onv); font-weight: 700; }
 
 .att-table { margin-bottom: 12px; }
+
+.sortable th[data-key] { cursor: pointer; user-select: none; }
+.sortable th[data-key]:hover { text-decoration: underline; }
 .att-table td { text-align: center; }
 .att-table th { text-align: center; }
 

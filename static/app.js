@@ -748,24 +748,61 @@ async function showReport() {
 }
 
 // ---------- Archief ----------
+let archiveData = {};   // tabel-id -> rijen
+let archiveState = {};  // tabel-id -> {q, sortKey, sortDir}
+
+const ARCH_TABLES = {
+  "arch-students-table": { search: "arch-students-search", cols: ["name", "student_number"], empty: 3 },
+  "arch-classes-table": { search: "arch-classes-search", cols: ["name", "niveau", "cohort"], empty: 4 },
+  "arch-subjects-table": { search: "arch-subjects-search", cols: ["name"], empty: 2 },
+  "arch-cohorts-table": { search: "arch-cohorts-search", cols: ["name"], empty: 2 },
+};
+
 async function renderArchive() {
   const [archStudents, archClasses, archSubjects, archCohorts] = await Promise.all([
     api("/api/students?archived=1"), api("/api/classes?archived=1"),
     api("/api/subjects?archived=1"), api("/api/cohorts?archived=1"),
   ]);
+  archiveData = {
+    "arch-students-table": archStudents,
+    "arch-classes-table": archClasses,
+    "arch-subjects-table": archSubjects,
+    "arch-cohorts-table": archCohorts,
+  };
+  for (const tableId of Object.keys(ARCH_TABLES)) renderArchTable(tableId);
+}
+
+function renderArchTable(tableId) {
+  const cfg = ARCH_TABLES[tableId];
+  const table = $("#" + tableId);
+  const state = archiveState[tableId] || (archiveState[tableId] = { q: "", sortKey: null, sortDir: 1 });
+  let rows = archiveData[tableId] || [];
+  const q = state.q.trim().toLowerCase();
+  if (q) {
+    rows = rows.filter((r) => cfg.cols.some(
+      (c) => (r[c] || "").toString().toLowerCase().includes(q)));
+  }
+  if (state.sortKey) {
+    const key = state.sortKey;
+    rows = [...rows].sort((a, b) => {
+      const av = (a[key] || "").toString().toLowerCase();
+      const bv = (b[key] || "").toString().toLowerCase();
+      return av < bv ? -state.sortDir : av > bv ? state.sortDir : 0;
+    });
+  }
+  // sorteer-indicator in de kop
+  table.querySelectorAll("thead th[data-key]").forEach((th) => {
+    const base = th.textContent.replace(/ [\u25B4\u25BE]$/, "");
+    th.textContent = th.dataset.key === state.sortKey
+      ? base + (state.sortDir === 1 ? " \u25BE" : " \u25B4")
+      : base;
+  });
+  const kind = table.dataset.kind;
   const unarchiveBtn = `<button class="secondary" data-unarchive>Terugzetten</button>`;
-  $("#arch-students-table tbody").innerHTML = archStudents.length
-    ? archStudents.map((s) => `<tr data-id="${s.id}" data-kind="students"><td>${esc(s.name)}</td><td>${esc(s.student_number || "")}</td><td>${unarchiveBtn}</td></tr>`).join("")
-    : `<tr><td colspan="3" class="hint">Niets gearchiveerd.</td></tr>`;
-  $("#arch-classes-table tbody").innerHTML = archClasses.length
-    ? archClasses.map((c) => `<tr data-id="${c.id}" data-kind="classes"><td>${esc(c.name)}</td><td>${esc(c.niveau || "")}</td><td>${esc(c.cohort || "")}</td><td>${unarchiveBtn}</td></tr>`).join("")
-    : `<tr><td colspan="4" class="hint">Niets gearchiveerd.</td></tr>`;
-  $("#arch-subjects-table tbody").innerHTML = archSubjects.length
-    ? archSubjects.map((s) => `<tr data-id="${s.id}" data-kind="subjects"><td>${esc(s.name)}</td><td>${unarchiveBtn}</td></tr>`).join("")
-    : `<tr><td colspan="2" class="hint">Niets gearchiveerd.</td></tr>`;
-  $("#arch-cohorts-table tbody").innerHTML = archCohorts.length
-    ? archCohorts.map((c) => `<tr data-id="${c.id}" data-kind="cohorts"><td>${esc(c.name)}</td><td>${unarchiveBtn}</td></tr>`).join("")
-    : `<tr><td colspan="2" class="hint">Niets gearchiveerd.</td></tr>`;
+  const cells = (r) => cfg.cols.map((c) => `<td>${esc(r[c] || "")}</td>`).join("");
+  table.querySelector("tbody").innerHTML = rows.length
+    ? rows.map((r) => `<tr data-id="${r.id}" data-kind="${kind}">${cells(r)}<td>${unarchiveBtn}</td></tr>`).join("")
+    : `<tr><td colspan="${cfg.empty}" class="hint">${q ? "Niets gevonden voor deze zoekopdracht." : "Niets gearchiveerd."}</td></tr>`;
 }
 
 async function setArchived(kind, id, archived) {
@@ -784,6 +821,25 @@ $$(".tab").forEach((btn) => {
   });
 });
 
+for (const tableId of Object.keys(ARCH_TABLES)) {
+  $("#" + ARCH_TABLES[tableId].search).addEventListener("input", (e) => {
+    archiveState[tableId].q = e.target.value;
+    renderArchTable(tableId);
+  });
+  $("#" + tableId).querySelector("thead").addEventListener("click", (e) => {
+    const key = e.target.dataset.key;
+    if (key === undefined) return;
+    const state = archiveState[tableId];
+    if (state.sortKey === key) {
+      state.sortDir = state.sortDir === 1 ? -1 : 1;
+    } else {
+      state.sortKey = key;
+      state.sortDir = 1;
+    }
+    renderArchTable(tableId);
+  });
+}
+
 for (const sel of ["#students-table tbody", "#classes-table tbody", "#subjects-table tbody"]) {
   $(sel).addEventListener("click", async (e) => {
     if (e.target.dataset.archive === undefined) return;
@@ -795,9 +851,8 @@ for (const sel of ["#students-table tbody", "#classes-table tbody", "#subjects-t
   });
 }
 
-for (const sel of ["#arch-students-table tbody", "#arch-classes-table tbody",
-                   "#arch-subjects-table tbody", "#arch-cohorts-table tbody"]) {
-  $(sel).addEventListener("click", async (e) => {
+for (const tableId of Object.keys(ARCH_TABLES)) {
+  $("#" + tableId).querySelector("tbody").addEventListener("click", async (e) => {
     if (e.target.dataset.unarchive === undefined) return;
     const tr = e.target.closest("tr");
     await setArchived(tr.dataset.kind, tr.dataset.id, false);
