@@ -1803,11 +1803,40 @@ function statPeriodOptions() {
     `<option value="all">Alle modules</option>`;
 }
 
+function statStudentOptions() {
+  const classFilter = $("#stat-class") ? $("#stat-class").value : "";
+  const cohortFilter = $("#stat-cohort") ? $("#stat-cohort").value : "";
+  let list = students;
+  if (classFilter) {
+    list = list.filter((s) => String(s.class_id) === classFilter);
+  } else if (cohortFilter) {
+    const cls = new Map(classes.map((c) => [c.id, c]));
+    list = list.filter((s) => {
+      const c = cls.get(s.class_id);
+      return c && String(c.cohort_id) === cohortFilter;
+    });
+  }
+  const cls = new Map(classes.map((c) => [c.id, c]));
+  const byClass = new Map();
+  for (const s of list) {
+    const key = s.class_id ? (cls.get(s.class_id) || {}).name || "Zonder klas" : "Zonder klas";
+    if (!byClass.has(key)) byClass.set(key, []);
+    byClass.get(key).push(s);
+  }
+  let out = `<option value="">Alle studenten</option>`;
+  for (const [cname, group] of [...byClass.entries()].sort((a, b) => a[0].localeCompare(b[0], "nl"))) {
+    out += `<optgroup label="${esc(cname)}">` + group.map((s) =>
+      `<option value="${s.id}">${esc(studentName(s))}${s.student_number ? ` (${esc(s.student_number)})` : ""}</option>`).join("") + `</optgroup>`;
+  }
+  return out;
+}
+
 function fillStatFilters() {
   const years = [...new Set(periods.map((p) => p.year || "").filter(Boolean))].sort();
   refillKeepingValue("#stat-year", `<option value="">Alle leerjaren</option>` +
     years.map((y) => `<option value="${esc(y)}">${esc(y)}</option>`).join(""));
   refillKeepingValue("#stat-period", statPeriodOptions());
+  refillKeepingValue("#stat-student", statStudentOptions());
   refillKeepingValue("#stat-cohort", `<option value="">Alle cohorten</option>` +
     cohorts.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join(""));
   refillKeepingValue("#stat-class", `<option value="">Alle klassen</option>` +
@@ -1916,6 +1945,7 @@ document.addEventListener("click", async (e) => {
   if (link.dataset.filter) url += `&filter=${link.dataset.filter}`;
   if ($("#stat-cohort").value) url += `&cohort_id=${$("#stat-cohort").value}`;
   if ($("#stat-year").value) url += `&year=${encodeURIComponent($("#stat-year").value)}`;
+  if ($("#stat-student") && $("#stat-student").value) url += `&student_id=${$("#stat-student").value}`;
   try {
     const data = await api(url);
     renderStatReport(kind, data);
@@ -1957,6 +1987,7 @@ async function showStatistics() {
   if ($("#stat-cohort").value) url += `&cohort_id=${$("#stat-cohort").value}`;
   if ($("#stat-class").value) url += `&class_id=${$("#stat-class").value}`;
   if ($("#stat-year").value) url += `&year=${encodeURIComponent($("#stat-year").value)}`;
+  if ($("#stat-student") && $("#stat-student").value) url += `&student_id=${$("#stat-student").value}`;
   const report = $("#stat-report").value;
   if (report) url += `&report=${report}`;
   const data = await api(url);
@@ -2037,6 +2068,12 @@ $("#stat-output").addEventListener("click", (e) => {
 $("#stat-year").addEventListener("change", () => {
   refillKeepingValue("#stat-period", statPeriodOptions());
 });
+
+for (const sel of ["#stat-cohort", "#stat-class"]) {
+  $(sel).addEventListener("change", () => {
+    refillKeepingValue("#stat-student", statStudentOptions());
+  });
+}
 
 // ---------- Archief ----------
 let archiveData = {};   // tabel-id -> rijen

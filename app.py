@@ -2279,6 +2279,9 @@ def statistics():
     # Specifieke rapporten op verzoek.
     report = request.args.get("report", "")
     if report == "resultaten":
+        sel_student_id = request.args.get("student_id", type=int)
+        if sel_student_id:
+            students = [s for s in students if s["id"] == sel_student_id]
         period_lts_map = {}
         for r in db.execute(
             "SELECT period_id, leertraject_id FROM leertraject_periods"
