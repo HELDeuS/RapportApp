@@ -2107,6 +2107,9 @@ def statistics():
         f"SELECT st.*, c.name AS class_name, c.leertraject_id FROM students st "
         f"LEFT JOIN classes c ON c.id = st.class_id WHERE {where}",
         args).fetchall()
+    student_filter_id = request.args.get("student_id", type=int)
+    if student_filter_id:
+        students = [s for s in students if s["id"] == student_filter_id]
     student_ids = [s["id"] for s in students]
 
     # Vakken van deze module (bij 'alle modules': alle vakken,
@@ -2201,6 +2204,24 @@ def statistics():
     def is_vol(value):
         return value not in (None, "") and tekorten_for_value(value) == 0
 
+    # Module(s) waarin elk vak voorkomt (binnen de huidige selectie).
+    if all_periods:
+        if year_period_ids is not None:
+            scope_pids = set(year_period_ids)
+        else:
+            scope_pids = {r["id"] for r in db.execute(
+                "SELECT id FROM periods").fetchall()}
+    else:
+        scope_pids = {period_id}
+    period_names = {r["id"]: r["name"] for r in db.execute(
+        "SELECT id, name FROM periods").fetchall()}
+    subj_modules = {}
+    for r in db.execute(
+        "SELECT subject_id, period_id FROM subject_periods").fetchall():
+        if r["period_id"] in scope_pids:
+            subj_modules.setdefault(r["subject_id"], set()).add(
+                period_names.get(r["period_id"], "?"))
+
     # Per vak.
     subject_stats = []
     for su in subjects:
@@ -2212,6 +2233,7 @@ def statistics():
         subject_stats.append({
             "id": su["id"],
             "name": su["name"],
+            "modules": ", ".join(sorted(subj_modules.get(su["id"], set()))),
             "count": len(values),
             "avg": round(sum(nums) / len(nums), 1) if nums else None,
             "vol": sum(1 for v in values if is_vol(v)),
@@ -2278,10 +2300,10 @@ def statistics():
 
     # Specifieke rapporten op verzoek.
     report = request.args.get("report", "")
+    if report == "signalering":
+        return jsonify({"period": period_dict(),
+                        "report_rows": signals})
     if report == "resultaten":
-        sel_student_id = request.args.get("student_id", type=int)
-        if sel_student_id:
-            students = [s for s in students if s["id"] == sel_student_id]
         period_lts_map = {}
         for r in db.execute(
             "SELECT period_id, leertraject_id FROM leertraject_periods"

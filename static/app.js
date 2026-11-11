@@ -376,8 +376,12 @@ function renderPeriodSelects() {
       reportPeriods.map((p) => `<option value="${p.id}">${esc(periodLabel(p))}</option>`).join("");
   }
   const rs = $("#report-student");
+  const rq = ($("#report-student-type") ? $("#report-student-type").value : "").trim().toLowerCase();
+  const rlist = rq ? students.filter((s) =>
+    studentName(s).toLowerCase().includes(rq) ||
+    (s.student_number || "").toLowerCase().includes(rq)) : students;
   rs.innerHTML = `<option value="">Alle studenten</option>` +
-    students.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join("");
+    rlist.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join("");
   renderClassSelects();
   for (const sel of [$("#student-cohort"), $("#report-cohort"), $("#grade-cohort")]) {
     sel.innerHTML = `<option value="">Alle cohorten</option>` +
@@ -1806,7 +1810,13 @@ function statPeriodOptions() {
 function statStudentOptions() {
   const classFilter = $("#stat-class") ? $("#stat-class").value : "";
   const cohortFilter = $("#stat-cohort") ? $("#stat-cohort").value : "";
+  const q = ($("#stat-student-type") ? $("#stat-student-type").value : "").trim().toLowerCase();
   let list = students;
+  if (q) {
+    list = list.filter((s) =>
+      studentName(s).toLowerCase().includes(q) ||
+      (s.student_number || "").toLowerCase().includes(q));
+  }
   if (classFilter) {
     list = list.filter((s) => String(s.class_id) === classFilter);
   } else if (cohortFilter) {
@@ -1862,6 +1872,20 @@ function renderStatReport(report, data) {
             <td class="${r.tekorten > 0 ? "val-onv" : ""}">${r.tekorten}</td>
           </tr>`).join("")}</tbody>
       </table>` : `<p class="hint">Geen beoordelingen voor dit vak.</p>`;
+  } else if (report === "signalering") {
+    title = "Signalering";
+    table = data.report_rows.length ? `
+      <table class="list">
+        <thead><tr><th>Student</th><th>Nr.</th><th>Klas</th><th>Tekorten</th><th>Aanwezigheid</th><th>SBU keuzedelen</th><th>Signalen</th></tr></thead>
+        <tbody>${data.report_rows.map((r) => `
+          <tr>
+            <td>${esc(r.student)}</td><td>${esc(r.student_number || "")}</td><td>${esc(r.class)}</td>
+            <td class="${r.tekorten >= 3 ? "val-onv" : ""}">${r.tekorten}</td>
+            <td class="${r.present !== null && r.present < 85 ? "val-onv" : ""}">${pct(r.present)}</td>
+            <td class="${r.sbu < 720 ? "val-onv" : "val-vol"}">${r.sbu} / 720</td>
+            <td>${r.reasons.map((x) => esc(x)).join(", ")}</td>
+          </tr>`).join("")}</tbody>
+      </table>` : `<p class="hint">Geen studenten met signalen in deze selectie.</p>`;
   } else if (report === "resultaten") {
     title = "Alle bewaarde resultaten per student";
     table = data.report_rows.length ? data.report_rows.map((r) => `
@@ -2012,10 +2036,11 @@ function renderStatOverview() {
   // Vakken
   html += `<h3>Vakken</h3>` + (data.subjects.length ? `
     <table class="list sortable" id="stat-subjects-table">
-      <thead><tr>${statTh("stat-subjects-table", "name", "Vak")}${statTh("stat-subjects-table", "count", "Beoordelingen")}${statTh("stat-subjects-table", "avg", "Gemiddeld cijfer")}${statTh("stat-subjects-table", "vol", "Voldoendes")}${statTh("stat-subjects-table", "onv", "Onvoldoendes")}${statTh("stat-subjects-table", "vs", "VS")}${statTh("stat-subjects-table", "tekorten", "Tekorten")}</tr></thead>
+      <thead><tr>${statTh("stat-subjects-table", "name", "Vak")}${data.period.name === "Alle modules" ? statTh("stat-subjects-table", "modules", "Module(s)") : ""}${statTh("stat-subjects-table", "count", "Beoordelingen")}${statTh("stat-subjects-table", "avg", "Gemiddeld cijfer")}${statTh("stat-subjects-table", "vol", "Voldoendes")}${statTh("stat-subjects-table", "onv", "Onvoldoendes")}${statTh("stat-subjects-table", "vs", "VS")}${statTh("stat-subjects-table", "tekorten", "Tekorten")}</tr></thead>
       <tbody>${subjects.map((s) => `
         <tr>
           <td><a href="#" class="stat-drill" data-drill="detail" data-subject="${s.id}" title="Toon alle beoordelingen voor dit vak">${esc(s.name)}</a></td>
+          ${data.period.name === "Alle modules" ? `<td>${esc(s.modules || "")}</td>` : ""}
           <td><a href="#" class="stat-drill" data-drill="detail" data-subject="${s.id}" title="Toon alle beoordelingen voor dit vak">${s.count}</a></td><td>${avg(s.avg)}</td>
           <td class="val-vol"><a href="#" class="stat-drill" data-drill="detail" data-subject="${s.id}" data-filter="voldoendes" title="Toon de voldoendes voor dit vak">${s.vol}</a></td>
           <td class="${s.onv > 0 ? "val-onv" : ""}"><a href="#" class="stat-drill" data-drill="detail" data-subject="${s.id}" data-filter="onvoldoendes" title="Toon de onvoldoendes voor dit vak">${s.onv}</a></td>
@@ -2074,6 +2099,22 @@ for (const sel of ["#stat-cohort", "#stat-class"]) {
     refillKeepingValue("#stat-student", statStudentOptions());
   });
 }
+
+$("#stat-student-type").addEventListener("input", () => {
+  refillKeepingValue("#stat-student", statStudentOptions());
+});
+
+$("#report-student-type").addEventListener("input", () => {
+  const rs = $("#report-student");
+  const prev = rs.value;
+  const rq = ($("#report-student-type").value || "").trim().toLowerCase();
+  const rlist = rq ? students.filter((s) =>
+    studentName(s).toLowerCase().includes(rq) ||
+    (s.student_number || "").toLowerCase().includes(rq)) : students;
+  rs.innerHTML = `<option value="">Alle studenten</option>` +
+    rlist.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join("");
+  if (prev && [...rs.options].some((o) => o.value === prev)) rs.value = prev;
+});
 
 // ---------- Archief ----------
 let archiveData = {};   // tabel-id -> rijen
