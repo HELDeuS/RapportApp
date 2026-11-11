@@ -75,13 +75,13 @@ const IMPORT_TEMPLATES = {
   },
   studenten: {
     file: "voorbeeld-studenten.csv",
-    text: "Studentnummer,Voornaam,Tussenvoegsel,Achternaam,Email,Klas,Niveau\n"
-          + "1001,Jan,van,Jansen,jan@school.nl,IAO4A,niveau 4\n"
-          + "1002,Piet,,Pietersen,piet@school.nl,IAO3B,niveau 3\n",
+    text: "Studentnummer,Voornaam,Tussenvoegsel,Achternaam,Email,Klas\n"
+          + "1001,Jan,van,Jansen,jan@school.nl,IAO4A\n"
+          + "1002,Piet,,Pietersen,piet@school.nl,IAO3B\n",
   },
   vakken: {
     file: "voorbeeld-vakken.csv",
-    text: "Vak\nNederlands\nRekenen\nEngels\n",
+    text: "Vak,Beoordeling\nNederlands,cijfer\nRekenen,cijfer\nProjectvaardigheden,letter\nStage,vnv\n",
   },
   gebruikers: {
     file: "voorbeeld-gebruikers.csv",

@@ -1842,8 +1842,19 @@ def import_subjects():
         return jsonify({"error": "Geen data gevonden"}), 400
 
     first = rows[0][0].strip().lower()
+    header = None
     if first in ("vak", "vakken", "subject", "subjects", "vaknaam"):
+        header = rows[0]
         rows = rows[1:]
+    # Beoordelingskolom herkennen (kop of tweede kolom zonder kop).
+    atype_col = None
+    if header:
+        for i, cell in enumerate(header[1:], start=1):
+            if (cell or "").strip().lower() in ("beoordeling", "beoordelingstype", "assessment", "type"):
+                atype_col = i
+                break
+    elif len(rows[0]) > 1 and (rows[0][1] or "").strip().lower() in ASSESSMENT_TYPES:
+        atype_col = 1
 
     db = get_db()
     existing = {r["name"].strip().lower() for r in
@@ -1856,7 +1867,13 @@ def import_subjects():
         if name.lower() in existing:
             skipped += 1
             continue
-        db.execute("INSERT INTO subjects (name) VALUES (?)", (name,))
+        assessment_type = "cijfer"
+        if atype_col is not None and atype_col < len(row):
+            candidate = (row[atype_col] or "").strip().lower()
+            if candidate in ASSESSMENT_TYPES:
+                assessment_type = candidate
+        db.execute("INSERT INTO subjects (name, assessment_type) VALUES (?, ?)",
+                   (name, assessment_type))
         existing.add(name.lower())
         imported += 1
     db.commit()

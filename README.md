@@ -242,13 +242,13 @@ In het studentenoverzicht kun je rijen aanvinken (of "alles selecteren" bovenaan
 
 ### Vakken importeren
 
-CSV met per rij één vaknaam. Een kopregel zoals `Vak` wordt automatisch herkend:
+CSV met per rij één vaknaam. Een kopregel zoals `Vak` wordt automatisch herkend. Optioneel een tweede kolom `Beoordeling` met `cijfer`, `letter` of `vnv` (standaard: cijfer):
 
 ```csv
-Vak
-Nederlands
-Rekenen
-Engels
+Vak,Beoordeling
+Nederlands,cijfer
+Projectvaardigheden,letter
+Stage,vnv
 ```
 
 ## API (kort)
