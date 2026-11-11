@@ -2063,11 +2063,18 @@ def statistics():
     if err:
         return err
     period_id = request.args.get("period_id", type=int)
-    if not period_id:
+    all_periods = request.args.get("period_id") == "all"
+    if not period_id and not all_periods:
         return jsonify({"error": "period_id is verplicht"}), 400
     class_id = request.args.get("class_id", type=int)
     cohort_id = request.args.get("cohort_id", type=int)
     db = get_db()
+
+    def period_dict():
+        if all_periods:
+            return {"name": "Alle modules", "year": ""}
+        row = db.execute("SELECT * FROM periods WHERE id = ?", (period_id,)).fetchone()
+        return dict(row) if row else {"name": "?", "year": ""}
 
     # Studenten in scope (zelfde regels als rapport; mentor: alleen eigen klassen).
     if user["role"] == "mentor":
@@ -2097,32 +2104,55 @@ def statistics():
         args).fetchall()
     student_ids = [s["id"] for s in students]
 
-    # Vakken van deze module.
-    subjects = [s for s in db.execute(
-        "SELECT * FROM subjects WHERE archived = 0 AND kind = 'vak' ORDER BY name"
-    ).fetchall()
-        if period_id in {r["period_id"] for r in db.execute(
-            "SELECT period_id FROM subject_periods WHERE subject_id = ?",
-            (s["id"],)).fetchall()}]
+    # Vakken van deze module (bij 'alle modules': alle vakken).
+    if all_periods:
+        subjects = db.execute(
+            "SELECT * FROM subjects WHERE archived = 0 AND kind = 'vak' ORDER BY name"
+        ).fetchall()
+    else:
+        subjects = [s for s in db.execute(
+            "SELECT * FROM subjects WHERE archived = 0 AND kind = 'vak' ORDER BY name"
+        ).fetchall()
+            if period_id in {r["period_id"] for r in db.execute(
+                "SELECT period_id FROM subject_periods WHERE subject_id = ?",
+                (s["id"],)).fetchall()}]
     subject_ids = {s["id"] for s in subjects}
 
-    # Cijfers, aanwezigheid en SBU ophalen.
+    # Cijfers, aanwezigheid en SBU ophalen. Bij 'alle modules' wordt per
+    # (student, vak) de meest recente beoordeling gehanteerd.
     grades = {}
     if student_ids:
         ph = ",".join("?" for _ in student_ids)
-        for r in db.execute(
-            f"SELECT student_id, subject_id, value FROM grades "
-            f"WHERE period_id = ? AND student_id IN ({ph})",
-            [period_id, *student_ids]).fetchall():
-            grades[(r["student_id"], r["subject_id"])] = r["value"]
+        if all_periods:
+            for r in db.execute(
+                f"SELECT student_id, subject_id, value FROM grades "
+                f"WHERE student_id IN ({ph}) ORDER BY period_id",
+                student_ids).fetchall():
+                grades[(r["student_id"], r["subject_id"])] = r["value"]
+        else:
+            for r in db.execute(
+                f"SELECT student_id, subject_id, value FROM grades "
+                f"WHERE period_id = ? AND student_id IN ({ph})",
+                [period_id, *student_ids]).fetchall():
+                grades[(r["student_id"], r["subject_id"])] = r["value"]
     attendance = {}
     if student_ids:
         ph = ",".join("?" for _ in student_ids)
-        for r in db.execute(
-            f"SELECT student_id, present, absent_allowed, absent_unallowed "
-            f"FROM attendance WHERE period_id = ? AND student_id IN ({ph})",
-            [period_id, *student_ids]).fetchall():
-            attendance[r["student_id"]] = r
+        if all_periods:
+            for r in db.execute(
+                f"""SELECT student_id, AVG(present) AS present,
+                          AVG(absent_allowed) AS absent_allowed,
+                          AVG(absent_unallowed) AS absent_unallowed
+                   FROM attendance WHERE student_id IN ({ph})
+                   GROUP BY student_id""",
+                student_ids).fetchall():
+                attendance[r["student_id"]] = r
+        else:
+            for r in db.execute(
+                f"SELECT student_id, present, absent_allowed, absent_unallowed "
+                f"FROM attendance WHERE period_id = ? AND student_id IN ({ph})",
+                [period_id, *student_ids]).fetchall():
+                attendance[r["student_id"]] = r
     sbu = {}
     if student_ids:
         ph = ",".join("?" for _ in student_ids)
@@ -2191,7 +2221,7 @@ def statistics():
                           for (sid, suid), v in grades.items()
                           if sid == s["id"] and suid in subject_ids)
         att = attendance.get(s["id"])
-        present = att["present"] if att else None
+        present = round(att["present"], 1) if att and att["present"] is not None else None
         sbu_total = sbu.get(s["id"], 0)
         reasons = []
         if st_tekorten >= 3:
@@ -2277,8 +2307,7 @@ def statistics():
                 "tekort": int(KEUZEDEEL_SBU_DOEL - total),
                 "keuzedelen": ", ".join(names) or "(geen gekoppeld)",
             })
-        return jsonify({"period": dict(db.execute(
-            "SELECT * FROM periods WHERE id = ?", (period_id,)).fetchone()),
+        return jsonify({"period": period_dict(),
             "report_rows": rows})
     if report == "aanwezigheid":
         rows = []
@@ -2289,12 +2318,11 @@ def statistics():
             rows.append({
                 "student": s["name"], "student_number": s["student_number"],
                 "class": s["class_name"] or "",
-                "present": att["present"],
-                "absent_allowed": att["absent_allowed"],
-                "absent_unallowed": att["absent_unallowed"],
+                "present": round(att["present"], 1) if att["present"] is not None else None,
+                "absent_allowed": round(att["absent_allowed"], 1) if att["absent_allowed"] is not None else None,
+                "absent_unallowed": round(att["absent_unallowed"], 1) if att["absent_unallowed"] is not None else None,
             })
-        return jsonify({"period": dict(db.execute(
-            "SELECT * FROM periods WHERE id = ?", (period_id,)).fetchone()),
+        return jsonify({"period": period_dict(),
             "report_rows": rows})
     if report == "detail":
         subject_id = request.args.get("subject_id", type=int)
@@ -2318,8 +2346,7 @@ def statistics():
                 "class": s["class_name"] or "",
                 "value": display_value(v), "tekorten": t,
             })
-        return jsonify({"period": dict(db.execute(
-            "SELECT * FROM periods WHERE id = ?", (period_id,)).fetchone()),
+        return jsonify({"period": period_dict(),
             "subject_name": subject_row["name"] if subject_row else "?",
             "filter": flt,
             "report_rows": rows})
@@ -2342,13 +2369,11 @@ def statistics():
                     "total_tekorten": sum(f["tekorten"] for f in fails),
                     "fails": fails,
                 })
-        return jsonify({"period": dict(db.execute(
-            "SELECT * FROM periods WHERE id = ?", (period_id,)).fetchone()),
+        return jsonify({"period": period_dict(),
             "report_rows": rows})
 
     return jsonify({
-        "period": dict(db.execute("SELECT * FROM periods WHERE id = ?",
-                                  (period_id,)).fetchone()),
+        "period": period_dict(),
         "subjects": subject_stats,
         "classes": class_stats,
         "signals": signals,

@@ -1796,7 +1796,8 @@ $("#kd-table tbody").addEventListener("change", async (e) => {
 // ---------- Statistieken ----------
 function fillStatFilters() {
   refillKeepingValue("#stat-period", periods.map((p) =>
-    `<option value="${p.id}">${esc(periodLabel(p))}</option>`).join(""));
+    `<option value="${p.id}">${esc(periodLabel(p))}</option>`).join("") +
+    `<option value="all">Alle modules</option>`);
   refillKeepingValue("#stat-cohort", `<option value="">Alle cohorten</option>` +
     cohorts.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join(""));
   refillKeepingValue("#stat-class", `<option value="">Alle klassen</option>` +
