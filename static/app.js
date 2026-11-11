@@ -929,22 +929,28 @@ function renderClasses() {
       <td><button class="secondary" data-archive>Archiveren</button></td>
       <td><button class="danger" data-del>Verwijderen</button></td>
     </tr>`).join("");
-  $("#class-crebo").innerHTML = creboOptions("");
-  $("#class-leertraject").innerHTML = ltOptions("");
-  $("#lt-crebo").innerHTML = creboOptions("");
-  $("#lt-cohort").innerHTML = optList("", cohorts, "Geen cohort");
-  const prevLt = $("#lt-manage").value;
-  $("#lt-manage").innerHTML = leertrajecten.length
+  refillKeepingValue("#class-crebo", creboOptions(""));
+  refillKeepingValue("#class-leertraject", ltOptions(""));
+  refillKeepingValue("#lt-crebo", creboOptions(""));
+  refillKeepingValue("#lt-cohort", optList("", cohorts, "Geen cohort"));
+  refillKeepingValue("#lt-manage", leertrajecten.length
     ? leertrajecten.map((t) => `<option value="${t.id}">${esc(ltLabel(t))}</option>`).join("")
-    : `<option value="">(geen leertrajecten)</option>`;
-  if (prevLt && leertrajecten.some((t) => String(t.id) === prevLt)) $("#lt-manage").value = prevLt;
+    : `<option value="">(geen leertrajecten)</option>`);
   renderLtPeriods();
-  $("#crebo-manage").innerHTML = crebos.length
+  refillKeepingValue("#crebo-manage", crebos.length
     ? crebos.map((n) => `<option value="${n.id}">${esc(n.name)}</option>`).join("")
-    : `<option value="">(geen crebos)</option>`;
-  $("#cohort-manage").innerHTML = cohorts.length
+    : `<option value="">(geen crebos)</option>`);
+  refillKeepingValue("#cohort-manage", cohorts.length
     ? cohorts.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("")
-    : `<option value="">(geen cohorten)</option>`;
+    : `<option value="">(geen cohorten)</option>`);
+}
+
+function refillKeepingValue(sel, html) {
+  const el = $(sel);
+  if (!el) return;
+  const prev = el.value;
+  el.innerHTML = html;
+  if (prev && [...el.options].some((o) => o.value === prev)) el.value = prev;
 }
 
 $("#btn-add-class").addEventListener("click", async () => {
