@@ -362,3 +362,7 @@ td.tekort-2, td.tekort-3, td.tekort-4, td.tekort-5 { color: var(--tekort); font-
   max-width: 420px;
   opacity: .85;
 }
+
+/* Kolommen herschikken in cijferoverzicht */
+#grade-table thead th[data-subject] { cursor: grab; }
+#grade-table thead th[data-subject]:active { cursor: grabbing; }

@@ -161,6 +161,11 @@ CREATE TABLE IF NOT EXISTS subject_classes (
     class_id INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
     UNIQUE (subject_id, class_id)
 );
+CREATE TABLE IF NOT EXISTS subject_leertrajecten (
+    subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    leertraject_id INTEGER NOT NULL REFERENCES leertrajecten(id) ON DELETE CASCADE,
+    UNIQUE (subject_id, leertraject_id)
+);
 """
 
 
@@ -245,6 +250,16 @@ def init_db():
         tcols = [r[1] for r in db.execute(f"PRAGMA table_info({table})").fetchall()]
         if "archived" not in tcols:
             db.execute(f"ALTER TABLE {table} ADD COLUMN archived INTEGER DEFAULT 0")
+    if not db.execute("SELECT COUNT(*) FROM subject_leertrajecten").fetchone()[0]:
+        for sub_id, lt_id in db.execute(
+            """SELECT DISTINCT sc.subject_id, c.leertraject_id
+               FROM subject_classes sc
+               JOIN classes c ON c.id = sc.class_id
+               WHERE c.leertraject_id IS NOT NULL"""
+        ).fetchall():
+            db.execute(
+                "INSERT OR IGNORE INTO subject_leertrajecten "
+                "(subject_id, leertraject_id) VALUES (?, ?)", (sub_id, lt_id))
     scols = [r[1] for r in db.execute("PRAGMA table_info(subjects)").fetchall()]
     if "assessment_type" not in scols:
         db.execute("ALTER TABLE subjects ADD COLUMN assessment_type TEXT DEFAULT 'cijfer'")
@@ -509,7 +524,8 @@ def admin_reset():
     if admin:
         keep.add(admin["id"])
     for table in ("grades", "attendance", "notes", "subject_periods",
-                 "subject_classes", "leertraject_periods", "students", "subjects",
+                 "subject_classes", "subject_leertrajecten", "leertraject_periods",
+                 "students", "subjects",
                  "periods", "classes", "cohorts", "crebos", "leertrajecten"):
         db.execute(f"DELETE FROM {table}")
     db.execute("DELETE FROM users WHERE id NOT IN (%s)" % ",".join("?" * len(keep)),
@@ -1067,9 +1083,10 @@ def subject_with_periods(db, subject_id):
             (subject_id,),
         ).fetchall()
     ]
-    result["class_ids"] = [
-        r["class_id"] for r in db.execute(
-            "SELECT class_id FROM subject_classes WHERE subject_id = ? ORDER BY class_id",
+    result["leertraject_ids"] = [
+        r["leertraject_id"] for r in db.execute(
+            "SELECT leertraject_id FROM subject_leertrajecten "
+            "WHERE subject_id = ? ORDER BY leertraject_id",
             (subject_id,),
         ).fetchall()
     ]
@@ -1088,7 +1105,7 @@ def subjects_collection():
         if not name:
             return jsonify({"error": "Naam is verplicht"}), 400
         period_ids = data.get("period_ids") or []
-        class_ids = data.get("class_ids") or []
+        leertraject_ids = data.get("leertraject_ids") or []
         assessment_type = data.get("assessment_type") or "cijfer"
         if assessment_type not in ASSESSMENT_TYPES:
             return jsonify({"error": "Onbekend beoordelingstype"}), 400
@@ -1102,10 +1119,11 @@ def subjects_collection():
                 "INSERT OR IGNORE INTO subject_periods (subject_id, period_id) VALUES (?, ?)",
                 (subject_id, pid),
             )
-        for cid in class_ids:
+        for ltid in leertraject_ids:
             db.execute(
-                "INSERT OR IGNORE INTO subject_classes (subject_id, class_id) VALUES (?, ?)",
-                (subject_id, cid),
+                "INSERT OR IGNORE INTO subject_leertrajecten "
+                "(subject_id, leertraject_id) VALUES (?, ?)",
+                (subject_id, ltid),
             )
         db.commit()
         return jsonify(subject_with_periods(db, subject_id)), 201
@@ -1136,12 +1154,14 @@ def subject_item(subject_id):
                     "INSERT OR IGNORE INTO subject_periods (subject_id, period_id) VALUES (?, ?)",
                     (subject_id, pid),
                 )
-        if "class_ids" in data:
-            db.execute("DELETE FROM subject_classes WHERE subject_id = ?", (subject_id,))
-            for cid in (data.get("class_ids") or []):
+        if "leertraject_ids" in data:
+            db.execute("DELETE FROM subject_leertrajecten WHERE subject_id = ?",
+                       (subject_id,))
+            for ltid in (data.get("leertraject_ids") or []):
                 db.execute(
-                    "INSERT OR IGNORE INTO subject_classes (subject_id, class_id) VALUES (?, ?)",
-                    (subject_id, cid),
+                    "INSERT OR IGNORE INTO subject_leertrajecten "
+                    "(subject_id, leertraject_id) VALUES (?, ?)",
+                    (subject_id, ltid),
                 )
         if "assessment_type" in data:
             assessment_type = data.get("assessment_type") or "cijfer"
@@ -1802,9 +1822,16 @@ def report():
                 if period_id in subject_period_map.get(s["id"], set())]
     # Vak-klasse-koppeling: alleen vakken waarvan de klas is aangevinkt.
     # Bepaal per student de relevante klas (of de geselecteerde klas van het rapport).
-    subject_class_map = {}
-    for r in db.execute("SELECT subject_id, class_id FROM subject_classes").fetchall():
-        subject_class_map.setdefault(r["subject_id"], set()).add(r["class_id"])
+    subject_lt_map = {}
+    for r in db.execute(
+        "SELECT subject_id, leertraject_id FROM subject_leertrajecten"
+    ).fetchall():
+        subject_lt_map.setdefault(r["subject_id"], set()).add(r["leertraject_id"])
+    class_lt_map = {}
+    for r in db.execute(
+        "SELECT id, leertraject_id FROM classes WHERE leertraject_id IS NOT NULL"
+    ).fetchall():
+        class_lt_map[r["id"]] = r["leertraject_id"]
     class_map = {}
     for r in db.execute(
         """SELECT st.id AS sid, c.name AS cname, n.name AS ccrebo
@@ -1851,10 +1878,12 @@ def report():
         student_class = s["class_id"] if "class_id" in s.keys() else None
         if student_class is None and class_id:
             student_class = class_id
+        student_lt = (class_lt_map.get(student_class)
+                      if student_class is not None else None)
         for sub in subjects:
-            if student_class is not None:
-                allowed = subject_class_map.get(sub["id"], set())
-                if allowed and student_class not in allowed:
+            if student_lt is not None:
+                allowed = subject_lt_map.get(sub["id"], set())
+                if allowed and student_lt not in allowed:
                     continue
             value = grades.get((s["id"], sub["id"]))
             if value is None:

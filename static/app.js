@@ -378,9 +378,11 @@ function visibleStudents() {
 function subjectsForPeriod() {
   if (!currentPeriod) return subjects;
   const classId = +($("#grade-class").value || 0) || null;
+  const cls = classes.find((x) => String(x.id) === String(classId));
+  const ltId = cls ? cls.leertraject_id : null;
   return subjects.filter((s) =>
     (s.period_ids || []).includes(currentPeriod) &&
-    (!classId || !(s.class_ids || []).length || s.class_ids.includes(classId))
+    (!ltId || !(s.leertraject_ids || []).length || s.leertraject_ids.includes(ltId))
   );
 }
 
@@ -399,6 +401,21 @@ async function loadGrades() {
 }
 
 // ---------- Cijfermatrix ----------
+function gradeColumnOrder() {
+  try { return JSON.parse(localStorage.getItem("rapportapp-grade-order") || "[]"); }
+  catch { return []; }
+}
+
+function orderGradeColumns(list) {
+  const order = gradeColumnOrder();
+  if (!order.length) return list;
+  const pos = new Map(order.map((id, i) => [id, i]));
+  return [...list].sort((a, b) =>
+    (pos.get(a.id) ?? 1e9) - (pos.get(b.id) ?? 1e9));
+}
+
+let dragSubjectId = null;
+
 function renderGradeTable() {
   const thead = $("#grade-table thead");
   const tbody = $("#grade-table tbody");
@@ -407,10 +424,10 @@ function renderGradeTable() {
     tbody.innerHTML = `<tr><td>Voeg eerst ${subjects.length ? "studenten" : "vakken"} toe.</td></tr>`;
     return;
   }
-  const periodSubjects = subjectsForPeriod();
+  const periodSubjects = orderGradeColumns(subjectsForPeriod());
   const typeShort = { cijfer: "1-10", letter: "V/G/O/VS", vnv: "V/NV" };
   thead.innerHTML = `<tr><th data-key="name">Student</th>` +
-    periodSubjects.map((s) => `<th title="Beoordeling: ${typeShort[s.assessment_type] || "1-10"}">${esc(s.name)}<br><small>${typeShort[s.assessment_type] || "1-10"}</small></th>`).join("") +
+    periodSubjects.map((s) => `<th draggable="true" data-subject="${s.id}" title="Beoordeling: ${typeShort[s.assessment_type] || "1-10"} — sleep om te herschikken">${esc(s.name)}<br><small>${typeShort[s.assessment_type] || "1-10"}</small></th>`).join("") +
     `<th title="Aanwezigheid">Aanw. %</th>` +
     `<th title="Geoorloofd afwezig">Geoorl. afw. %</th>` +
     `<th title="Ongeoorloofd afwezig">Ongeoorl. afw. %</th>` +
@@ -557,6 +574,34 @@ function updateTotals() {
     cell.textContent = total;
   }
 }
+
+// Kolommen in het cijferoverzicht herschikken door te slepen.
+$("#grade-table thead").addEventListener("dragstart", (e) => {
+  const th = e.target.closest("th[data-subject]");
+  if (!th) return;
+  dragSubjectId = +th.dataset.subject;
+  e.dataTransfer.effectAllowed = "move";
+});
+$("#grade-table thead").addEventListener("dragover", (e) => {
+  if (dragSubjectId !== null && e.target.closest("th[data-subject]")) e.preventDefault();
+});
+$("#grade-table thead").addEventListener("drop", (e) => {
+  const th = e.target.closest("th[data-subject]");
+  if (!th || dragSubjectId === null) return;
+  e.preventDefault();
+  const targetId = +th.dataset.subject;
+  const visible = orderGradeColumns(subjectsForPeriod()).map((s) => s.id);
+  const from = visible.indexOf(dragSubjectId);
+  if (from !== -1 && targetId !== dragSubjectId) {
+    visible.splice(from, 1);
+    const to = visible.indexOf(targetId);
+    visible.splice(to === -1 ? visible.length : to, 0, dragSubjectId);
+    localStorage.setItem("rapportapp-grade-order", JSON.stringify(visible));
+    renderGradeTable();
+  }
+  dragSubjectId = null;
+});
+$("#grade-table thead").addEventListener("dragend", () => { dragSubjectId = null; });
 
 $("#grade-period").addEventListener("change", async (e) => {
   currentPeriod = +e.target.value;
@@ -1162,22 +1207,22 @@ function renderSubjects() {
     const y = p.year || "Zonder studiejaar";
     (years[y] = years[y] || []).push(p);
   }
-  const crebos = {};
-  for (const c of classes) {
-    const n = c.crebo || "Zonder crebo";
-    (crebos[n] = crebos[n] || []).push(c);
+  const creboGroups = {};
+  for (const t of leertrajecten) {
+    const n = t.crebo || "Zonder crebo";
+    (creboGroups[n] = creboGroups[n] || []).push(t);
   }
-  const classChecks = (s) => Object.entries(crebos).map(([niveau, cls]) => {
-    const checkedCount = cls.filter((c) => (s.class_ids || []).includes(c.id)).length;
+  const ltChecks = (s) => Object.entries(creboGroups).map(([crebo, lts]) => {
+    const checkedCount = lts.filter((t) => (s.leertraject_ids || []).includes(t.id)).length;
     const anyChecked = checkedCount > 0;
-    const allChecked = checkedCount === cls.length;
+    const allChecked = checkedCount === lts.length;
     return `
       <details class="year-group"${anyChecked ? " open" : ""}>
-        <summary>${esc(niveau)}${anyChecked ? ` <span class="badge">${checkedCount}</span>` : ""}</summary>
+        <summary>${esc(crebo)}${anyChecked ? ` <span class="badge">${checkedCount}</span>` : ""}</summary>
         <div class="year-modules">
-          <label class="check check-all"><input type="checkbox" data-classgroup="1"${allChecked ? " checked" : ""}> <em>Heel crebo</em></label>
-          ${cls.map((c) => `
-          <label class="check"><input type="checkbox" data-class="${c.id}"${(s.class_ids || []).includes(c.id) ? " checked" : ""}> ${esc(c.name)}</label>`).join("")}
+          <label class="check check-all"><input type="checkbox" data-ltgroup="1"${allChecked ? " checked" : ""}> <em>Heel crebo</em></label>
+          ${lts.map((t) => `
+          <label class="check"><input type="checkbox" data-lt="${t.id}"${(s.leertraject_ids || []).includes(t.id) ? " checked" : ""}> ${esc(ltLabel(t))}</label>`).join("")}
         </div>
       </details>`;
   }).join("");
@@ -1201,7 +1246,7 @@ function renderSubjects() {
         <option value="vnv"${s.assessment_type === "vnv" ? " selected" : ""}>Voldaan / niet voldaan (V/NV)</option>
       </select></td>
       <td class="period-checks">${checks(s)}</td>
-      <td class="period-checks">${classChecks(s)}</td>
+      <td class="period-checks">${ltChecks(s)}</td>
       <td><button class="secondary" data-archive>Archiveren</button></td>
       <td><button class="danger" data-del>Verwijderen</button></td>
     </tr>`).join("");
@@ -1224,26 +1269,26 @@ $("#btn-add-subject").addEventListener("click", async () => {
 $("#subjects-table tbody").addEventListener("change", async (e) => {
   const tr = e.target.closest("tr");
   const id = tr.dataset.id;
-  if (e.target.dataset.classgroup !== undefined) {
+  if (e.target.dataset.ltgroup !== undefined) {
     const group = e.target.closest(".year-modules");
-    group.querySelectorAll("input[data-class]").forEach((cb) => {
+    group.querySelectorAll("input[data-lt]").forEach((cb) => {
       cb.checked = e.target.checked;
     });
   }
-  if (e.target.dataset.period !== undefined || e.target.dataset.class !== undefined ||
-      e.target.dataset.classgroup !== undefined) {
+  if (e.target.dataset.period !== undefined || e.target.dataset.lt !== undefined ||
+      e.target.dataset.ltgroup !== undefined) {
     const periodIds = [...tr.querySelectorAll("input[data-period]:checked")]
       .map((c) => +c.dataset.period);
-    const classIds = [...tr.querySelectorAll("input[data-class]:checked")]
-      .map((c) => +c.dataset.class);
+    const ltIds = [...tr.querySelectorAll("input[data-lt]:checked")]
+      .map((c) => +c.dataset.lt);
     try {
       await api(`/api/subjects/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ period_ids: periodIds, class_ids: classIds }),
+        body: JSON.stringify({ period_ids: periodIds, leertraject_ids: ltIds }),
       });
       const s = subjects.find((x) => x.id === +id);
-      if (s) { s.period_ids = periodIds; s.class_ids = classIds; }
+      if (s) { s.period_ids = periodIds; s.leertraject_ids = ltIds; }
       renderSubjects();
       renderGradeTable();
     } catch (err) {
