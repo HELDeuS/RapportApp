@@ -523,8 +523,8 @@ function renderGradeTable() {
       attCell("present", "att-present") +
       attCell("absent_allowed", "att-allowed") +
       attCell("absent_unallowed", "att-unallowed") +
-      `<td><input class="cell note-cell" data-note="comment" data-sid="${st.id}" value="${esc((notes[st.id] || {}).comment || "")}"${attDis}></td>` +
-      `<td><input class="cell note-cell" data-note="teacher_comment" data-sid="${st.id}" value="${esc((notes[st.id] || {}).teacher_comment || "")}"${attDis}></td>` +
+      `<td><input class="cell note-cell note-open" data-note="comment" data-sid="${st.id}" value="${esc((notes[st.id] || {}).comment || "")}" title="Klik om te bewerken" readonly${attDis}></td>` +
+      `<td><input class="cell note-cell note-open" data-note="teacher_comment" data-sid="${st.id}" value="${esc((notes[st.id] || {}).teacher_comment || "")}" title="Klik om te bewerken" readonly${attDis}></td>` +
       `<td class="total" data-total="${st.id}" data-name="${esc(st.name)}">${total}</td></tr>`;
   }).join("");
 
@@ -599,6 +599,63 @@ async function saveNote(inp) {
     alert(e.message);
   }
 }
+
+let noteEdit = null;
+
+function openNoteDialog(sid, field) {
+  if (!maySetAttendanceNotes()) return;
+  noteEdit = { sid, field };
+  const st = students.find((s) => s.id === sid);
+  const label = field === "comment" ? "Opmerkingen" : "Opmerking docenten";
+  $("#note-dialog-title").textContent = `${label} \u2014 ${st ? studentName(st) : ""}`;
+  $("#note-dialog-area").value = (notes[sid] || {})[field] || "";
+  $("#note-dialog").classList.remove("hidden");
+  $("#note-dialog-area").focus();
+}
+
+function closeNoteDialog() {
+  $("#note-dialog").classList.add("hidden");
+  noteEdit = null;
+}
+
+$("#grade-table tbody").addEventListener("click", (e) => {
+  const inp = e.target.closest("input.note-open");
+  if (!inp || inp.disabled) return;
+  openNoteDialog(+inp.dataset.sid, inp.dataset.note);
+});
+
+$("#btn-note-save").addEventListener("click", async () => {
+  if (!noteEdit) return;
+  const { sid, field } = noteEdit;
+  const cur = notes[sid] || { comment: "", teacher_comment: "" };
+  const value = $("#note-dialog-area").value;
+  const payload = {
+    student_id: sid,
+    period_id: currentPeriod,
+    comment: field === "comment" ? value : (cur.comment || ""),
+    teacher_comment: field === "teacher_comment" ? value : (cur.teacher_comment || ""),
+  };
+  try {
+    await api("/api/notes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    notes[sid] = { comment: payload.comment, teacher_comment: payload.teacher_comment };
+    closeNoteDialog();
+    renderGradeTable();
+  } catch (err) {
+    alert("Opslaan mislukt: " + err.message);
+  }
+});
+
+$("#btn-note-cancel").addEventListener("click", closeNoteDialog);
+$("#note-dialog").addEventListener("click", (e) => {
+  if (e.target.id === "note-dialog") closeNoteDialog();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && noteEdit) closeNoteDialog();
+});
 
 async function saveAttendance(inp) {
   const sid = +inp.dataset.sid;

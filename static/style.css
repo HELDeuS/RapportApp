@@ -406,3 +406,20 @@ td.tekort-2, td.tekort-3, td.tekort-4, td.tekort-5 { color: var(--tekort); font-
   text-underline-offset: 2px;
 }
 .stat-drill:hover { color: var(--accent); }
+
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, .45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.note-dialog-box { width: min(560px, 90vw); }
+.note-dialog-box textarea {
+  font-family: inherit;
+  font-size: 1rem;
+  resize: vertical;
+}
+input.note-open { cursor: pointer; }
