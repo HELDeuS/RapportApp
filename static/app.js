@@ -1588,10 +1588,10 @@ function renderReportCards(data, periodOverride) {
       <div class="report-head">
         <div class="report-logo"></div>
         <div class="report-head-text">
-          <h2>Studierapport</h2>
+          <h2>Rapport</h2>
           <div class="report-school">MBO ICT-opleiding</div>
         </div>
-        <div class="report-head-module">Module<br><strong>${moduleLabel}</strong></div>
+        <div class="report-head-module"><strong>Module</strong><br>${moduleLabel}</div>
       </div>
       <table class="report-info">
         <tbody>
