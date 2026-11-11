@@ -387,3 +387,15 @@ td.tekort-2, td.tekort-3, td.tekort-4, td.tekort-5 { color: var(--tekort); font-
 
 /* Template-links bij CSV-import */
 .template-link { font-size: .85rem; color: var(--accent); }
+
+.stat-module-head { margin: 14px 0 4px; font-weight: 700; }
+.badge-outside {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: .75rem;
+  font-weight: 700;
+  background: rgba(200, 140, 0, .25);
+  color: var(--onv, #b45309);
+  cursor: help;
+}

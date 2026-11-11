@@ -1764,6 +1764,25 @@ function renderStatReport(report, data) {
             <td class="${r.tekorten > 0 ? "val-onv" : ""}">${r.tekorten}</td>
           </tr>`).join("")}</tbody>
       </table>` : `<p class="hint">Geen beoordelingen voor dit vak.</p>`;
+  } else if (report === "resultaten") {
+    title = "Alle bewaarde resultaten per student";
+    table = data.report_rows.length ? data.report_rows.map((r) => `
+      <h3>${esc(r.student)}${r.student_number ? ` (nr. ${esc(r.student_number)})` : ""}${r.class ? ` &mdash; ${esc(r.class)}` : ""}</h3>
+      ${r.modules.map((m) => `
+        <p class="stat-module-head">${esc(m.period_name)}${m.period_year ? ` (${esc(m.period_year)})` : ""}
+          ${m.in_traject ? "" : ` <span class="badge-outside" title="Deze module zit niet in het huidige leertraject van de student">buiten huidig leertraject</span>`}
+          ${m.present !== null && m.present !== undefined ? ` &mdash; aanwezigheid ${m.present}%` : ""}
+        </p>
+        <table class="list">
+          <thead><tr><th>Vak</th><th>Beoordeling</th><th>Tekorten</th></tr></thead>
+          <tbody>${m.entries.map((e) => `
+            <tr>
+              <td>${esc(e.subject)}</td>
+              <td class="${e.tekorten > 0 ? "val-onv" : (e.value === "VS" ? "val-vs" : "val-vol")}">${esc(e.value)}</td>
+              <td class="${e.tekorten > 0 ? "val-onv" : ""}">${e.tekorten}</td>
+            </tr>`).join("")}</tbody>
+        </table>`).join("")}`).join("")
+      : `<p class="hint">Geen bewaarde resultaten in deze selectie.</p>`;
   } else if (report === "keuzedelen") {
     title = "Missende keuzedelen (minder dan 720 SBU gekoppeld)";
     table = data.report_rows.length ? `
@@ -1802,7 +1821,10 @@ function renderStatReport(report, data) {
           </tr>`).join("")}</tbody>
       </table>` : `<p class="hint">Geen onvoldoendes in deze selectie.</p>`;
   }
-  $("#stat-output").innerHTML = `<h2>${esc(title)} — ${esc(periodLabel(data.period))}</h2>` + table +
+  const header = report === "resultaten"
+    ? `<h2>${esc(title)}</h2>`
+    : `<h2>${esc(title)} — ${esc(periodLabel(data.period))}</h2>`;
+  $("#stat-output").innerHTML = header + table +
     `<p><a href="#" id="stat-back">&larr; Terug naar het overzicht</a></p>`;
   const back = $("#stat-back");
   if (back) back.addEventListener("click", (e) => {

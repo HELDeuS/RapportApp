@@ -2213,6 +2213,53 @@ def statistics():
 
     # Specifieke rapporten op verzoek.
     report = request.args.get("report", "")
+    if report == "resultaten":
+        period_lts_map = {}
+        for r in db.execute(
+            "SELECT period_id, leertraject_id FROM leertraject_periods"
+        ).fetchall():
+            period_lts_map.setdefault(r["period_id"], set()).add(r["leertraject_id"])
+        subj_names = {r["id"]: r["name"] for r in db.execute(
+            "SELECT id, name FROM subjects").fetchall()}
+        period_info = {r["id"]: dict(r) for r in db.execute(
+            "SELECT id, name, year FROM periods").fetchall()}
+        rows = []
+        for s in students:
+            st_grades = db.execute(
+                """SELECT period_id, subject_id, value FROM grades
+                   WHERE student_id = ? ORDER BY period_id, subject_id""",
+                (s["id"],)).fetchall()
+            if not st_grades:
+                continue
+            st_att = {r["period_id"]: r["present"] for r in db.execute(
+                """SELECT period_id, present FROM attendance
+                   WHERE student_id = ?""", (s["id"],)).fetchall()}
+            by_period = {}
+            for g in st_grades:
+                by_period.setdefault(g["period_id"], []).append(g)
+            modules = []
+            for pid, gl in sorted(by_period.items()):
+                entries = [{
+                    "subject": subj_names.get(g["subject_id"], "?"),
+                    "value": display_value(g["value"]),
+                    "tekorten": tekorten_for_value(g["value"]),
+                } for g in gl]
+                info = period_info.get(pid, {})
+                modules.append({
+                    "period_id": pid,
+                    "period_name": info.get("name", "?"),
+                    "period_year": info.get("year", ""),
+                    "in_traject": (s["leertraject_id"] is None
+                                   or s["leertraject_id"] in period_lts_map.get(pid, set())),
+                    "present": st_att.get(pid),
+                    "tekorten": sum(e["tekorten"] for e in entries),
+                    "entries": entries,
+                })
+            rows.append({
+                "student": s["name"], "student_number": s["student_number"],
+                "class": s["class_name"] or "", "modules": modules,
+            })
+        return jsonify({"report_rows": rows})
     if report == "keuzedelen":
         rows = []
         for s in students:
