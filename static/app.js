@@ -1950,7 +1950,7 @@ async function showStatistics() {
       <tbody>${data.classes.map((c) => `
         <tr>
           <td><a href="#" class="stat-drill" data-drill="onvoldoendes" data-class="${c.class_id}" title="Toon de onvoldoendes in deze klas">${esc(c.class)}</a></td><td>${c.students}</td><td>${avg(c.avg)}</td>
-          <td class="${c.tekorten > 0 ? "val-onv" : ""}">${c.tekorten}</td>
+          <td class="${c.tekorten > 0 ? "val-onv" : ""}">${c.tekorten > 0 ? `<a href="#" class="stat-drill" data-drill="onvoldoendes" data-class="${c.class_id}" title="Toon de tekorten en onvoldoendes in deze klas">${c.tekorten}</a>` : c.tekorten}</td>
           <td>${String(c.tekort_per_student).replace(".", ",")}</td>
           <td>${c.vol_pct === null ? "" : c.vol_pct + "%"}</td>
           <td class="${c.attendance_avg !== null && c.attendance_avg < 85 ? "val-onv" : "val-vol"}">${pct(c.attendance_avg)}</td>
