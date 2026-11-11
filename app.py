@@ -114,7 +114,16 @@ CREATE TABLE IF NOT EXISTS students (
 CREATE TABLE IF NOT EXISTS subjects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    assessment_type TEXT DEFAULT 'cijfer'
+    assessment_type TEXT DEFAULT 'cijfer',
+    kind TEXT DEFAULT 'vak',
+    sbu REAL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS student_keuzedelen (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    grade TEXT DEFAULT '',
+    UNIQUE (student_id, subject_id)
 );
 CREATE TABLE IF NOT EXISTS periods (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -266,6 +275,12 @@ def init_db():
                 "INSERT OR IGNORE INTO subject_leertrajecten "
                 "(subject_id, leertraject_id) VALUES (?, ?)", (sub_id, lt_id))
     scols = [r[1] for r in db.execute("PRAGMA table_info(subjects)").fetchall()]
+    if "kind" not in scols:
+        db.execute("ALTER TABLE subjects ADD COLUMN kind TEXT DEFAULT 'vak'")
+        scols.append("kind")
+    if "sbu" not in scols:
+        db.execute("ALTER TABLE subjects ADD COLUMN sbu REAL DEFAULT 0")
+        scols.append("sbu")
     if "assessment_type" not in scols:
         db.execute("ALTER TABLE subjects ADD COLUMN assessment_type TEXT DEFAULT 'cijfer'")
         # Bestaande vakken met letterbeoordelingen automatisch op 'letter' zetten.
@@ -537,7 +552,7 @@ def admin_reset():
     if admin:
         keep.add(admin["id"])
     for table in ("grades", "attendance", "notes", "subject_periods",
-                 "subject_classes", "subject_leertrajecten",
+                 "subject_classes", "subject_leertrajecten", "student_keuzedelen",
                  "students", "subjects",
                  "periods", "classes", "cohorts", "crebos", "leertrajecten"):
         db.execute(f"DELETE FROM {table}")
@@ -1146,6 +1161,8 @@ def subject_with_periods(db, subject_id):
         return None
     result = dict(row)
     result["assessment_type"] = result.get("assessment_type") or "cijfer"
+    result["kind"] = result.get("kind") or "vak"
+    result["sbu"] = result.get("sbu") or 0
     result["period_ids"] = [
         r["period_id"] for r in db.execute(
             "SELECT period_id FROM subject_periods WHERE subject_id = ? ORDER BY period_id",
@@ -1160,6 +1177,95 @@ def subject_with_periods(db, subject_id):
         ).fetchall()
     ]
     return result
+
+
+# ---------------------------------------------------------------------------
+# Keuzedelen (direct gekoppeld aan studenten, met SBU)
+# ---------------------------------------------------------------------------
+
+KEUZEDEEL_SBU_DOEL = 720
+
+
+@app.route("/api/keuzedelen")
+def keuzedelen_collection():
+    """Alle keuzedelen (subjects met kind='keuzedeel')."""
+    user, err = auth_error("beheerder", "mentor", "docent", "administratie")
+    if err:
+        return err
+    db = get_db()
+    archived = 1 if request.args.get("archived") == "1" else 0
+    rows = db.execute(
+        "SELECT * FROM subjects WHERE kind = 'keuzedeel' AND archived = ? ORDER BY name",
+        (archived,)).fetchall()
+    return jsonify([subject_with_periods(db, r["id"]) for r in rows])
+
+
+@app.route("/api/students/<int:student_id>/keuzedelen", methods=["GET", "PUT"])
+def student_keuzedelen(student_id):
+    user, err = auth_error("beheerder", "mentor", "docent", "administratie")
+    if err:
+        return err
+    db = get_db()
+    student = db.execute(
+        "SELECT * FROM students WHERE id = ?", (student_id,)).fetchone()
+    if student is None:
+        return jsonify({"error": "Student bestaat niet"}), 404
+    if request.method == "PUT":
+        if user["role"] == "docent" or user["role"] == "administratie":
+            return jsonify({"error": "Alleen beheerders en mentoren kunnen keuzedelen koppelen"}), 403
+        if user["role"] == "mentor" and not mentor_owns_student(user, student):
+            return jsonify({"error": "Als mentor kun je alleen studenten van je eigen klas wijzigen"}), 403
+        data = request.get_json(force=True)
+        subject_ids = data.get("subject_ids")
+        if subject_ids is not None:
+            valid = {r["id"] for r in db.execute(
+                "SELECT id FROM subjects WHERE kind = 'keuzedeel'").fetchall()}
+            subject_ids = [sid for sid in subject_ids if sid in valid]
+            db.execute("DELETE FROM student_keuzedelen WHERE student_id = ?",
+                       (student_id,))
+            for sid in subject_ids:
+                db.execute(
+                    "INSERT OR IGNORE INTO student_keuzedelen (student_id, subject_id) "
+                    "VALUES (?, ?)", (student_id, sid))
+            db.commit()
+            audit(db, user, "keuzedelen", "student", student_id,
+                  f"{student['name']} — keuzedelen gekoppeld: {len(subject_ids)}")
+        grades_map = data.get("grades") if isinstance(data.get("grades"), dict) else None
+        if grades_map:
+            for sid_str, value in grades_map.items():
+                try:
+                    sid = int(sid_str)
+                except ValueError:
+                    continue
+                row = db.execute(
+                    """SELECT k.id, s.assessment_type FROM student_keuzedelen k
+                       JOIN subjects s ON s.id = k.subject_id
+                       WHERE k.student_id = ? AND k.subject_id = ?""",
+                    (student_id, sid)).fetchone()
+                if row is None:
+                    continue
+                try:
+                    parsed = parse_value(value, row["assessment_type"])
+                except ValueError as e:
+                    return jsonify({"error": str(e)}), 400
+                db.execute("UPDATE student_keuzedelen SET grade = ? WHERE id = ?",
+                           (parsed, row["id"]))
+            db.commit()
+            audit(db, user, "keuzedeel-cijfer", "student", student_id,
+                  f"{student['name']} — beoordeling keuzedeel opgeslagen")
+    rows = db.execute(
+        """SELECT k.subject_id, k.grade, s.name, s.sbu, s.assessment_type
+           FROM student_keuzedelen k
+           JOIN subjects s ON s.id = k.subject_id
+           WHERE k.student_id = ?
+           ORDER BY s.name""",
+        (student_id,)).fetchall()
+    total = sum(r["sbu"] or 0 for r in rows)
+    return jsonify({
+        "keuzedelen": [dict(r) for r in rows],
+        "sbu_total": total,
+        "sbu_doel": KEUZEDEEL_SBU_DOEL,
+    })
 
 
 @app.route("/api/subjects", methods=["GET", "POST"])
@@ -1178,9 +1284,16 @@ def subjects_collection():
         assessment_type = data.get("assessment_type") or "cijfer"
         if assessment_type not in ASSESSMENT_TYPES:
             return jsonify({"error": "Onbekend beoordelingstype"}), 400
+        kind = data.get("kind") or "vak"
+        if kind not in ("vak", "keuzedeel"):
+            return jsonify({"error": "Onbekend soort vak"}), 400
+        try:
+            sbu = float(data.get("sbu") or 0)
+        except (TypeError, ValueError):
+            return jsonify({"error": "SBU moet een getal zijn"}), 400
         cur = db.execute(
-            "INSERT INTO subjects (name, assessment_type) VALUES (?, ?)",
-            (name, assessment_type),
+            "INSERT INTO subjects (name, assessment_type, kind, sbu) VALUES (?, ?, ?, ?)",
+            (name, assessment_type, kind, sbu),
         )
         subject_id = cur.lastrowid
         for pid in period_ids:
@@ -1240,6 +1353,17 @@ def subject_item(subject_id):
                 return jsonify({"error": "Onbekend beoordelingstype"}), 400
             db.execute("UPDATE subjects SET assessment_type = ? WHERE id = ?",
                        (assessment_type, subject_id))
+        if "kind" in data:
+            kind = data.get("kind") or "vak"
+            if kind not in ("vak", "keuzedeel"):
+                return jsonify({"error": "Onbekend soort vak"}), 400
+            db.execute("UPDATE subjects SET kind = ? WHERE id = ?", (kind, subject_id))
+        if "sbu" in data:
+            try:
+                sbu = float(data.get("sbu") or 0)
+            except (TypeError, ValueError):
+                return jsonify({"error": "SBU moet een getal zijn"}), 400
+            db.execute("UPDATE subjects SET sbu = ? WHERE id = ?", (sbu, subject_id))
         if "archived" in data:
             db.execute("UPDATE subjects SET archived = ? WHERE id = ?",
                        (1 if data.get("archived") else 0, subject_id))
@@ -2006,6 +2130,19 @@ def report():
         note = notes_map.get(s["id"])
         if note is not None and not note["comment"] and not note["teacher_comment"]:
             note = None
+        kz_rows = db.execute(
+            """SELECT s.name, s.sbu, k.grade
+               FROM student_keuzedelen k
+               JOIN subjects s ON s.id = k.subject_id
+               WHERE k.student_id = ?
+               ORDER BY s.name""",
+            (s["id"],)).fetchall()
+        keuzedelen = [{
+            "name": r["name"],
+            "sbu": r["sbu"] or 0,
+            "value": display_value(r["grade"]) if r["grade"] else "",
+            "tekorten": tekorten_for_value(r["grade"]) if r["grade"] else 0,
+        } for r in kz_rows]
         result.append({
             "student": dict(s),
             "class": class_map.get(s["id"]),
@@ -2013,6 +2150,9 @@ def report():
             "total_tekorten": total,
             "attendance": att,
             "notes": note,
+            "keuzedelen": keuzedelen,
+            "sbu_total": sum(k["sbu"] for k in keuzedelen),
+            "sbu_doel": KEUZEDEEL_SBU_DOEL,
             "audience": audience,
         })
     return jsonify({"period": dict(period), "students": result})

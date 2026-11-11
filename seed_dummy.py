@@ -294,8 +294,31 @@ def main():
                     notes += 1
     print(f"{grades} cijfers, {atts} aanwezigheidsregistraties, {notes} opmerkingen klaar.")
 
-    # ------------------------------------------------- inlogaccounts studenten
+    # -------------------------------------------------------- keuzedelen
+    kd_specs = [
+        ("Cybersecurity basics", 120, "letter"),
+        ("Cloud fundamentals", 240, "cijfer"),
+        ("Data-analyse", 180, "cijfer"),
+        ("Digitale vaardigheden gevorderd", 360, "vnv"),
+        ("Programmeren vervolg", 240, "cijfer"),
+        ("Servicedesk", 120, "letter"),
+    ]
+    kd_ids = []
+    for name, sbu, atype in kd_specs:
+        _, body = s.post("/api/subjects", {"name": name, "kind": "keuzedeel",
+                                          "sbu": sbu, "assessment_type": atype})
+        kd_ids.append(body["id"])
+    # combinaties: meestal 720 SBU, met enkele uitzonderingen om de voortgangsbalk te demo-en
+    combos = [[3, 1, 0], [3, 4, 0], [0, 5, 1, 4], [2, 3, 0], [1, 4, 3], [3, 0, 5]]
+    linked = 0
     all_ids = [sid for _, _, ids in students_by_class for sid in ids]
+    for i, sid in enumerate(all_ids):
+        combo = combos[i % len(combos)]
+        s.put(f"/api/students/{sid}/keuzedelen", {"subject_ids": [kd_ids[j] for j in combo]})
+        linked += 1
+    print(f"Keuzedelen klaar: {len(kd_specs)} keuzedelen, {linked} studenten gekoppeld.")
+
+    # ------------------------------------------------- inlogaccounts studenten
     _, body = s.post("/api/students/bulk", {"ids": all_ids, "action": "login_on"})
     print(f"Studentaccounts: {body.get('affected', '?')}")
 

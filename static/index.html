@@ -29,6 +29,7 @@
     <button data-tab="rapport" class="tab">Rapport</button>
     <button data-tab="archief" class="tab">Archief</button>
     <button data-tab="logboek" class="tab">Logboek</button>
+    <button data-tab="keuzedelen" class="tab">Keuzedelen</button>
     <button data-tab="gebruikers" class="tab">Gebruikers</button>
     <button id="btn-theme" class="theme-toggle" title="Donker/licht thema wisselen">&#9681;</button>
     <span id="user-info" class="user-info"></span>
@@ -175,7 +176,14 @@
 <!-- Vakken -->
 <section id="tab-vakken" class="panel">
   <div class="toolbar">
-    <input id="subject-name" placeholder="Vaknaam">
+    <input id="subject-name" placeholder="Vaknaam / keuzedeel">
+    <label>Soort:
+      <select id="subject-kind">
+        <option value="vak">Vak</option>
+        <option value="keuzedeel">Keuzedeel</option>
+      </select>
+    </label>
+    <input id="subject-sbu" type="number" min="0" step="1" placeholder="SBU" style="max-width:100px" title="Studiebelastinguren (alleen voor keuzedelen)">
     <button id="btn-add-subject">Toevoegen</button>
     <input id="subject-filter" placeholder="&#9906; Zoek vak..." style="margin-left: auto;">
     <label class="file-label">Import CSV/Excel
@@ -203,6 +211,22 @@
     <tbody></tbody>
   </table>
   <div class="pager" data-table="periods-table"></div>
+</section>
+
+<!-- Keuzedelen -->
+<section id="tab-keuzedelen" class="panel">
+  <p class="hint">Elke student volgt keuzedelen ter waarde van samen <strong>720 SBU</strong>. Vink de keuzedelen aan die de student volgt; de beoordeling vul je per keuzedeel in. Keuzedelen beheer je op het tabblad Vakken (soort = Keuzedeel, met SBU-waarde).</p>
+  <div class="toolbar">
+    <label>Student:
+      <select id="kd-student"></select>
+    </label>
+    <input id="kd-student-filter" placeholder="&#9906; Filter student...">
+  </div>
+  <div id="kd-progress" class="kd-progress"></div>
+  <table class="list" id="kd-table">
+    <thead><tr><th>Keuzedeel</th><th>SBU</th><th>Gekoppeld</th><th>Beoordeling</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
 </section>
 
 <!-- Rapport -->

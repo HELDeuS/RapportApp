@@ -157,10 +157,10 @@ const ROLE_LABELS = {
 };
 
 const ROLE_TABS = {
-  beheerder: ["cijfers", "studenten", "klassen", "vakken", "periodes", "rapport", "archief", "gebruikers", "logboek"],
-  mentor: ["cijfers", "studenten", "rapport", "archief", "logboek"],
-  docent: ["cijfers", "rapport", "logboek"],
-  administratie: ["rapport", "logboek"],
+  beheerder: ["cijfers", "studenten", "klassen", "vakken", "periodes", "keuzedelen", "rapport", "archief", "gebruikers", "logboek"],
+  mentor: ["cijfers", "studenten", "keuzedelen", "rapport", "archief", "logboek"],
+  docent: ["cijfers", "keuzedelen", "rapport", "logboek"],
+  administratie: ["keuzedelen", "rapport", "logboek"],
   student: ["rapport"],
 };
 
@@ -386,6 +386,7 @@ function subjectsForPeriod() {
   const cls = classes.find((x) => String(x.id) === String(classId));
   const ltId = cls ? cls.leertraject_id : null;
   return subjects.filter((s) =>
+    (s.kind || "vak") === "vak" &&
     (s.period_ids || []).includes(currentPeriod) &&
     (!ltId || !(s.leertraject_ids || []).length || s.leertraject_ids.includes(ltId))
   );
@@ -1208,7 +1209,9 @@ function renderSubjects() {
   }).join("");
   const rows = sortRows(visible, listSort.subjects, (s, key) => s[key]);
   updateSortArrows("#subjects-table", listSort.subjects);
-  $("#subjects-table tbody").innerHTML = pageSlice("#subjects-table", rows).map((s) => `
+  $("#subjects-table tbody").innerHTML = pageSlice("#subjects-table", rows).map((s) => {
+    const isKd = (s.kind || "vak") === "keuzedeel";
+    return `
     <tr data-id="${s.id}">
       <td><input data-field="name" value="${esc(s.name)}"></td>
       <td><select data-field="assessment_type">
@@ -1216,11 +1219,13 @@ function renderSubjects() {
         <option value="letter"${s.assessment_type === "letter" ? " selected" : ""}>Letter (V/G/O/VS)</option>
         <option value="vnv"${s.assessment_type === "vnv" ? " selected" : ""}>Voldaan / niet voldaan (V/NV)</option>
       </select></td>
-      <td class="period-checks">${checks(s)}</td>
-      <td class="period-checks">${ltChecks(s)}</td>
+      ${isKd
+        ? `<td class="hint">Keuzedeel</td><td><input data-field="sbu" type="number" min="0" value="${s.sbu || 0}" style="width:80px"> SBU</td>`
+        : `<td class="period-checks">${checks(s)}</td><td class="period-checks">${ltChecks(s)}</td>`}
       <td><button class="secondary" data-archive>Archiveren</button></td>
       <td><button class="danger" data-del>Verwijderen</button></td>
-    </tr>`).join("");
+    </tr>`;
+  }).join("");
 }
 
 $("#subject-filter").addEventListener("input", () => { resetPage("#subjects-table"); renderSubjects(); });
@@ -1228,12 +1233,16 @@ $("#subject-filter").addEventListener("input", () => { resetPage("#subjects-tabl
 $("#btn-add-subject").addEventListener("click", async () => {
   const name = $("#subject-name").value.trim();
   if (!name) return;
+  const kind = $("#subject-kind").value || "vak";
+  const sbu = kind === "keuzedeel" ? +$("#subject-sbu").value || 0 : 0;
+  if (kind === "keuzedeel" && !sbu) return alert("Vul de SBU-waarde van het keuzedeel in.");
   await api("/api/subjects", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, kind, sbu }),
   });
   $("#subject-name").value = "";
+  $("#subject-sbu").value = "";
   await loadAll();
 });
 
@@ -1266,6 +1275,14 @@ $("#subjects-table tbody").addEventListener("change", async (e) => {
       alert("Opslaan van koppeling mislukt: " + err.message);
       await loadAll();
     }
+  } else if (e.target.dataset.field === "sbu") {
+    await api(`/api/subjects/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sbu: +e.target.value || 0 }),
+    });
+    const s = subjects.find((x) => x.id === +id);
+    if (s) s.sbu = +e.target.value || 0;
   } else if (e.target.dataset.field === "assessment_type") {
     await api(`/api/subjects/${id}`, {
       method: "PUT",
@@ -1404,6 +1421,22 @@ function renderReportCards(data, periodOverride) {
         ${s.notes.comment ? `<p><strong>Opmerkingen:</strong> ${esc(s.notes.comment)}</p>` : ""}
         ${audience !== "student" && s.notes.teacher_comment ? `<p><strong>Opmerking docenten:</strong> ${esc(s.notes.teacher_comment)}</p>` : ""}
       </div>` : ""}
+      ${s.keuzedelen && s.keuzedelen.length ? `
+      <div class="kd-report">
+        <h3>Keuzedelen (${s.sbu_total} van ${s.sbu_doel} SBU)</h3>
+        <table>
+          <thead><tr><th>Keuzedeel</th><th>SBU</th><th>Beoordeling</th><th>Tekorten</th></tr></thead>
+          <tbody>
+            ${s.keuzedelen.map((k) => `
+            <tr>
+              <td>${esc(k.name)}</td>
+              <td>${k.sbu}</td>
+              <td class="${k.value ? (k.value === "VS" ? "val-vs" : (k.tekorten > 0 ? "val-onv" : "val-vol")) : ""}">${esc(k.value)}</td>
+              <td>${k.tekorten}</td>
+            </tr>`).join("")}
+          </tbody>
+        </table>
+      </div>` : ""}
       ${s.entries.length ? `
       <table>
         <thead><tr><th>Vak</th><th>Beoordeling</th><th>Tekorten</th></tr></thead>
@@ -1419,6 +1452,116 @@ function renderReportCards(data, periodOverride) {
       </table>` : `<p>Geen cijfers bekend in deze module.</p>`}
     </div>`).join("");
 }
+
+// ---------- Keuzedelen ----------
+let keuzedelenList = [];   // alle keuzedeel-subjects
+let kdStudentData = null;  // data van geselecteerde student
+
+function kdStudentOptions() {
+  const q = ($("#kd-student-filter").value || "").trim().toLowerCase();
+  const visible = q ? students.filter((s) =>
+    studentName(s).toLowerCase().includes(q) ||
+    (s.student_number || "").toLowerCase().includes(q)) : students;
+  return visible.map((s) =>
+    `<option value="${s.id}">${esc(studentName(s))}${s.student_number ? ` (${esc(s.student_number)})` : ""}</option>`).join("");
+}
+
+async function loadKeuzedelenList() {
+  try {
+    keuzedelenList = await api("/api/keuzedelen");
+  } catch (err) {
+    keuzedelenList = [];
+  }
+}
+
+async function renderKeuzedelenTab() {
+  if (!keuzedelenList.length) await loadKeuzedelenList();
+  const sel = $("#kd-student");
+  const prev = sel.value;
+  sel.innerHTML = kdStudentOptions();
+  if (prev && [...sel.options].some((o) => o.value === prev)) sel.value = prev;
+  await loadKdStudent();
+}
+
+async function loadKdStudent() {
+  const id = $("#kd-student").value;
+  if (!id) { kdStudentData = null; renderKdTable(); return; }
+  try {
+    kdStudentData = await api(`/api/students/${id}/keuzedelen`);
+  } catch (err) {
+    kdStudentData = null;
+  }
+  renderKdTable();
+}
+
+function renderKdTable() {
+  const mayLink = currentUser && (currentUser.role === "beheerder" || currentUser.role === "mentor");
+  const mayGrade = mayLink || (currentUser && currentUser.role === "docent");
+  const linked = new Set((kdStudentData && kdStudentData.keuzedelen || []).map((k) => k.subject_id));
+  const grades = {};
+  (kdStudentData && kdStudentData.keuzedelen || []).forEach((k) => { grades[k.subject_id] = k.grade || ""; });
+  const typeShort = { cijfer: "1-10", letter: "V/G/O/VS", vnv: "V/NV" };
+  $("#kd-table tbody").innerHTML = keuzedelenList.length
+    ? keuzedelenList.map((k) => `
+      <tr data-id="${k.id}">
+        <td>${esc(k.name)}</td>
+        <td>${k.sbu || 0}</td>
+        <td><input type="checkbox" data-kd-link ${linked.has(k.id) ? " checked" : ""}${mayLink ? "" : " disabled"}></td>
+        <td>${linked.has(k.id)
+          ? `<input class="cell" data-kd-grade value="${esc(grades[k.id] || "")}" placeholder="${typeShort[k.assessment_type] || "1-10"}"${mayGrade ? "" : " disabled"}>`
+          : ""}</td>
+        <td></td>
+      </tr>`).join("")
+    : `<tr><td colspan="5" class="hint">Nog geen keuzedelen. Maak ze aan op het tabblad Vakken (soort = Keuzedeel).</td></tr>`;
+  const total = kdStudentData ? kdStudentData.sbu_total : 0;
+  const doel = kdStudentData ? kdStudentData.sbu_doel : 720;
+  const pct = Math.min(100, Math.round(total / doel * 100));
+  $("#kd-progress").innerHTML = !kdStudentData ? "" : `
+    <div class="kd-progress-info ${total >= doel ? "val-vol" : (total > 0 ? "val-onv" : "")}">
+      <strong>${total} van ${doel} SBU</strong> aan keuzedelen gekoppeld
+    </div>
+    <div class="kd-bar"><div class="kd-bar-fill" style="width:${pct}%"></div></div>`;
+}
+
+$("#kd-student").addEventListener("change", loadKdStudent);
+$("#kd-student-filter").addEventListener("input", renderKeuzedelenTab);
+
+$("#kd-table tbody").addEventListener("change", async (e) => {
+  const sid = $("#kd-student").value;
+  if (!sid) return;
+  if (e.target.dataset.kdLink !== undefined) {
+    const ids = [...$$("#kd-table tbody input[data-kd-link]:checked")]
+      .map((cb) => +cb.closest("tr").dataset.id);
+    try {
+      kdStudentData = await api(`/api/students/${sid}/keuzedelen`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subject_ids: ids }),
+      });
+      renderKdTable();
+    } catch (err) {
+      alert("Keuzedelen opslaan mislukt: " + err.message);
+      await loadKdStudent();
+    }
+  }
+});
+
+$("#kd-table tbody").addEventListener("change", async (e) => {
+  if (e.target.dataset.kdGrade === undefined) return;
+  const sid = $("#kd-student").value;
+  const kid = e.target.closest("tr").dataset.id;
+  try {
+    kdStudentData = await api(`/api/students/${sid}/keuzedelen`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ grades: { [kid]: e.target.value } }),
+    });
+    renderKdTable();
+  } catch (err) {
+    alert("Beoordeling opslaan mislukt: " + err.message);
+    await loadKdStudent();
+  }
+});
 
 // ---------- Archief ----------
 let archiveData = {};   // tabel-id -> rijen
@@ -1500,6 +1643,7 @@ $$(".tab").forEach((btn) => {
   btn.addEventListener("click", () => {
     if (btn.dataset.tab === "archief") renderArchive();
     if (btn.dataset.tab === "logboek") renderAuditLog();
+    if (btn.dataset.tab === "keuzedelen") renderKeuzedelenTab();
   });
 });
 
