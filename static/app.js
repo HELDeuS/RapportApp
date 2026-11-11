@@ -1683,15 +1683,65 @@ function fillStatFilters() {
 
 $("#btn-statistics").addEventListener("click", showStatistics);
 
+function renderStatReport(report, data) {
+  const pct = (n) => n === null || n === undefined ? "" : `${n}%`;
+  let title, table;
+  if (report === "keuzedelen") {
+    title = "Missende keuzedelen (minder dan 720 SBU gekoppeld)";
+    table = data.report_rows.length ? `
+      <table class="list">
+        <thead><tr><th>Student</th><th>Nr.</th><th>Klas</th><th>SBU gekoppeld</th><th>SBU tekort</th><th>Gekoppelde keuzedelen</th></tr></thead>
+        <tbody>${data.report_rows.map((r) => `
+          <tr>
+            <td>${esc(r.student)}</td><td>${esc(r.student_number || "")}</td><td>${esc(r.class)}</td>
+            <td class="val-onv">${r.sbu} / 720</td><td class="val-onv">${r.tekort}</td>
+            <td>${esc(r.keuzedelen)}</td>
+          </tr>`).join("")}</tbody>
+      </table>` : `<p class="hint">Alle studenten in deze selectie hebben 720 SBU of meer aan keuzedelen.</p>`;
+  } else if (report === "aanwezigheid") {
+    title = "Aanwezigheid onder de norm (&lt;85%)";
+    table = data.report_rows.length ? `
+      <table class="list">
+        <thead><tr><th>Student</th><th>Nr.</th><th>Klas</th><th>Aanwezigheid</th><th>Geoorloofd afwezig</th><th>Ongeoorloofd afwezig</th></tr></thead>
+        <tbody>${data.report_rows.map((r) => `
+          <tr>
+            <td>${esc(r.student)}</td><td>${esc(r.student_number || "")}</td><td>${esc(r.class)}</td>
+            <td class="val-onv">${pct(r.present)}</td>
+            <td class="att-allowed">${pct(r.absent_allowed)}</td>
+            <td class="val-onv">${pct(r.absent_unallowed)}</td>
+          </tr>`).join("")}</tbody>
+      </table>` : `<p class="hint">Geen studenten onder de aanwezigheidsnorm in deze selectie.</p>`;
+  } else {
+    title = "Onvoldoendes";
+    table = data.report_rows.length ? `
+      <table class="list">
+        <thead><tr><th>Student</th><th>Nr.</th><th>Klas</th><th>Onvoldoende vakken</th><th>Tekorten</th></tr></thead>
+        <tbody>${data.report_rows.map((r) => `
+          <tr>
+            <td>${esc(r.student)}</td><td>${esc(r.student_number || "")}</td><td>${esc(r.class)}</td>
+            <td>${r.fails.map((f) => `${esc(f.subject)} <span class="val-onv">${esc(f.value)}</span>`).join(", ")}</td>
+            <td class="val-onv">${r.total_tekorten}</td>
+          </tr>`).join("")}</tbody>
+      </table>` : `<p class="hint">Geen onvoldoendes in deze selectie.</p>`;
+  }
+  $("#stat-output").innerHTML = `<h2>${esc(title)} — ${esc(periodLabel(data.period))}</h2>` + table;
+}
+
 async function showStatistics() {
   const periodId = $("#stat-period").value;
   if (!periodId) return;
   let url = `/api/statistics?period_id=${periodId}`;
   if ($("#stat-cohort").value) url += `&cohort_id=${$("#stat-cohort").value}`;
   if ($("#stat-class").value) url += `&class_id=${$("#stat-class").value}`;
+  const report = $("#stat-report").value;
+  if (report) url += `&report=${report}`;
   const data = await api(url);
   const pct = (n) => n === null || n === undefined ? "" : `${n}%`;
   const avg = (n) => n === null || n === undefined ? "" : String(n).replace(".", ",");
+  if (data.report_rows !== undefined) {
+    renderStatReport(report, data);
+    return;
+  }
   let html = `<h2>Statistieken — ${esc(periodLabel(data.period))}</h2>`;
   // Vakken
   html += `<h3>Vakken</h3>` + (data.subjects.length ? `

@@ -2183,6 +2183,67 @@ def statistics():
                 "sbu": int(sbu_total),
             })
 
+    # Specifieke rapporten op verzoek.
+    report = request.args.get("report", "")
+    if report == "keuzedelen":
+        rows = []
+        for s in students:
+            total = sbu.get(s["id"], 0)
+            if total >= KEUZEDEEL_SBU_DOEL:
+                continue
+            names = [r["name"] for r in db.execute(
+                """SELECT s2.name FROM student_keuzedelen k
+                   JOIN subjects s2 ON s2.id = k.subject_id
+                   WHERE k.student_id = ? ORDER BY s2.name""",
+                (s["id"],)).fetchall()]
+            rows.append({
+                "student": s["name"], "student_number": s["student_number"],
+                "class": s["class_name"] or "", "sbu": int(total),
+                "tekort": int(KEUZEDEEL_SBU_DOEL - total),
+                "keuzedelen": ", ".join(names) or "(geen gekoppeld)",
+            })
+        return jsonify({"period": dict(db.execute(
+            "SELECT * FROM periods WHERE id = ?", (period_id,)).fetchone()),
+            "report_rows": rows})
+    if report == "aanwezigheid":
+        rows = []
+        for s in students:
+            att = attendance.get(s["id"])
+            if att is None or att["present"] is None or att["present"] >= 85:
+                continue
+            rows.append({
+                "student": s["name"], "student_number": s["student_number"],
+                "class": s["class_name"] or "",
+                "present": att["present"],
+                "absent_allowed": att["absent_allowed"],
+                "absent_unallowed": att["absent_unallowed"],
+            })
+        return jsonify({"period": dict(db.execute(
+            "SELECT * FROM periods WHERE id = ?", (period_id,)).fetchone()),
+            "report_rows": rows})
+    if report == "onvoldoendes":
+        rows = []
+        for s in students:
+            fails = []
+            for (sid, suid), v in grades.items():
+                if sid != s["id"] or suid not in subject_ids:
+                    continue
+                t = tekorten_for_value(v)
+                if t > 0:
+                    su_name = next((x["name"] for x in subjects if x["id"] == suid), "?")
+                    fails.append({"subject": su_name, "value": display_value(v),
+                                  "tekorten": t})
+            if fails:
+                rows.append({
+                    "student": s["name"], "student_number": s["student_number"],
+                    "class": s["class_name"] or "",
+                    "total_tekorten": sum(f["tekorten"] for f in fails),
+                    "fails": fails,
+                })
+        return jsonify({"period": dict(db.execute(
+            "SELECT * FROM periods WHERE id = ?", (period_id,)).fetchone()),
+            "report_rows": rows})
+
     return jsonify({
         "period": dict(db.execute("SELECT * FROM periods WHERE id = ?",
                                   (period_id,)).fetchone()),
