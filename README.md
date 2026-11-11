@@ -155,7 +155,6 @@ Zowel bestanden als geplakte tekst volgen dezelfde tabelvorm:
 - Eerste kolom: studentnaam of studentnummer.
 - Eerste rij: vaknamen (kopregel).
 - Cellen: cijfer (punt of komma als decimaalteken), `V`, `G`, `VS`, `O` of leeg.
-- Optie "Ontbrekende vakken/studenten aanmaken" voegt onbekende namen automatisch toe.
 
 ### Studenten invoeren
 
@@ -200,7 +199,7 @@ Engels
 - `GET/POST /api/subjects`, `PUT/DELETE /api/subjects/<id>` (met optioneel `period_ids`: modules en `class_ids`: klassen waarin het vak gegeven wordt)
 - `GET/POST /api/periods`, `PUT/DELETE /api/periods/<id>`
 - `GET /api/grades?period_id=…`, `POST /api/grades` (één cijfer zetten/wissen)
-- `POST /api/import` (bestand of tekst, form-data: `period_id`, `file` of `text`, `create_missing`)
+- `POST /api/import` (bestand of tekst, form-data: `period_id`, `file` of `text`)
 - `POST /api/import/students` (form-data: `file` — CSV/Excel met naam + optioneel studentnummer)
 - `POST /api/import/subjects` (form-data: `file` — CSV/Excel met vaknamen)
 - `GET /api/report?period_id=…&student_id=…&class_id=…&cohort_id=…` (rapport met tekorten, filterbaar op klas en cohort)

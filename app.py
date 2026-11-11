@@ -1186,7 +1186,6 @@ def import_grades():
     if err:
         return err
     period_id = request.form.get("period_id", type=int)
-    create_missing = request.form.get("create_missing") == "1"
     if not period_id:
         return jsonify({"error": "period_id is verplicht"}), 400
     file = request.files.get("file")
@@ -1226,7 +1225,6 @@ def import_grades():
     subject_ids = []
     subject_types = []
     errors = []
-    new_subjects = []
     for idx, cell in enumerate(subject_cells):
         name = (cell or "").strip()
         if not name:
@@ -1236,12 +1234,6 @@ def import_grades():
         key = name.lower()
         if key in subjects:
             subject_ids.append(subjects[key]["id"])
-        elif create_missing:
-            cur = db.execute("INSERT INTO subjects (name) VALUES (?)", (name,))
-            db.commit()
-            subjects[key] = {"id": cur.lastrowid, "name": name}
-            new_subjects.append(name)
-            subject_ids.append(cur.lastrowid)
         else:
             errors.append(f"Onbekend vak in kolom {idx + 2}: {name}")
             subject_ids.append(None)
@@ -1258,14 +1250,6 @@ def import_grades():
         ident = row[0].strip()
         key = ident.lower()
         student = (students_by_name.get(key) or students_by_number.get(key))
-        if student is None and create_missing:
-            cur = db.execute(
-                "INSERT INTO students (name, student_number) VALUES (?, ?)",
-                (ident, "" if key in students_by_number else ident),
-            )
-            db.commit()
-            student = {"id": cur.lastrowid, "name": ident, "student_number": ""}
-            students_by_name[key] = student
         if student is None:
             skipped += 1
             errors.append(f"Onbekende student: {ident}")
@@ -1290,7 +1274,7 @@ def import_grades():
             imported += 1
     db.commit()
     return jsonify({"imported": imported, "skipped": skipped,
-                   "new_subjects": new_subjects, "errors": errors[:50]})
+                   "errors": errors[:50]})
 
 
 # ---------------------------------------------------------------------------

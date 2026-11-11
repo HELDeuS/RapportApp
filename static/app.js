@@ -564,7 +564,6 @@ $("#import-file").addEventListener("change", async (e) => {
   const fd = new FormData();
   fd.append("period_id", currentPeriod);
   fd.append("file", file);
-  fd.append("create_missing", $("#create-missing").checked ? "1" : "0");
   try {
     const res = await api("/api/import", { method: "POST", body: fd });
     showImportResult(res);
@@ -588,7 +587,6 @@ $("#btn-paste-import").addEventListener("click", async () => {
   const fd = new FormData();
   fd.append("period_id", currentPeriod);
   fd.append("text", text);
-  fd.append("create_missing", $("#create-missing").checked ? "1" : "0");
   try {
     const res = await api("/api/import", { method: "POST", body: fd });
     showImportResult(res);
@@ -604,7 +602,6 @@ function showImportResult(res) {
   el.classList.remove("hidden");
   let msg = `Geïmporteerd: ${res.imported} cijfers`;
   if (res.skipped) msg += `, overgeslagen: ${res.skipped}`;
-  if (res.new_subjects && res.new_subjects.length) msg += `\nNieuwe vakken: ${res.new_subjects.join(", ")}`;
   if (res.errors && res.errors.length) msg += `\nFouten:\n` + res.errors.join("\n");
   el.textContent = msg;
 }
