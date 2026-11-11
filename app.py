@@ -1150,6 +1150,48 @@ def grade_set():
                     "tekorten": tekorten_for_value(value)})
 
 
+@app.route("/api/grades/bulk", methods=["POST"])
+def grade_bulk():
+    """Kolom-import: één vak, meerdere studenten (geplakte kolom uit Excel)."""
+    user, err = auth_error("beheerder", "docent")
+    if err:
+        return err
+    data = request.get_json(force=True)
+    subject_id = data.get("subject_id")
+    period_id = data.get("period_id")
+    entries = data.get("entries") or []
+    if not (subject_id and period_id):
+        return jsonify({"error": "subject_id en period_id zijn verplicht"}), 400
+    db = get_db()
+    subject = db.execute(
+        "SELECT assessment_type, name FROM subjects WHERE id = ?", (subject_id,)
+    ).fetchone()
+    if subject is None:
+        return jsonify({"error": "Onbekend vak"}), 400
+    imported, errors = 0, []
+    for entry in entries:
+        student_id = entry.get("student_id")
+        if not student_id:
+            continue
+        try:
+            value = parse_value(entry.get("value"), subject["assessment_type"])
+        except ValueError as e:
+            errors.append(str(e))
+            continue
+        if value == "":
+            continue
+        db.execute(
+            """INSERT INTO grades (student_id, subject_id, period_id, value)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT (student_id, subject_id, period_id)
+               DO UPDATE SET value = excluded.value""",
+            (student_id, subject_id, period_id, value),
+        )
+        imported += 1
+    db.commit()
+    return jsonify({"ok": True, "imported": imported, "errors": errors[:50]})
+
+
 # ---------------------------------------------------------------------------
 # Bulk import (CSV / Excel file or pasted TSV block)
 # ---------------------------------------------------------------------------

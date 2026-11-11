@@ -55,7 +55,17 @@
 
   <div id="paste-dialog" class="dialog hidden">
     <h3>Plak hier cijfers uit Excel</h3>
-    <p>Eerste kolom = studentnaam of nummer, volgende kolommen = vakken (met kopregel, zoals in Excel geselecteerd).</p>
+    <div class="toolbar">
+      <label><input type="radio" name="paste-mode" value="rows" checked> Rijen (studenten per rij)</label>
+      <label><input type="radio" name="paste-mode" value="column"> Kolom (&eacute;&eacute;n vak)</label>
+    </div>
+    <p id="paste-rows-hint">Eerste kolom = studentnaam of nummer, volgende kolommen = vakken (met kopregel, zoals in Excel geselecteerd).</p>
+    <div id="paste-column-controls" class="hidden">
+      <p>Kies het vak en plak de kolom met cijfers. Zonder naam/nummer in de eerste kolom worden de cijfers op volgorde toegekend aan de studenten van de geselecteerde klas (zelfde volgorde als het cijferoverzicht).</p>
+      <label>Vak:
+        <select id="paste-subject"></select>
+      </label>
+    </div>
     <textarea id="paste-area" rows="8" placeholder="Naam&#9;Nederlands&#9;Rekenen&#10;Jan&#9;7,5&#9;VS&#10;Piet&#9;O&#9;5,2"></textarea>
     <div class="dialog-actions">
       <button id="btn-paste-import">Importeren</button>

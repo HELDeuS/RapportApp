@@ -156,6 +156,10 @@ Zowel bestanden als geplakte tekst volgen dezelfde tabelvorm:
 - Eerste rij: vaknamen (kopregel).
 - Cellen: cijfer (punt of komma als decimaalteken), `V`, `G`, `VS`, `O` of leeg.
 
+### Kolom plakken (één vak)
+
+Bij "Plakken uit Excel" kun je ook de modus **Kolom (één vak)** kiezen: selecteer het vak, plak één kolom cijfers en de cijfers worden toegekend aan de studenten van de geselecteerde klas, in dezelfde volgorde als het cijferoverzicht. Je kunt per regel ook een naam of studentnummer voor het cijfer zetten (gescheiden met een tab of `;`), dan is de volgorde niet belangrijk. Onbekende studenten en ongeldige waarden worden als fout gemeld en overgeslagen.
+
 ### Studenten invoeren
 
 Handmatig via het tabblad Studenten met de velden **studentnummer, voornaam, tussenvoegsel (optioneel), achternaam en e-mailadres** (met * gemarkeerd = verplicht). De weergavenaam wordt automatisch samengesteld (bijv. "Jan van Jansen") en bijgewijzigd als een naamdeel verandert.

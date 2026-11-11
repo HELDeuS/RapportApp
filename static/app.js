@@ -575,20 +575,88 @@ $("#import-file").addEventListener("change", async (e) => {
 });
 
 // ---------- Import: plakken ----------
+function pasteMode() {
+  const checked = document.querySelector('input[name="paste-mode"]:checked');
+  return checked ? checked.value : "rows";
+}
+
 $("#btn-paste-open").addEventListener("click", () => {
   $("#paste-dialog").classList.remove("hidden");
   $("#paste-area").value = "";
+  const subjSel = $("#paste-subject");
+  subjSel.innerHTML = subjectsForPeriod().map((s) =>
+    `<option value="${s.id}">${esc(s.name)}</option>`).join("") ||
+    `<option value="">(geen vakken in deze module)</option>`;
+  $("#paste-area").placeholder = pasteMode() === "column"
+    ? "7,5\n6\nO\nVS\nof met naam: Jan Jansen\t7,5"
+    : "Naam\tNederlands\tRekenen\nJan\t7,5\tVS\nPiet\tO\t5,2";
   $("#paste-area").focus();
 });
+
+document.querySelectorAll('input[name="paste-mode"]').forEach((r) =>
+  r.addEventListener("change", () => {
+    const column = pasteMode() === "column";
+    $("#paste-rows-hint").classList.toggle("hidden", column);
+    $("#paste-column-controls").classList.toggle("hidden", !column);
+    $("#paste-area").placeholder = column
+      ? "7,5\n6\nO\nVS\nof met naam: Jan Jansen\t7,5"
+      : "Naam\tNederlands\tRekenen\nJan\t7,5\tVS\nPiet\tO\t5,2";
+  }));
+
 $("#btn-paste-cancel").addEventListener("click", () => $("#paste-dialog").classList.add("hidden"));
+
+function pasteColumnEntries(text) {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const roster = sortRows(visibleStudents().filter((s) => !s.archived),
+    listSort.grades, (st, key) => key === "tekorten" ? "" : studentName(st));
+  const byIdent = {};
+  for (const s of roster) {
+    byIdent[studentName(s).toLowerCase()] = s.id;
+    if (s.student_number) byIdent[s.student_number.toLowerCase()] = s.id;
+  }
+  const entries = [];
+  const errors = [];
+  let idx = 0;
+  for (const line of lines) {
+    const sep = line.includes("\t") ? "\t" : line.includes(";") ? ";" : null;
+    if (sep) {
+      const [ident, value] = [line.split(sep)[0].trim(), line.split(sep).slice(1).join(sep).trim()];
+      const sid = byIdent[ident.toLowerCase()];
+      if (!sid) { errors.push(`Onbekende student: ${ident}`); continue; }
+      entries.push({ student_id: sid, value });
+    } else {
+      const s = roster[idx++];
+      if (!s) { errors.push(`Meer cijfers dan studenten op de lijst.`); break; }
+      entries.push({ student_id: s.id, value: line });
+    }
+  }
+  return { entries, errors, rosterSize: roster.length };
+}
+
 $("#btn-paste-import").addEventListener("click", async () => {
   const text = $("#paste-area").value.trim();
   if (!text || !currentPeriod) return;
-  const fd = new FormData();
-  fd.append("period_id", currentPeriod);
-  fd.append("text", text);
   try {
-    const res = await api("/api/import", { method: "POST", body: fd });
+    let res;
+    if (pasteMode() === "column") {
+      const subjectId = +$("#paste-subject").value;
+      if (!subjectId) throw new Error("Kies eerst een vak.");
+      const { entries, errors, rosterSize } = pasteColumnEntries(text);
+      if (entries.length < rosterSize && !errors.length) {
+        errors.push(`Let op: ${rosterSize - entries.length} student(en) op de lijst hebben geen cijfer gekregen.`);
+      }
+      res = await api("/api/grades/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subject_id: subjectId, period_id: currentPeriod, entries }),
+      });
+      res.errors = [...errors, ...(res.errors || [])];
+    } else {
+      const fd = new FormData();
+      fd.append("period_id", currentPeriod);
+      fd.append("text", text);
+      res = await api("/api/import", { method: "POST", body: fd });
+    }
     showImportResult(res);
     $("#paste-dialog").classList.add("hidden");
     await loadAll();
