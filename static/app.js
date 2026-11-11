@@ -1233,16 +1233,12 @@ $("#subject-filter").addEventListener("input", () => { resetPage("#subjects-tabl
 $("#btn-add-subject").addEventListener("click", async () => {
   const name = $("#subject-name").value.trim();
   if (!name) return;
-  const kind = $("#subject-kind").value || "vak";
-  const sbu = kind === "keuzedeel" ? +$("#subject-sbu").value || 0 : 0;
-  if (kind === "keuzedeel" && !sbu) return alert("Vul de SBU-waarde van het keuzedeel in.");
   await api("/api/subjects", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, kind, sbu }),
+    body: JSON.stringify({ name }),
   });
   $("#subject-name").value = "";
-  $("#subject-sbu").value = "";
   await loadAll();
 });
 
@@ -1522,6 +1518,27 @@ function renderKdTable() {
     </div>
     <div class="kd-bar"><div class="kd-bar-fill" style="width:${pct}%"></div></div>`;
 }
+
+$("#btn-add-kd").addEventListener("click", async () => {
+  const name = $("#kd-name").value.trim();
+  const sbu = +$("#kd-sbu").value || 0;
+  if (!name) return alert("Vul een naam in voor het keuzedeel.");
+  if (!sbu) return alert("Vul de SBU-waarde van het keuzedeel in.");
+  try {
+    await api("/api/subjects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, kind: "keuzedeel", sbu,
+                             assessment_type: $("#kd-assessment").value }),
+    });
+    $("#kd-name").value = "";
+    $("#kd-sbu").value = "";
+    await loadKeuzedelenList();
+    renderKdTable();
+  } catch (err) {
+    alert("Keuzedeel toevoegen mislukt: " + err.message);
+  }
+});
 
 $("#kd-student").addEventListener("change", loadKdStudent);
 $("#kd-student-filter").addEventListener("input", renderKeuzedelenTab);

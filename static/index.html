@@ -176,14 +176,7 @@
 <!-- Vakken -->
 <section id="tab-vakken" class="panel">
   <div class="toolbar">
-    <input id="subject-name" placeholder="Vaknaam / keuzedeel">
-    <label>Soort:
-      <select id="subject-kind">
-        <option value="vak">Vak</option>
-        <option value="keuzedeel">Keuzedeel</option>
-      </select>
-    </label>
-    <input id="subject-sbu" type="number" min="0" step="1" placeholder="SBU" style="max-width:100px" title="Studiebelastinguren (alleen voor keuzedelen)">
+    <input id="subject-name" placeholder="Vaknaam">
     <button id="btn-add-subject">Toevoegen</button>
     <input id="subject-filter" placeholder="&#9906; Zoek vak..." style="margin-left: auto;">
     <label class="file-label">Import CSV/Excel
@@ -221,6 +214,19 @@
       <select id="kd-student"></select>
     </label>
     <input id="kd-student-filter" placeholder="&#9906; Filter student...">
+  </div>
+  <div class="toolbar subtoolbar">
+    <strong>Keuzedeel toevoegen:</strong>
+    <input id="kd-name" placeholder="Naam keuzedeel">
+    <input id="kd-sbu" type="number" min="0" step="1" placeholder="SBU" style="max-width:100px">
+    <label>Beoordeling:
+      <select id="kd-assessment">
+        <option value="cijfer">Cijfer (1-10)</option>
+        <option value="letter">Letter (V/G/O/VS)</option>
+        <option value="vnv">Voldaan / niet voldaan (V/NV)</option>
+      </select>
+    </label>
+    <button id="btn-add-kd">Toevoegen</button>
   </div>
   <div id="kd-progress" class="kd-progress"></div>
   <table class="list" id="kd-table">
