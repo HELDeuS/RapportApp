@@ -52,7 +52,7 @@ def auth_error(*roles):
 
 def get_db():
     if "db" not in g:
-        g.db = sqlite3.connect(DB_PATH)
+        g.db = sqlite3.connect(DB_PATH, timeout=10)
         g.db.row_factory = sqlite3.Row
         g.db.execute("PRAGMA foreign_keys = ON")
     return g.db
@@ -208,6 +208,23 @@ def init_db():
         db.execute("INSERT OR IGNORE INTO crebos (id, name) "
                    "SELECT id, name FROM niveaus")
         db.execute("DROP TABLE niveaus")
+    # FK's die nog naar de gedropte tabel 'niveaus' verwijzen omzetten naar
+    # 'crebos'; anders faalt elke INSERT/UPDATE op die tabellen met
+    # 'no such table: main.niveaus' zodra foreign_keys aan staat.
+    stale = db.execute(
+        "SELECT name, sql FROM sqlite_master WHERE type = 'table' "
+        "AND sql LIKE '%REFERENCES niveaus%'").fetchall()
+    if stale:
+        db.execute("PRAGMA writable_schema = ON")
+        for tname, sql in stale:
+            db.execute(
+                "UPDATE sqlite_master SET sql = ? WHERE type = 'table' AND name = ?",
+                (sql.replace("REFERENCES niveaus", "REFERENCES crebos"), tname))
+        db.execute("PRAGMA writable_schema = OFF")
+        db.commit()
+        db.close()
+        db = sqlite3.connect(DB_PATH)
+        db.row_factory = sqlite3.Row
     ccols = [r[1] for r in db.execute("PRAGMA table_info(classes)").fetchall()]
     if "niveau_id" in ccols and "crebo_id" not in ccols:
         db.execute("ALTER TABLE classes RENAME COLUMN niveau_id TO crebo_id")
@@ -405,6 +422,15 @@ def no_cache_static(resp):
     if resp.mimetype in ("text/html", "application/javascript", "text/css"):
         resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return resp
+
+
+@app.errorhandler(Exception)
+def unhandled_error(e):
+    from werkzeug.exceptions import HTTPException
+    if isinstance(e, HTTPException):
+        return e
+    app.logger.exception("Onverwerkte serverfout")
+    return jsonify({"error": f"{type(e).__name__}: {e}"}), 500
 
 
 # ---------------------------------------------------------------------------
