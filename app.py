@@ -82,11 +82,6 @@ CREATE TABLE IF NOT EXISTS leertrajecten (
     crebo_id INTEGER REFERENCES crebos(id) ON DELETE SET NULL,
     archived INTEGER DEFAULT 0
 );
-CREATE TABLE IF NOT EXISTS leertraject_periods (
-    leertraject_id INTEGER NOT NULL REFERENCES leertrajecten(id) ON DELETE CASCADE,
-    period_id INTEGER NOT NULL REFERENCES periods(id) ON DELETE CASCADE,
-    UNIQUE (leertraject_id, period_id)
-);
 CREATE TABLE IF NOT EXISTS classes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -524,7 +519,7 @@ def admin_reset():
     if admin:
         keep.add(admin["id"])
     for table in ("grades", "attendance", "notes", "subject_periods",
-                 "subject_classes", "subject_leertrajecten", "leertraject_periods",
+                 "subject_classes", "subject_leertrajecten",
                  "students", "subjects",
                  "periods", "classes", "cohorts", "crebos", "leertrajecten"):
         db.execute(f"DELETE FROM {table}")
@@ -736,13 +731,7 @@ def crebo_item(crebo_id):
 # ---------------------------------------------------------------------------
 
 def leertraject_with_periods(db, row):
-    result = dict(row)
-    result["period_ids"] = [
-        r["period_id"] for r in db.execute(
-            "SELECT period_id FROM leertraject_periods WHERE leertraject_id = ? "
-            "ORDER BY period_id", (row["id"],)).fetchall()
-    ]
-    return result
+    return dict(row)
 
 
 @app.route("/api/leertrajecten", methods=["GET", "POST"])
@@ -800,12 +789,6 @@ def leertraject_item(lt_id):
             sets = ", ".join(f"{k} = ?" for k in updates)
             db.execute(f"UPDATE leertrajecten SET {sets} WHERE id = ?",
                        (*updates.values(), lt_id))
-        if "period_ids" in data:
-            db.execute("DELETE FROM leertraject_periods WHERE leertraject_id = ?", (lt_id,))
-            for pid in (data.get("period_ids") or []):
-                db.execute(
-                    "INSERT OR IGNORE INTO leertraject_periods "
-                    "(leertraject_id, period_id) VALUES (?, ?)", (lt_id, pid))
         db.commit()
         row = db.execute("SELECT * FROM leertrajecten WHERE id = ?", (lt_id,)).fetchone()
         if row is None:

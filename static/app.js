@@ -290,10 +290,14 @@ async function loadAll() {
 function periodsForClass(classId) {
   if (!classId) return periods;
   const c = classes.find((x) => String(x.id) === String(classId));
-  const lt = c && c.leertraject_id
-    ? leertrajecten.find((t) => t.id === c.leertraject_id) : null;
-  if (!lt || !(lt.period_ids || []).length) return periods;
-  return periods.filter((p) => lt.period_ids.includes(p.id));
+  const ltId = c ? c.leertraject_id : null;
+  if (!ltId) return periods;
+  const visibleSubjects = subjects.filter((s) =>
+    !(s.leertraject_ids || []).length || s.leertraject_ids.includes(ltId));
+  const pids = new Set();
+  visibleSubjects.forEach((s) => (s.period_ids || []).forEach((p) => pids.add(p)));
+  const result = periods.filter((p) => pids.has(p.id));
+  return result.length ? result : periods;
 }
 
 function renderPeriodSelects() {
@@ -936,7 +940,6 @@ function renderClasses() {
   refillKeepingValue("#lt-manage", leertrajecten.length
     ? leertrajecten.map((t) => `<option value="${t.id}">${esc(ltLabel(t))}</option>`).join("")
     : `<option value="">(geen leertrajecten)</option>`);
-  renderLtPeriods();
   refillKeepingValue("#crebo-manage", crebos.length
     ? crebos.map((n) => `<option value="${n.id}">${esc(n.name)}</option>`).join("")
     : `<option value="">(geen crebos)</option>`);
@@ -1016,32 +1019,9 @@ function ltOptions(sel) {
     leertrajecten.map((t) => `<option value="${t.id}"${String(sel) === String(t.id) ? " selected" : ""}>${esc(ltLabel(t))}</option>`).join("");
 }
 
-function renderLtPeriods() {
-  const id = $("#lt-manage").value;
-  const lt = leertrajecten.find((t) => String(t.id) === String(id));
-  const wrap = $("#lt-periods");
-  if (!lt) { wrap.innerHTML = ""; return; }
-  const years = {};
-  for (const p of periods) {
-    const y = p.year || "Zonder studiejaar";
-    (years[y] = years[y] || []).push(p);
-  }
-  wrap.innerHTML = `<p class="hint">Modules van leertraject <strong>${esc(ltLabel(lt))}</strong>:</p>` +
-    Object.entries(years).map(([year, mods]) => {
-      const anyChecked = mods.some((p) => (lt.period_ids || []).includes(p.id));
-      return `
-      <details class="year-group"${anyChecked ? " open" : ""}>
-        <summary>${esc(year)}${anyChecked ? ` <span class="badge">${mods.filter((p) => (lt.period_ids || []).includes(p.id)).length}</span>` : ""}</summary>
-        <div class="year-modules">${mods.map((p) => `
-          <label class="check"><input type="checkbox" data-lt-period="${p.id}"${(lt.period_ids || []).includes(p.id) ? " checked" : ""}> ${esc(p.name)}</label>`).join("")}</div>
-      </details>`;
-    }).join("");
-}
-
 $("#lt-manage").addEventListener("change", () => {
   const lt = leertrajecten.find((t) => String(t.id) === $("#lt-manage").value);
   $("#lt-cohort").value = lt && lt.cohort_id ? lt.cohort_id : "";
-  renderLtPeriods();
 });
 
 $("#lt-cohort").addEventListener("change", async () => {
@@ -1056,22 +1036,6 @@ $("#lt-cohort").addEventListener("change", async () => {
     await loadAll();
   } catch (err) {
     alert("Startcohort opslaan mislukt: " + err.message);
-  }
-});
-
-$("#lt-periods").addEventListener("change", async (e) => {
-  const id = $("#lt-manage").value;
-  if (!id || e.target.dataset.ltPeriod === undefined) return;
-  const ids = [...$$("#lt-periods input[data-lt-period]:checked")].map((cb) => +cb.dataset.ltPeriod);
-  try {
-    await api(`/api/leertrajecten/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ period_ids: ids }),
-    });
-    await loadAll();
-  } catch (err) {
-    alert("Modules opslaan mislukt: " + err.message);
   }
 });
 
