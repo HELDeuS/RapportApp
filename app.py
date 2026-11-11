@@ -324,6 +324,23 @@ def init_db():
                  WHERE UPPER(value) IN ('V', 'G', 'O', 'VS')
                )"""
         )
+    # De crebo van een klas komt voortaan uit het leertraject; bestaande
+    # klassen met een afwijkende crebo melden zodat ze gecontroleerd kunnen
+    # worden (zichtbaar in journalctl/gunicorn-log).
+    mismatches = db.execute(
+        """SELECT c.name, cn.name, ln.name
+           FROM classes c
+           JOIN leertrajecten lt ON lt.id = c.leertraject_id
+           LEFT JOIN crebos cn ON cn.id = c.crebo_id
+           LEFT JOIN crebos ln ON ln.id = lt.crebo_id
+           WHERE c.crebo_id IS NOT NULL AND c.crebo_id != lt.crebo_id"""
+    ).fetchall()
+    if mismatches:
+        print("WAARSCHUWING: de crebo op de klas wordt niet meer gebruikt en "
+              "komt voortaan van het leertraject. Deze klassen hebben een "
+              "afwijkende crebo: " + "; ".join(
+                  f"{r[0]} (klas: {r[1]}, leertraject: {r[2]})"
+                  for r in mismatches), flush=True)
     db.commit()
     db.close()
 
@@ -769,13 +786,13 @@ def audit(db, user, action, entity, entity_id, detail):
 
 def class_with_crebo(db, class_id):
     row = db.execute(
-        """SELECT c.id, c.name, n.name AS crebo, c.crebo_id,
+        """SELECT c.id, c.name, n.name AS crebo,
                   co.name AS cohort, lt.cohort_id,
                   lt.name AS leertraject, c.leertraject_id,
                   c.mentor_id, m.username AS mentor
            FROM classes c
-           LEFT JOIN crebos n ON n.id = c.crebo_id
            LEFT JOIN leertrajecten lt ON lt.id = c.leertraject_id
+           LEFT JOIN crebos n ON n.id = lt.crebo_id
            LEFT JOIN cohorts co ON co.id = lt.cohort_id
            LEFT JOIN users m ON m.id = c.mentor_id
            WHERE c.id = ?""",
@@ -946,26 +963,25 @@ def classes_collection():
         name = (data.get("name") or "").strip()
         if not name:
             return jsonify({"error": "Naam is verplicht"}), 400
-        crebo_id = data.get("crebo_id") or None
         mentor_id = data.get("mentor_id") or None
         leertraject_id = data.get("leertraject_id") or None
         cur = db.execute(
-            "INSERT INTO classes (name, crebo_id, leertraject_id, mentor_id) "
-            "VALUES (?, ?, ?, ?)",
-            (name, crebo_id, leertraject_id, mentor_id),
+            "INSERT INTO classes (name, leertraject_id, mentor_id) "
+            "VALUES (?, ?, ?)",
+            (name, leertraject_id, mentor_id),
         )
         db.commit()
         audit(db, user, "aanmaken", "klas", cur.lastrowid, f"Klas '{name}'")
         return jsonify(class_with_crebo(db, cur.lastrowid)), 201
     archived = 1 if request.args.get("archived") == "1" else 0
     rows = db.execute(
-        """SELECT c.id, c.name, n.name AS crebo, c.crebo_id,
+        """SELECT c.id, c.name, n.name AS crebo,
                   co.name AS cohort, lt.cohort_id, c.archived,
                   lt.name AS leertraject, c.leertraject_id,
                   c.mentor_id, m.username AS mentor
            FROM classes c
-           LEFT JOIN crebos n ON n.id = c.crebo_id
            LEFT JOIN leertrajecten lt ON lt.id = c.leertraject_id
+           LEFT JOIN crebos n ON n.id = lt.crebo_id
            LEFT JOIN cohorts co ON co.id = lt.cohort_id
            LEFT JOIN users m ON m.id = c.mentor_id
            WHERE c.archived = ?
@@ -989,8 +1005,6 @@ def class_item(class_id):
             if not name:
                 return jsonify({"error": "Naam is verplicht"}), 400
             updates["name"] = name
-        if "crebo_id" in data:
-            updates["crebo_id"] = data.get("crebo_id") or None
         if "leertraject_id" in data:
             updates["leertraject_id"] = data.get("leertraject_id") or None
         if updates:
@@ -1004,7 +1018,7 @@ def class_item(class_id):
             db.execute("UPDATE classes SET archived = ? WHERE id = ?",
                        (1 if data.get("archived") else 0, class_id))
         db.commit()
-        gewijzigd = [k for k in ("name", "crebo_id", "leertraject_id",
+        gewijzigd = [k for k in ("name", "leertraject_id",
                                  "mentor_id", "archived") if k in data]
         audit(db, user, "wijzigen", "klas", class_id,
               f"Velden: {', '.join(gewijzigd)}" if gewijzigd else "")
@@ -1813,38 +1827,17 @@ def import_students():
             continue
         number = cell(row, col["number"])
         class_name = cell(row, col["class"])
-        niveau = cell(row, col["crebo"])
         if not name:
             continue
         class_id = None
         if class_name:
             key = class_name.lower()
             if key not in classes:
-                crebo_id = None
-                if niveau:
-                    db.execute("INSERT OR IGNORE INTO crebos (name) VALUES (?)",
-                               (niveau,))
-                    db.commit()
-                    crebo_id = db.execute(
-                        "SELECT id FROM crebos WHERE name = ?", (niveau,)
-                    ).fetchone()["id"]
                 cur = db.execute(
-                    "INSERT INTO classes (name, crebo_id) VALUES (?, ?)",
-                    (class_name, crebo_id),
+                    "INSERT INTO classes (name) VALUES (?)", (class_name,)
                 )
                 db.commit()
-                classes[key] = {"id": cur.lastrowid, "name": class_name,
-                                "crebo_id": crebo_id}
-            elif niveau and not classes[key].get("crebo_id"):
-                db.execute("INSERT OR IGNORE INTO crebos (name) VALUES (?)",
-                           (niveau,))
-                db.commit()
-                nrow = db.execute("SELECT id FROM crebos WHERE name = ?",
-                                  (niveau,)).fetchone()
-                db.execute("UPDATE classes SET crebo_id = ? WHERE id = ?",
-                           (nrow["id"], classes[key]["id"]))
-                db.commit()
-                classes[key]["crebo_id"] = nrow["id"]
+                classes[key] = {"id": cur.lastrowid, "name": class_name}
             class_id = classes[key]["id"]
         if name.lower() in existing:
             skipped += 1
@@ -2388,7 +2381,8 @@ def report():
         """SELECT st.id AS sid, c.name AS cname, n.name AS ccrebo
            FROM students st
            LEFT JOIN classes c ON c.id = st.class_id
-           LEFT JOIN crebos n ON n.id = c.crebo_id"""
+           LEFT JOIN leertrajecten lt ON lt.id = c.leertraject_id
+           LEFT JOIN crebos n ON n.id = lt.crebo_id"""
     ).fetchall():
         class_map[r["sid"]] = (
             {"name": r["cname"], "crebo": r["ccrebo"]} if r["cname"] else None

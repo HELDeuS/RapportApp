@@ -966,14 +966,13 @@ function renderClasses() {
   $("#classes-table tbody").innerHTML = pageSlice("#classes-table", rows).map((c) => `
     <tr data-id="${c.id}">
       <td><input data-field="name" value="${esc(c.name)}"></td>
-      <td><select data-field="crebo_id">${creboOptions(c.crebo_id)}</select></td>
+      <td title="Crebo komt van het leertraject">${esc(c.crebo || "")}</td>
       <td title="Startcohort komt van het leertraject">${esc(c.cohort || "")}</td>
       <td><select data-field="leertraject_id">${ltOptions(c.leertraject_id)}</select></td>
       ${users.length ? `<td><select data-field="mentor_id">${optList(c.mentor_id, users.filter((u) => u.role === "mentor" || u.role === "beheerder").map((u) => ({ id: u.id, name: u.username })), "Geen mentor")}</select></td>` : `<td>${esc(c.mentor || "")}</td>`}
       <td><button class="secondary" data-archive>Archiveren</button></td>
       <td><button class="danger" data-del>Verwijderen</button></td>
     </tr>`).join("");
-  refillKeepingValue("#class-crebo", creboOptions(""));
   refillKeepingValue("#class-leertraject", ltOptions(""));
   refillKeepingValue("#lt-add-crebo", creboOptions(""));
   refillKeepingValue("#lt-add-cohort", optList("", cohorts, "Geen cohort"));
@@ -1009,7 +1008,6 @@ $("#btn-add-class").addEventListener("click", async () => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name,
-      crebo_id: $("#class-crebo").value || null,
       leertraject_id: $("#class-leertraject").value || null,
     }),
   });
@@ -1161,7 +1159,7 @@ $("#btn-add-crebo").addEventListener("click", async () => {
 $("#btn-del-crebo").addEventListener("click", async () => {
   const id = $("#crebo-manage").value;
   if (!id) return;
-  if (!confirm("Crebo verwijderen? Klassen met dit crebo verliezen hun crebo.")) return;
+  if (!confirm("Crebo verwijderen? Leertrajecten met dit crebo verliezen hun crebo.")) return;
   await api(`/api/crebos/${id}`, { method: "DELETE" });
   await loadAll();
 });
