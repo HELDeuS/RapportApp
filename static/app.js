@@ -1616,16 +1616,15 @@ function renderReportCards(data, periodOverride) {
       ${s.entries.length ? `
       <h3 class="report-section">Beoordelingen</h3>
       <table class="report-grades">
-        <thead><tr><th>Vak</th><th>Beoordeling</th><th>Tekorten</th></tr></thead>
+        <thead><tr><th>Vak</th><th>Beoordeling</th></tr></thead>
         <tbody>
           ${s.entries.map((e) => `
           <tr>
             <td>${esc(e.subject)}</td>
             <td class="${e.value === "VS" ? "val-vs" : (e.tekorten > 0 ? "val-onv" : "val-vol")}">${esc(e.value)}</td>
-            <td class="${e.tekorten > 0 ? "val-onv" : ""}">${e.tekorten}</td>
           </tr>`).join("")}
         </tbody>
-        <tfoot><tr><td colspan="2">Totaal tekorten</td><td>${s.total_tekorten}</td></tr></tfoot>
+        <tfoot><tr><td>Totaal tekorten</td><td>${s.total_tekorten}</td></tr></tfoot>
       </table>` : `<p class="hint report-empty">Geen cijfers bekend in deze module.</p>`}
       ${s.attendance ? `
       <h3 class="report-section">Aanwezigheid</h3>
@@ -1640,14 +1639,13 @@ function renderReportCards(data, periodOverride) {
       ${s.keuzedelen && s.keuzedelen.length ? `
       <h3 class="report-section">Keuzedelen (${s.sbu_total} van ${s.sbu_doel} SBU)</h3>
       <table class="report-grades">
-        <thead><tr><th>Keuzedeel</th><th>SBU</th><th>Beoordeling</th><th>Tekorten</th></tr></thead>
+        <thead><tr><th>Keuzedeel</th><th>SBU</th><th>Beoordeling</th></tr></thead>
         <tbody>
           ${s.keuzedelen.map((k) => `
           <tr>
             <td>${esc(k.name)}</td>
             <td>${k.sbu}</td>
             <td class="${k.value ? (k.value === "VS" ? "val-vs" : (k.tekorten > 0 ? "val-onv" : "val-vol")) : ""}">${esc(k.value)}</td>
-            <td class="${k.tekorten > 0 ? "val-onv" : ""}">${k.tekorten}</td>
           </tr>`).join("")}
         </tbody>
       </table>` : ""}
