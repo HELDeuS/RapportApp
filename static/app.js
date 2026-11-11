@@ -26,6 +26,7 @@ let currentUser = null;
 const listSort = {
   students: { key: "name", dir: 1 },
   kdmatrix: { key: "last_name", dir: 1 },
+  kdbulk: { key: "last_name", dir: 1 },
   classes: { key: "name", dir: 1 },
   subjects: { key: "name", dir: 1 },
   periods: { key: "year", dir: 1 },
@@ -1762,6 +1763,7 @@ for (const sel of ["#kd-matrix-cohort", "#kd-matrix-class"]) {
 $("#kd-matrix-search").addEventListener("input", () => { resetPage("#kd-matrix-table"); renderKdMatrix(); });
 
 bindTableSort("#kd-matrix-table", "kdmatrix", renderKdMatrix);
+bindTableSort("#kd-bulk-table", "kdbulk", renderKdBulk);
 
 // ---------- Keuzedelen bulk-koppeling ----------
 let kdBulkData = null;
@@ -1792,6 +1794,11 @@ function renderKdBulk() {
       (s.class_name || "").toLowerCase().includes(q));
   }
   const linked = (s) => kid && Object.prototype.hasOwnProperty.call(s.grades || {}, String(kid));
+  rows = sortRows(rows, listSort.kdbulk, (s, key) =>
+    key === "kd_linked" ? (linked(s) ? "1" : "0")
+    : key === "last_name" ? studentName(s)
+    : (s[key] || ""));
+  updateSortArrows("#kd-bulk-table", listSort.kdbulk);
   $("#kd-bulk-table tbody").innerHTML = pageSlice("#kd-bulk-table", rows).map((s) => `
     <tr data-id="${s.id}">
       <td><input type="checkbox" class="kd-bulk-check" data-id="${s.id}"></td>
