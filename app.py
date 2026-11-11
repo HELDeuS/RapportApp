@@ -2445,6 +2445,54 @@ def statistics():
 
     # Specifieke rapporten op verzoek.
     report = request.args.get("report", "")
+    if report == "keuzedelen_koppelingen":
+        rows = []
+        for k in db.execute(
+            """SELECT id, name, sbu, assessment_type FROM subjects
+               WHERE archived = 0 AND kind = 'keuzedeel' ORDER BY name""").fetchall():
+            links = [dict(r) for r in db.execute(
+                """SELECT student_id, grade FROM student_keuzedelen
+                   WHERE subject_id = ?""", (k["id"],)).fetchall()]
+            links = [l for l in links if l["student_id"] in student_ids] if student_ids else []
+            values = [l["grade"] for l in links if l["grade"] not in (None, "")]
+            rows.append({
+                "id": k["id"], "name": k["name"], "sbu": k["sbu"] or 0,
+                "count": len(links),
+                "graded": len(values),
+                "vol": sum(1 for v in values if is_vol(v)),
+                "onv": sum(1 for v in values if not is_vol(v)),
+                "vs": sum(1 for v in values if v == "VS"),
+                "tekorten": sum(tekorten_for_value(v) for v in values),
+            })
+        return jsonify({"period": period_dict(), "report_rows": rows})
+    if report == "keuzedeel_studenten":
+        subject_id = request.args.get("subject_id", type=int)
+        kd_row = db.execute(
+            "SELECT name, sbu FROM subjects WHERE id = ? AND kind = 'keuzedeel'",
+            (subject_id,)).fetchone()
+        if kd_row is None:
+            return jsonify({"error": "Keuzedeel bestaat niet"}), 404
+        rows = []
+        for r in db.execute(
+            """SELECT k.student_id, k.grade, st.name, st.student_number,
+                      st.class_id FROM student_keuzedelen k
+               JOIN students st ON st.id = k.student_id
+               WHERE k.subject_id = ? ORDER BY st.name""",
+            (subject_id,)).fetchall():
+            if r["student_id"] not in student_ids:
+                continue
+            cls = next((s["class_name"] for s in students
+                        if s["id"] == r["student_id"]), "")
+            rows.append({
+                "student": r["name"], "student_number": r["student_number"],
+                "class": cls,
+                "value": display_value(r["grade"]) if r["grade"] else "",
+                "tekorten": tekorten_for_value(r["grade"]) if r["grade"] else 0,
+            })
+        return jsonify({"period": period_dict(),
+                        "subject_name": kd_row["name"],
+                        "sbu": kd_row["sbu"] or 0,
+                        "report_rows": rows})
     if report == "signalering":
         return jsonify({"period": period_dict(),
                         "report_rows": signals})

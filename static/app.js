@@ -2199,6 +2199,46 @@ function renderStatReport(report, data) {
             <td class="${r.tekorten > 0 ? "val-onv" : ""}">${r.tekorten}</td>
           </tr>`).join("")}</tbody>
       </table>` : `<p class="hint">Geen beoordelingen voor dit vak.</p>`;
+  } else if (report === "keuzedelen_koppelingen") {
+    title = "Gekoppelde studenten per keuzedeel";
+    const tot = (rows, key) => rows.reduce((sum, r) => sum + (r[key] || 0), 0);
+    table = data.report_rows.length ? `
+      <table class="list">
+        <thead><tr><th>Keuzedeel</th><th>SBU</th><th>Studenten</th><th>Beoordeeld</th><th>Voldoendes</th><th>Onvoldoendes</th><th>VS</th><th>Tekorten</th></tr></thead>
+        <tbody>${data.report_rows.map((r) => `
+          <tr>
+            <td>${esc(r.name)}</td>
+            <td>${r.sbu}</td>
+            <td>${r.count > 0 ? `<a href="#" class="stat-drill" data-drill="keuzedeel_studenten" data-subject="${r.id}" title="Toon de gekoppelde studenten">${r.count}</a>` : r.count}</td>
+            <td>${r.graded}</td>
+            <td class="val-vol">${r.vol}</td>
+            <td class="${r.onv > 0 ? "val-onv" : ""}">${r.onv}</td>
+            <td class="val-vs">${r.vs}</td>
+            <td class="${r.tekorten > 0 ? "val-onv" : ""}">${r.tekorten}</td>
+          </tr>`).join("")}</tbody>
+        <tfoot><tr>
+          <td>Totaal (${data.report_rows.length} keuzedelen)</td>
+          <td>${tot(data.report_rows, "sbu")}</td>
+          <td>${tot(data.report_rows, "count")}</td>
+          <td>${tot(data.report_rows, "graded")}</td>
+          <td class="val-vol">${tot(data.report_rows, "vol")}</td>
+          <td>${tot(data.report_rows, "onv")}</td>
+          <td class="val-vs">${tot(data.report_rows, "vs")}</td>
+          <td>${tot(data.report_rows, "tekorten")}</td>
+        </tr></tfoot>
+      </table>` : `<p class="hint">Geen keuzedelen in deze selectie.</p>`;
+  } else if (report === "keuzedeel_studenten") {
+    title = `Gekoppelde studenten voor ${data.subject_name}`;
+    table = data.report_rows.length ? `
+      <table class="list">
+        <thead><tr><th>Student</th><th>Nr.</th><th>Klas</th><th>Beoordeling</th><th>Tekorten</th></tr></thead>
+        <tbody>${data.report_rows.map((r) => `
+          <tr>
+            <td>${esc(r.student)}</td><td>${esc(r.student_number || "")}</td><td>${esc(r.class)}</td>
+            <td class="${r.value ? (r.value === "VS" ? "val-vs" : (r.tekorten > 0 ? "val-onv" : "val-vol")) : ""}">${esc(r.value || "")}</td>
+            <td class="${r.tekorten > 0 ? "val-onv" : ""}">${r.tekorten}</td>
+          </tr>`).join("")}</tbody>
+      </table>` : `<p class="hint">Geen studenten gekoppeld aan dit keuzedeel.</p>`;
   } else if (report === "signalering") {
     title = "Signalering";
     table = data.report_rows.length ? `
