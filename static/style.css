@@ -384,3 +384,6 @@ td.tekort-2, td.tekort-3, td.tekort-4, td.tekort-5 { color: var(--tekort); font-
 .kd-bar-fill { height: 100%; background: var(--accent); transition: width .3s; }
 .kd-report { margin: 10px 0; }
 .kd-report h3 { margin: 0 0 6px; font-size: 1rem; }
+
+/* Template-links bij CSV-import */
+.template-link { font-size: .85rem; color: var(--accent); }

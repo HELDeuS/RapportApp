@@ -67,6 +67,46 @@ function bindTableSort(tableSel, stateKey, rerender) {
   });
 }
 
+// ---------- Voorbeeldbestanden (templates) voor CSV-import ----------
+const IMPORT_TEMPLATES = {
+  cijfers: {
+    file: "voorbeeld-cijfers.csv",
+    text: "Naam;Vaknaam 1;Vaknaam 2\nJan Jansen;7,5;VS\nPiet Pietersen;O;5,2\n",
+  },
+  studenten: {
+    file: "voorbeeld-studenten.csv",
+    text: "Studentnummer,Voornaam,Tussenvoegsel,Achternaam,Email,Klas,Niveau\n"
+          + "1001,Jan,van,Jansen,jan@school.nl,IAO4A,niveau 4\n"
+          + "1002,Piet,,Pietersen,piet@school.nl,IAO3B,niveau 3\n",
+  },
+  vakken: {
+    file: "voorbeeld-vakken.csv",
+    text: "Vak\nNederlands\nRekenen\nEngels\n",
+  },
+  gebruikers: {
+    file: "voorbeeld-gebruikers.csv",
+    text: "Gebruikersnaam,Wachtwoord,Rol,Voornaam,Achternaam,Email\n"
+          + "mjansma,wachtwoord1,docent,Marijke,Jansma,m.jansma@school.nl\n"
+          + "hdeboer,wachtwoord2,mentor,Henk,de Boer,h.deboer@school.nl\n",
+  },
+};
+
+document.addEventListener("click", (e) => {
+  const link = e.target.closest(".template-link");
+  if (!link) return;
+  e.preventDefault();
+  const tpl = IMPORT_TEMPLATES[link.dataset.template];
+  if (!tpl) return;
+  const blob = new Blob(["\ufeff" + tpl.text], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = tpl.file;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(a.href);
+});
+
 // ---------- Paginering ----------
 const PAGE_SIZES = [25, 50, 100, 250];
 const pagers = {};
