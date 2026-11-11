@@ -275,7 +275,7 @@ td.tekort-2, td.tekort-3, td.tekort-4, td.tekort-5 { color: var(--tekort); font-
 
 .total { font-weight: 700; }
 
-.list { background: var(--card); border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+.list { background: var(--card); border-radius: 8px; overflow: hidden; border: 1px solid var(--border); width: 100%; }
 
 .hint { color: var(--subtext); font-size: .9rem; }
 
