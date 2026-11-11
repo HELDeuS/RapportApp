@@ -324,8 +324,27 @@
     <a href="#" class="template-link" data-template="gebruikers"> Voorbeeld downloaden</a>
   </div>
   <div id="users-import-result" class="result hidden"></div>
-  <table class="list" id="users-table">
-    <thead><tr><th>Gebruikersnaam</th><th>Voornaam</th><th>Achternaam</th><th>E-mail</th><th>Rol</th><th>Student</th><th>Actief</th><th></th><th></th></tr></thead>
+  <div class="toolbar">
+    <input id="users-search" placeholder="&#9906; Zoek gebruiker...">
+    <label>Rol:
+      <select id="users-role-filter"><option value="">Alle rollen</option>
+        <option value="beheerder">Beheerder</option>
+        <option value="mentor">Mentor</option>
+        <option value="docent">Docent</option>
+        <option value="administratie">Administratie</option>
+        <option value="student">Student</option>
+      </select>
+    </label>
+    <label>Actief:
+      <select id="users-active-filter">
+        <option value="">Alle</option>
+        <option value="1">Actief</option>
+        <option value="0">Inactief</option>
+      </select>
+    </label>
+  </div>
+  <table class="list sortable" id="users-table">
+    <thead><tr><th data-key="username">Gebruikersnaam</th><th data-key="first_name">Voornaam</th><th data-key="last_name">Achternaam</th><th data-key="email">E-mail</th><th data-key="role">Rol</th><th data-key="student_name">Student</th><th data-key="active">Actief</th><th></th><th></th></tr></thead>
     <tbody></tbody>
   </table>
   <div class="pager" data-table="users-table"></div>

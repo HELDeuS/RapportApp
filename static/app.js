@@ -29,6 +29,7 @@ const listSort = {
   subjects: { key: "name", dir: 1 },
   periods: { key: "year", dir: 1 },
   grades: { key: "last_name", dir: 1 },
+  users: { key: "username", dir: 1 },
 };
 
 function sortRows(rows, state, fieldOf) {
@@ -685,6 +686,11 @@ bindTableSort("#classes-table", "classes", renderClasses);
 bindTableSort("#subjects-table", "subjects", renderSubjects);
 bindTableSort("#periods-table", "periods", renderPeriods);
 bindTableSort("#grade-table", "grades", renderGradeTable);
+bindTableSort("#users-table", "users", renderUsers);
+
+$("#users-search").addEventListener("input", () => { resetPage("#users-table"); renderUsers(); });
+$("#users-role-filter").addEventListener("change", () => { resetPage("#users-table"); renderUsers(); });
+$("#users-active-filter").addEventListener("change", () => { resetPage("#users-table"); renderUsers(); });
 
 $("#class-search").addEventListener("input", () => { resetPage("#classes-table"); renderClasses(); });
 $("#period-search").addEventListener("input", () => { resetPage("#periods-table"); renderPeriods(); });
@@ -2056,7 +2062,26 @@ for (const tableId of Object.keys(ARCH_TABLES)) {
 // ---------- Gebruikers ----------
 function renderUsers() {
   if (!$("#users-table")) return;
-  $("#users-table tbody").innerHTML = pageSlice("#users-table", users).map((u) => `
+  const q = ($("#users-search") ? $("#users-search").value : "").trim().toLowerCase();
+  const roleFilter = $("#users-role-filter") ? $("#users-role-filter").value : "";
+  const activeFilter = $("#users-active-filter") ? $("#users-active-filter").value : "";
+  let visible = users;
+  if (q) {
+    visible = visible.filter((u) =>
+      (u.username || "").toLowerCase().includes(q) ||
+      (u.first_name || "").toLowerCase().includes(q) ||
+      (u.last_name || "").toLowerCase().includes(q) ||
+      (u.email || "").toLowerCase().includes(q) ||
+      (u.student_name || "").toLowerCase().includes(q));
+  }
+  if (roleFilter) visible = visible.filter((u) => u.role === roleFilter);
+  if (activeFilter !== "") visible = visible.filter((u) => String(u.active ? 1 : 0) === activeFilter);
+  const rows = sortRows(visible, listSort.users, (u, key) =>
+    key === "role" ? (ROLE_LABELS[u.role] || u.role)
+    : key === "active" ? (u.active ? "1" : "0")
+    : (u[key] || ""));
+  updateSortArrows("#users-table", listSort.users);
+  $("#users-table tbody").innerHTML = pageSlice("#users-table", rows).map((u) => `
     <tr data-id="${u.id}">
       <td>${esc(u.username)}</td>
       <td><input data-field="first_name" value="${esc(u.first_name || "")}" style="width:110px"></td>
