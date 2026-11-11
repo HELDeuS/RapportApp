@@ -28,7 +28,7 @@ const listSort = {
   classes: { key: "name", dir: 1 },
   subjects: { key: "name", dir: 1 },
   periods: { key: "year", dir: 1 },
-  grades: { key: "name", dir: 1 },
+  grades: { key: "last_name", dir: 1 },
 };
 
 function sortRows(rows, state, fieldOf) {
@@ -428,7 +428,7 @@ function renderGradeTable() {
   }
   const periodSubjects = orderGradeColumns(subjectsForPeriod());
   const typeShort = { cijfer: "1-10", letter: "V/G/O/VS", vnv: "V/NV" };
-  thead.innerHTML = `<tr><th data-key="name">Student</th>` +
+  thead.innerHTML = `<tr><th data-key="student_number">Nr.</th><th data-key="first_name">Voornaam</th><th data-key="prefix">Tussenv.</th><th data-key="last_name">Achternaam</th>` +
     periodSubjects.map((s) => `<th draggable="true" data-subject="${s.id}" title="Beoordeling: ${typeShort[s.assessment_type] || "1-10"} — sleep om te herschikken">${esc(s.name)}<br><small>${typeShort[s.assessment_type] || "1-10"}</small></th>`).join("") +
     `<th title="Aanwezigheid">Aanw. %</th>` +
     `<th title="Geoorloofd afwezig">Geoorl. afw. %</th>` +
@@ -442,7 +442,8 @@ function renderGradeTable() {
   const tekortTotal = (st) => periodSubjectsForSort.reduce(
     (sum, su) => sum + tekorten(grades[`${st.id}:${su.id}`] || ""), 0);
   const gradeRows = sortRows(visibleStudents(), listSort.grades, (st, key) =>
-    key === "tekorten" ? String(tekortTotal(st)).padStart(3, "0") : st.name);
+    key === "tekorten" ? String(tekortTotal(st)).padStart(3, "0")
+    : (st[key] || ""));
   tbody.innerHTML = pageSlice("#grade-table", gradeRows).map((st) => {
     let total = 0;
     const cells = periodSubjects.map((su) => {
@@ -459,7 +460,7 @@ function renderGradeTable() {
       const kind = cls === "att-present" && v !== "" && parseFloat(v) < 85 ? " att-onv" : "";
       return `<td><input class="cell ${cls}${kind}" data-att="${field}" data-sid="${st.id}" value="${esc(v)}"></td>`;
     };
-    return `<tr><td>${esc(st.name)}${st.student_number ? ` <small>(${esc(st.student_number)})</small>` : ""}</td>${cells}` +
+    return `<tr><td>${esc(st.student_number || "")}</td><td>${esc(st.first_name || "")}</td><td>${esc(st.prefix || "")}</td><td>${esc(st.last_name || "")}</td>${cells}` +
       attCell("present", "att-present") +
       attCell("absent_allowed", "att-allowed") +
       attCell("absent_unallowed", "att-unallowed") +
@@ -681,7 +682,7 @@ $("#btn-paste-cancel").addEventListener("click", () => $("#paste-dialog").classL
 function pasteColumnEntries(text) {
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const roster = sortRows(visibleStudents().filter((s) => !s.archived),
-    listSort.grades, (st, key) => key === "tekorten" ? "" : studentName(st));
+    listSort.grades, (st, key) => key === "tekorten" ? "" : (st[key] || ""));
   const byIdent = {};
   for (const s of roster) {
     byIdent[studentName(s).toLowerCase()] = s.id;
