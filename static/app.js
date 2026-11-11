@@ -1686,7 +1686,19 @@ $("#btn-statistics").addEventListener("click", showStatistics);
 function renderStatReport(report, data) {
   const pct = (n) => n === null || n === undefined ? "" : `${n}%`;
   let title, table;
-  if (report === "keuzedelen") {
+  if (report === "detail") {
+    title = `Beoordelingen voor ${data.subject_name}`;
+    table = data.report_rows.length ? `
+      <table class="list">
+        <thead><tr><th>Student</th><th>Nr.</th><th>Klas</th><th>Beoordeling</th><th>Tekorten</th></tr></thead>
+        <tbody>${data.report_rows.map((r) => `
+          <tr>
+            <td>${esc(r.student)}</td><td>${esc(r.student_number || "")}</td><td>${esc(r.class)}</td>
+            <td class="${r.tekorten > 0 ? "val-onv" : (r.value === "VS" ? "val-vs" : "val-vol")}">${esc(r.value)}</td>
+            <td class="${r.tekorten > 0 ? "val-onv" : ""}">${r.tekorten}</td>
+          </tr>`).join("")}</tbody>
+      </table>` : `<p class="hint">Geen beoordelingen voor dit vak.</p>`;
+  } else if (report === "keuzedelen") {
     title = "Missende keuzedelen (minder dan 720 SBU gekoppeld)";
     table = data.report_rows.length ? `
       <table class="list">
@@ -1724,8 +1736,34 @@ function renderStatReport(report, data) {
           </tr>`).join("")}</tbody>
       </table>` : `<p class="hint">Geen onvoldoendes in deze selectie.</p>`;
   }
-  $("#stat-output").innerHTML = `<h2>${esc(title)} — ${esc(periodLabel(data.period))}</h2>` + table;
+  $("#stat-output").innerHTML = `<h2>${esc(title)} — ${esc(periodLabel(data.period))}</h2>` + table +
+    `<p><a href="#" id="stat-back">&larr; Terug naar het overzicht</a></p>`;
+  const back = $("#stat-back");
+  if (back) back.addEventListener("click", (e) => {
+    e.preventDefault();
+    $("#stat-report").value = "";
+    showStatistics();
+  });
 }
+
+document.addEventListener("click", async (e) => {
+  const link = e.target.closest(".stat-drill");
+  if (!link) return;
+  e.preventDefault();
+  const kind = link.dataset.drill;
+  const periodId = $("#stat-period").value;
+  if (!periodId) return;
+  let url = `/api/statistics?period_id=${periodId}&report=${kind}`;
+  if (link.dataset.subject) url += `&subject_id=${link.dataset.subject}`;
+  if (link.dataset.class) url += `&class_id=${link.dataset.class}`;
+  if ($("#stat-cohort").value) url += `&cohort_id=${$("#stat-cohort").value}`;
+  try {
+    const data = await api(url);
+    renderStatReport(kind, data);
+  } catch (err) {
+    alert("Detailgegevens ophalen mislukt: " + err.message);
+  }
+});
 
 async function showStatistics() {
   const periodId = $("#stat-period").value;
@@ -1749,7 +1787,7 @@ async function showStatistics() {
       <thead><tr><th>Vak</th><th>Beoordelingen</th><th>Gemiddeld cijfer</th><th>Voldoendes</th><th>Onvoldoendes</th><th>VS</th><th>Tekorten</th></tr></thead>
       <tbody>${data.subjects.map((s) => `
         <tr>
-          <td>${esc(s.name)}</td><td>${s.count}</td><td>${avg(s.avg)}</td>
+          <td><a href="#" class="stat-drill" data-drill="detail" data-subject="${s.id}" title="Toon alle beoordelingen voor dit vak">${esc(s.name)}</a></td><td>${s.count}</td><td>${avg(s.avg)}</td>
           <td class="val-vol">${s.vol}</td><td class="${s.onv > 0 ? "val-onv" : ""}">${s.onv}</td>
           <td class="val-vs">${s.vs}</td><td class="${s.tekorten > 0 ? "val-onv" : ""}">${s.tekorten}</td>
         </tr>`).join("")}</tbody>
@@ -1761,12 +1799,12 @@ async function showStatistics() {
       <thead><tr><th>Klas</th><th>Studenten</th><th>Gemiddeld cijfer</th><th>Tekorten</th><th>Tekort per student</th><th>% voldoende</th><th>Gem. aanwezigheid</th><th>&lt;85% aanwezig</th></tr></thead>
       <tbody>${data.classes.map((c) => `
         <tr>
-          <td>${esc(c.class)}</td><td>${c.students}</td><td>${avg(c.avg)}</td>
+          <td><a href="#" class="stat-drill" data-drill="onvoldoendes" data-class="${c.class_id}" title="Toon de onvoldoendes in deze klas">${esc(c.class)}</a></td><td>${c.students}</td><td>${avg(c.avg)}</td>
           <td class="${c.tekorten > 0 ? "val-onv" : ""}">${c.tekorten}</td>
           <td>${String(c.tekort_per_student).replace(".", ",")}</td>
           <td>${c.vol_pct === null ? "" : c.vol_pct + "%"}</td>
           <td class="${c.attendance_avg !== null && c.attendance_avg < 85 ? "val-onv" : "val-vol"}">${pct(c.attendance_avg)}</td>
-          <td class="${c.attendance_low > 0 ? "val-onv" : ""}">${c.attendance_low}</td>
+          <td class="${c.attendance_low > 0 ? "val-onv" : ""}">${c.attendance_low > 0 ? `<a href="#" class="stat-drill" data-drill="aanwezigheid" data-class="${c.class_id}" title="Toon deze studenten">${c.attendance_low}</a>` : c.attendance_low}</td>
         </tr>`).join("")}</tbody>
     </table>`;
   }

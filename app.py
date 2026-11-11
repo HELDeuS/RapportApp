@@ -2120,6 +2120,7 @@ def statistics():
         nums = [n for n in nums if n is not None]
         tekorten = sum(tekorten_for_value(v) for v in values)
         subject_stats.append({
+            "id": su["id"],
             "name": su["name"],
             "count": len(values),
             "avg": round(sum(nums) / len(nums), 1) if nums else None,
@@ -2143,8 +2144,10 @@ def statistics():
         tekorten = sum(tekorten_for_value(v) for v in values)
         atts = [attendance[g]["present"] for g in gids
                 if g in attendance and attendance[g]["present"] is not None]
+        class_id = group[0]["class_id"]
         class_stats.append({
             "class": cname,
+            "class_id": class_id,
             "students": len(group),
             "avg": round(sum(nums) / len(nums), 1) if nums else None,
             "tekorten": tekorten,
@@ -2220,6 +2223,24 @@ def statistics():
             })
         return jsonify({"period": dict(db.execute(
             "SELECT * FROM periods WHERE id = ?", (period_id,)).fetchone()),
+            "report_rows": rows})
+    if report == "detail":
+        subject_id = request.args.get("subject_id", type=int)
+        subject_row = db.execute(
+            "SELECT name FROM subjects WHERE id = ?", (subject_id,)).fetchone()
+        rows = []
+        for s in students:
+            v = grades.get((s["id"], subject_id))
+            if v in (None, ""):
+                continue
+            rows.append({
+                "student": s["name"], "student_number": s["student_number"],
+                "class": s["class_name"] or "",
+                "value": display_value(v), "tekorten": tekorten_for_value(v),
+            })
+        return jsonify({"period": dict(db.execute(
+            "SELECT * FROM periods WHERE id = ?", (period_id,)).fetchone()),
+            "subject_name": subject_row["name"] if subject_row else "?",
             "report_rows": rows})
     if report == "onvoldoendes":
         rows = []
