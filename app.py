@@ -2298,6 +2298,7 @@ def statistics():
             "report_rows": rows})
     if report == "detail":
         subject_id = request.args.get("subject_id", type=int)
+        flt = request.args.get("filter", "")
         subject_row = db.execute(
             "SELECT name FROM subjects WHERE id = ?", (subject_id,)).fetchone()
         rows = []
@@ -2305,14 +2306,22 @@ def statistics():
             v = grades.get((s["id"], subject_id))
             if v in (None, ""):
                 continue
+            t = tekorten_for_value(v)
+            if flt == "onvoldoendes" and t <= 0:
+                continue
+            if flt == "voldoendes" and t > 0:
+                continue
+            if flt == "vs" and str(v).upper() != "VS":
+                continue
             rows.append({
                 "student": s["name"], "student_number": s["student_number"],
                 "class": s["class_name"] or "",
-                "value": display_value(v), "tekorten": tekorten_for_value(v),
+                "value": display_value(v), "tekorten": t,
             })
         return jsonify({"period": dict(db.execute(
             "SELECT * FROM periods WHERE id = ?", (period_id,)).fetchone()),
             "subject_name": subject_row["name"] if subject_row else "?",
+            "filter": flt,
             "report_rows": rows})
     if report == "onvoldoendes":
         rows = []

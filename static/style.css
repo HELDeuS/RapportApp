@@ -399,3 +399,10 @@ td.tekort-2, td.tekort-3, td.tekort-4, td.tekort-5 { color: var(--tekort); font-
   color: var(--onv, #b45309);
   cursor: help;
 }
+
+.stat-drill {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.stat-drill:hover { color: var(--accent); }

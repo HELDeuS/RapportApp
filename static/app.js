@@ -1753,7 +1753,8 @@ function renderStatReport(report, data) {
   const pct = (n) => n === null || n === undefined ? "" : `${n}%`;
   let title, table;
   if (report === "detail") {
-    title = `Beoordelingen voor ${data.subject_name}`;
+    const filterTitles = { onvoldoendes: "Onvoldoendes", voldoendes: "Voldoendes", vs: "Vrijstellingen (VS)" };
+    title = `${filterTitles[data.filter] || "Beoordelingen"} voor ${data.subject_name}`;
     table = data.report_rows.length ? `
       <table class="list">
         <thead><tr><th>Student</th><th>Nr.</th><th>Klas</th><th>Beoordeling</th><th>Tekorten</th></tr></thead>
@@ -1844,6 +1845,7 @@ document.addEventListener("click", async (e) => {
   let url = `/api/statistics?period_id=${periodId}&report=${kind}`;
   if (link.dataset.subject) url += `&subject_id=${link.dataset.subject}`;
   if (link.dataset.class) url += `&class_id=${link.dataset.class}`;
+  if (link.dataset.filter) url += `&filter=${link.dataset.filter}`;
   if ($("#stat-cohort").value) url += `&cohort_id=${$("#stat-cohort").value}`;
   try {
     const data = await api(url);
@@ -1875,9 +1877,12 @@ async function showStatistics() {
       <thead><tr><th>Vak</th><th>Beoordelingen</th><th>Gemiddeld cijfer</th><th>Voldoendes</th><th>Onvoldoendes</th><th>VS</th><th>Tekorten</th></tr></thead>
       <tbody>${data.subjects.map((s) => `
         <tr>
-          <td><a href="#" class="stat-drill" data-drill="detail" data-subject="${s.id}" title="Toon alle beoordelingen voor dit vak">${esc(s.name)}</a></td><td>${s.count}</td><td>${avg(s.avg)}</td>
-          <td class="val-vol">${s.vol}</td><td class="${s.onv > 0 ? "val-onv" : ""}">${s.onv}</td>
-          <td class="val-vs">${s.vs}</td><td class="${s.tekorten > 0 ? "val-onv" : ""}">${s.tekorten}</td>
+          <td><a href="#" class="stat-drill" data-drill="detail" data-subject="${s.id}" title="Toon alle beoordelingen voor dit vak">${esc(s.name)}</a></td>
+          <td><a href="#" class="stat-drill" data-drill="detail" data-subject="${s.id}" title="Toon alle beoordelingen voor dit vak">${s.count}</a></td><td>${avg(s.avg)}</td>
+          <td class="val-vol"><a href="#" class="stat-drill" data-drill="detail" data-subject="${s.id}" data-filter="voldoendes" title="Toon de voldoendes voor dit vak">${s.vol}</a></td>
+          <td class="${s.onv > 0 ? "val-onv" : ""}"><a href="#" class="stat-drill" data-drill="detail" data-subject="${s.id}" data-filter="onvoldoendes" title="Toon de onvoldoendes voor dit vak">${s.onv}</a></td>
+          <td class="val-vs"><a href="#" class="stat-drill" data-drill="detail" data-subject="${s.id}" data-filter="vs" title="Toon de vrijstellingen voor dit vak">${s.vs}</a></td>
+          <td class="${s.tekorten > 0 ? "val-onv" : ""}"><a href="#" class="stat-drill" data-drill="detail" data-subject="${s.id}" data-filter="onvoldoendes" title="Toon de onvoldoendes voor dit vak">${s.tekorten}</a></td>
         </tr>`).join("")}</tbody>
     </table>` : `<p class="hint">Geen vakken met cijfers in deze module.</p>`);
   // Klassen-vergelijking
