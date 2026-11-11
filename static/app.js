@@ -772,16 +772,17 @@ function renderStudents() {
     return c ? c.name : "";
   };
   const rows = sortRows(visibleStudentsList(), listSort.students, (s, key) =>
-    key === "name" ? studentName(s)
-    : key === "class" ? classOf(s)
+    key === "class" ? classOf(s)
     : key === "login_enabled" ? (s.login_enabled ? "1" : "0")
-    : s[key]);
+    : (s[key] || ""));
   updateSortArrows("#students-table", listSort.students);
   $("#students-table tbody").innerHTML = pageSlice("#students-table", rows).map((s) => `
     <tr data-id="${s.id}">
       <td><input type="checkbox" class="row-select" data-id="${s.id}"></td>
-      <td><input data-field="first_name" value="${esc(s.first_name || "")}" style="width:110px" title="${esc(s.prefix || "")}"></td>
       <td><input data-field="student_number" value="${esc(s.student_number || "")}" style="width:90px"></td>
+      <td><input data-field="first_name" value="${esc(s.first_name || "")}" style="width:110px"></td>
+      <td><input data-field="prefix" value="${esc(s.prefix || "")}" style="width:80px"></td>
+      <td><input data-field="last_name" value="${esc(s.last_name || "")}" style="width:130px"></td>
       <td><input type="email" data-field="email" value="${esc(s.email || "")}" style="width:160px"></td>
       <td><select data-field="class_id">${classOptions(s.class_id)}</select></td>
       <td title="${s.login_username ? "Gebruikersnaam: " + esc(s.login_username) : "Nog geen account"}"><input type="checkbox" data-field="login_enabled"${s.login_enabled ? " checked" : ""}></td>
