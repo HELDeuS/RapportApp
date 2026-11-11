@@ -395,7 +395,16 @@ def display_value(value):
 
 @app.route("/")
 def index():
-    return send_from_directory(app.static_folder, "index.html")
+    resp = send_from_directory(app.static_folder, "index.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.after_request
+def no_cache_static(resp):
+    if resp.mimetype in ("text/html", "application/javascript", "text/css"):
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
 
 
 # ---------------------------------------------------------------------------

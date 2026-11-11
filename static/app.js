@@ -1168,14 +1168,21 @@ $("#btn-del-crebo").addEventListener("click", async () => {
 
 $("#classes-table tbody").addEventListener("change", async (e) => {
   const tr = e.target.closest("tr");
+  const field = e.target.dataset.field;
+  if (!tr || !field) return;
   const c = classes.find((x) => x.id === +tr.dataset.id);
   if (!c) return;
-  c[e.target.dataset.field] = e.target.value === "" ? null : e.target.value;
-  await api(`/api/classes/${c.id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(c),
-  });
+  const value = e.target.value === "" ? null : e.target.value;
+  c[field] = value;
+  try {
+    await api(`/api/classes/${c.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [field]: value }),
+    });
+  } catch (err) {
+    alert("Opslaan mislukt: " + err.message);
+  }
   await loadAll();
 });
 
