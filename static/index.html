@@ -132,6 +132,9 @@
     <label>Startcohort:
       <select id="class-cohort"><option value="">Geen cohort</option></select>
     </label>
+    <label>Leertraject:
+      <select id="class-leertraject"><option value="">Geen leertraject</option></select>
+    </label>
     <button id="btn-add-class">Toevoegen</button>
     <input id="class-search" placeholder="&#9906; Zoek klas..." style="margin-left:auto;">
   </div>
@@ -150,8 +153,20 @@
     <button id="btn-del-cohort" class="danger">Verwijderen</button>
     <button id="btn-archive-cohort" class="secondary">Archiveren</button>
   </div>
+  <div class="toolbar subtoolbar">
+    <strong>Leertrajecten:</strong>
+    <input id="lt-name" placeholder="Nieuw leertraject (bijv. ICT 2-jarig)">
+    <label>Crebo:
+      <select id="lt-crebo"><option value="">Geen crebo</option></select>
+    </label>
+    <button id="btn-add-lt" class="secondary">Leertraject toevoegen</button>
+    <select id="lt-manage"></select>
+    <button id="btn-archive-lt" class="secondary">Archiveren</button>
+    <button id="btn-del-lt" class="danger">Verwijderen</button>
+  </div>
+  <div id="lt-periods" class="checklist"></div>
   <table class="list sortable" id="classes-table">
-    <thead><tr><th data-key="name">Klas</th><th data-key="crebo">Crebo</th><th data-key="cohort">Startcohort</th><th data-key="mentor">Mentor</th><th></th></tr></thead>
+    <thead><tr><th data-key="name">Klas</th><th data-key="crebo">Crebo</th><th data-key="cohort">Startcohort</th><th data-key="leertraject">Leertraject</th><th data-key="mentor">Mentor</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
   <div class="pager" data-table="classes-table"></div>
@@ -288,6 +303,15 @@
     <tbody></tbody>
   </table>
   <div class="pager" data-table="arch-cohorts-table"></div>
+
+  <div class="toolbar subtoolbar">
+    <strong>Leertrajecten</strong>
+    <input id="arch-leertrajecten-search" placeholder="&#9906; Zoek in archief...">
+  </div>
+  <table class="list sortable" id="arch-leertrajecten-table" data-kind="leertrajecten">
+    <thead><tr><th data-key="name">Leertraject</th><th data-key="crebo">Crebo</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
 </section>
 
 <script src="/static/app.js"></script>

@@ -53,6 +53,9 @@ class Client:
     def get(self, path):
         return self.request("GET", path)
 
+    def put(self, path, json_body=None):
+        return self.request("PUT", path, json_body=json_body)
+
     def post(self, path, json_body=None):
         return self.request("POST", path, json_body=json_body)
 
@@ -119,6 +122,20 @@ def main():
     _, data = s.get("/api/periods")
     periods = {p["name"]: p["id"] for p in data}
     print("Modules klaar.")
+
+    # ----------------------------------------------------------- leertrajecten
+    # 3-jarig traject (M1-M12) en 2-jarig traject (M1-M8) onder hetzelfde crebo.
+    trajecten = [
+        ("ICT-medewerker 3-jarig", [f"M{i}" for i in range(1, 13)]),
+        ("ICT-medewerker 2-jarig", [f"M{i}" for i in range(1, 9)]),
+    ]
+    leertrajecten = {}
+    for name, mods in trajecten:
+        _, body = s.post("/api/leertrajecten", {"name": name, "crebo_id": niv})
+        s.put(f"/api/leertrajecten/{body['id']}",
+              {"period_ids": [periods[m] for m in mods]})
+        leertrajecten[name] = body["id"]
+    print("Leertrajecten klaar.")
 
     # ----------------------------------------------------------------- vakken
     # (naam, type, [modules])
@@ -204,8 +221,11 @@ def main():
     ]
     class_ids = []
     for i, (name, leerjaar, cohort) in enumerate(class_specs):
+        traject = ("ICT-medewerker 3-jarig" if leerjaar != 2
+                   else "ICT-medewerker 2-jarig")
         _, body = s.post("/api/classes", {
             "name": name, "crebo_id": niv, "cohort_id": cohorts[cohort],
+            "leertraject_id": leertrajecten[traject],
             "mentor_id": mentors[i]["id"]})
         class_ids.append((body["id"], leerjaar, name))
     print("Klassen klaar.")

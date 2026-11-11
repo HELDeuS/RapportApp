@@ -76,6 +76,17 @@ CREATE TABLE IF NOT EXISTS cohorts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE
 );
+CREATE TABLE IF NOT EXISTS leertrajecten (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    crebo_id INTEGER REFERENCES crebos(id) ON DELETE SET NULL,
+    archived INTEGER DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS leertraject_periods (
+    leertraject_id INTEGER NOT NULL REFERENCES leertrajecten(id) ON DELETE CASCADE,
+    period_id INTEGER NOT NULL REFERENCES periods(id) ON DELETE CASCADE,
+    UNIQUE (leertraject_id, period_id)
+);
 CREATE TABLE IF NOT EXISTS classes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -194,6 +205,9 @@ def init_db():
     if "cohort_id" not in ccols:
         db.execute("ALTER TABLE classes ADD COLUMN cohort_id INTEGER "
                    "REFERENCES cohorts(id) ON DELETE SET NULL")
+    if "leertraject_id" not in ccols:
+        db.execute("ALTER TABLE classes ADD COLUMN leertraject_id INTEGER "
+                   "REFERENCES leertrajecten(id) ON DELETE SET NULL")
     if "mentor_id" not in ccols:
         db.execute("ALTER TABLE classes ADD COLUMN mentor_id INTEGER "
                    "REFERENCES users(id) ON DELETE SET NULL")
@@ -215,7 +229,7 @@ def init_db():
             "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
             ("beheerder", generate_password_hash("rapportapp"), "beheerder"),
         )
-    for table in ("students", "classes", "subjects", "cohorts"):
+    for table in ("students", "classes", "subjects", "cohorts", "leertrajecten"):
         tcols = [r[1] for r in db.execute(f"PRAGMA table_info({table})").fetchall()]
         if "archived" not in tcols:
             db.execute(f"ALTER TABLE {table} ADD COLUMN archived INTEGER DEFAULT 0")
@@ -483,8 +497,8 @@ def admin_reset():
     if admin:
         keep.add(admin["id"])
     for table in ("grades", "attendance", "notes", "subject_periods",
-                 "subject_classes", "students", "subjects", "periods",
-                 "classes", "cohorts", "crebos"):
+                 "subject_classes", "leertraject_periods", "students", "subjects",
+                 "periods", "classes", "cohorts", "crebos", "leertrajecten"):
         db.execute(f"DELETE FROM {table}")
     db.execute("DELETE FROM users WHERE id NOT IN (%s)" % ",".join("?" * len(keep)),
                tuple(keep))
@@ -614,10 +628,12 @@ def class_with_crebo(db, class_id):
     row = db.execute(
         """SELECT c.id, c.name, n.name AS crebo, c.crebo_id,
                   co.name AS cohort, c.cohort_id,
+                  lt.name AS leertraject, c.leertraject_id,
                   c.mentor_id, m.username AS mentor
            FROM classes c
            LEFT JOIN crebos n ON n.id = c.crebo_id
            LEFT JOIN cohorts co ON co.id = c.cohort_id
+           LEFT JOIN leertrajecten lt ON lt.id = c.leertraject_id
            LEFT JOIN users m ON m.id = c.mentor_id
            WHERE c.id = ?""",
         (class_id,),
@@ -687,6 +703,86 @@ def crebo_item(crebo_id):
     return jsonify({"ok": True})
 
 
+# ---------------------------------------------------------------------------
+# Leertrajecten (onder een crebo, met gekoppelde modules)
+# ---------------------------------------------------------------------------
+
+def leertraject_with_periods(db, row):
+    result = dict(row)
+    result["period_ids"] = [
+        r["period_id"] for r in db.execute(
+            "SELECT period_id FROM leertraject_periods WHERE leertraject_id = ? "
+            "ORDER BY period_id", (row["id"],)).fetchall()
+    ]
+    return result
+
+
+@app.route("/api/leertrajecten", methods=["GET", "POST"])
+def leertrajecten_collection():
+    user, err = auth_error("beheerder", "mentor", "docent", "administratie") if request.method == "GET" else auth_error("beheerder")
+    if err:
+        return err
+    db = get_db()
+    if request.method == "POST":
+        data = request.get_json(force=True)
+        name = (data.get("name") or "").strip()
+        if not name:
+            return jsonify({"error": "Naam is verplicht"}), 400
+        crebo_id = data.get("crebo_id") or None
+        cur = db.execute(
+            "INSERT INTO leertrajecten (name, crebo_id) VALUES (?, ?)",
+            (name, crebo_id))
+        db.commit()
+        row = db.execute("SELECT * FROM leertrajecten WHERE id = ?",
+                         (cur.lastrowid,)).fetchone()
+        return jsonify(leertraject_with_periods(db, row)), 201
+    archived = 1 if request.args.get("archived") == "1" else 0
+    rows = db.execute(
+        """SELECT lt.*, n.name AS crebo FROM leertrajecten lt
+           LEFT JOIN crebos n ON n.id = lt.crebo_id
+           WHERE lt.archived = ? ORDER BY lt.name""",
+        (archived,)).fetchall()
+    return jsonify([leertraject_with_periods(db, r) for r in rows])
+
+
+@app.route("/api/leertrajecten/<int:lt_id>", methods=["PUT", "DELETE"])
+def leertraject_item(lt_id):
+    user, err = auth_error("beheerder")
+    if err:
+        return err
+    db = get_db()
+    if request.method == "PUT":
+        data = request.get_json(force=True)
+        updates = {}
+        if "name" in data:
+            name = (data.get("name") or "").strip()
+            if not name:
+                return jsonify({"error": "Naam is verplicht"}), 400
+            updates["name"] = name
+        if "crebo_id" in data:
+            updates["crebo_id"] = data.get("crebo_id") or None
+        if "archived" in data:
+            updates["archived"] = 1 if data.get("archived") else 0
+        if updates:
+            sets = ", ".join(f"{k} = ?" for k in updates)
+            db.execute(f"UPDATE leertrajecten SET {sets} WHERE id = ?",
+                       (*updates.values(), lt_id))
+        if "period_ids" in data:
+            db.execute("DELETE FROM leertraject_periods WHERE leertraject_id = ?", (lt_id,))
+            for pid in (data.get("period_ids") or []):
+                db.execute(
+                    "INSERT OR IGNORE INTO leertraject_periods "
+                    "(leertraject_id, period_id) VALUES (?, ?)", (lt_id, pid))
+        db.commit()
+        row = db.execute("SELECT * FROM leertrajecten WHERE id = ?", (lt_id,)).fetchone()
+        if row is None:
+            return jsonify({"error": "Leertraject niet gevonden"}), 404
+        return jsonify(leertraject_with_periods(db, row))
+    db.execute("DELETE FROM leertrajecten WHERE id = ?", (lt_id,))
+    db.commit()
+    return jsonify({"ok": True})
+
+
 @app.route("/api/classes", methods=["GET", "POST"])
 def classes_collection():
     user, err = auth_error("beheerder", "mentor", "docent", "administratie") if request.method == "GET" else auth_error("beheerder")
@@ -701,9 +797,11 @@ def classes_collection():
         crebo_id = data.get("crebo_id") or None
         cohort_id = data.get("cohort_id") or None
         mentor_id = data.get("mentor_id") or None
+        leertraject_id = data.get("leertraject_id") or None
         cur = db.execute(
-            "INSERT INTO classes (name, crebo_id, cohort_id, mentor_id) VALUES (?, ?, ?, ?)",
-            (name, crebo_id, cohort_id, mentor_id),
+            "INSERT INTO classes (name, crebo_id, cohort_id, leertraject_id, mentor_id) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (name, crebo_id, cohort_id, leertraject_id, mentor_id),
         )
         db.commit()
         return jsonify(class_with_crebo(db, cur.lastrowid)), 201
@@ -711,10 +809,12 @@ def classes_collection():
     rows = db.execute(
         """SELECT c.id, c.name, n.name AS crebo, c.crebo_id,
                   co.name AS cohort, c.cohort_id, c.archived,
+                  lt.name AS leertraject, c.leertraject_id,
                   c.mentor_id, m.username AS mentor
            FROM classes c
            LEFT JOIN crebos n ON n.id = c.crebo_id
            LEFT JOIN cohorts co ON co.id = c.cohort_id
+           LEFT JOIN leertrajecten lt ON lt.id = c.leertraject_id
            LEFT JOIN users m ON m.id = c.mentor_id
            WHERE c.archived = ?
            ORDER BY c.name""",
@@ -741,6 +841,8 @@ def class_item(class_id):
             updates["crebo_id"] = data.get("crebo_id") or None
         if "cohort_id" in data:
             updates["cohort_id"] = data.get("cohort_id") or None
+        if "leertraject_id" in data:
+            updates["leertraject_id"] = data.get("leertraject_id") or None
         if updates:
             sets = ", ".join(f"{k} = ?" for k in updates)
             db.execute(f"UPDATE classes SET {sets} WHERE id = ?",

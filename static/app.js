@@ -5,6 +5,7 @@ let students = [];
 let classes = [];
 let crebos = [];
 let cohorts = [];
+let leertrajecten = [];
 let subjects = [];
 let periods = [];
 let grades = {}; // "studentId:subjectId" -> value
@@ -121,6 +122,7 @@ function rerenderPagedTable(tableSel) {
     "#arch-classes-table": () => renderArchTable("arch-classes-table"),
     "#arch-subjects-table": () => renderArchTable("arch-subjects-table"),
     "#arch-cohorts-table": () => renderArchTable("arch-cohorts-table"),
+    "#arch-leertrajecten-table": () => renderArchTable("arch-leertrajecten-table"),
   }[tableSel];
   if (fn) fn();
 }
@@ -260,8 +262,8 @@ async function loadAll() {
     renderStudentReportUi();
     return;
   }
-  [students, classes, crebos, cohorts, subjects, periods] = await Promise.all([
-    api("/api/students"), api("/api/classes"), api("/api/crebos"), api("/api/cohorts"), api("/api/subjects"), api("/api/periods"),
+  [students, classes, crebos, cohorts, leertrajecten, subjects, periods] = await Promise.all([
+    api("/api/students"), api("/api/classes"), api("/api/crebos"), api("/api/cohorts"), api("/api/leertrajecten"), api("/api/subjects"), api("/api/periods"),
   ]);
   if (currentUser && currentUser.role === "beheerder") {
     users = await api("/api/users").catch(() => []);
@@ -271,6 +273,7 @@ async function loadAll() {
   classes.sort((a, b) => a.name.localeCompare(b.name, "nl"));
   crebos.sort((a, b) => a.name.localeCompare(b.name, "nl"));
   subjects.sort((a, b) => a.name.localeCompare(b.name, "nl"));
+  leertrajecten.sort((a, b) => a.name.localeCompare(b.name, "nl"));
   renderPeriodSelects();
   renderStudents();
   renderClasses();
@@ -284,9 +287,32 @@ async function loadAll() {
   await loadGrades();
 }
 
+function periodsForClass(classId) {
+  if (!classId) return periods;
+  const c = classes.find((x) => String(x.id) === String(classId));
+  const lt = c && c.leertraject_id
+    ? leertrajecten.find((t) => t.id === c.leertraject_id) : null;
+  if (!lt || !(lt.period_ids || []).length) return periods;
+  return periods.filter((p) => lt.period_ids.includes(p.id));
+}
+
 function renderPeriodSelects() {
-  for (const sel of [$("#grade-period"), $("#report-period")]) {
-    sel.innerHTML = periods.map((p) => `<option value="${p.id}">${esc(periodLabel(p))}</option>`).join("");
+  const gradePeriods = periodsForClass($("#grade-class").value);
+  $("#grade-period").innerHTML = gradePeriods.map((p) =>
+    `<option value="${p.id}">${esc(periodLabel(p))}</option>`).join("");
+  if (currentPeriod && !gradePeriods.some((p) => p.id === currentPeriod)) {
+    currentPeriod = gradePeriods.length ? gradePeriods[0].id : null;
+    loadGrades();
+  }
+  if ($("#grade-period").value !== String(currentPeriod) && currentPeriod) {
+    $("#grade-period").value = currentPeriod;
+  }
+  const reportSel = $("#report-period");
+  if (reportSel) {
+    const isStudent = currentUser && currentUser.role === "student";
+    const reportPeriods = isStudent ? periods : periodsForClass($("#report-class").value);
+    reportSel.innerHTML = (isStudent ? `<option value="all">Alle modules (totaal)</option>` : "") +
+      reportPeriods.map((p) => `<option value="${p.id}">${esc(periodLabel(p))}</option>`).join("");
   }
   const rs = $("#report-student");
   rs.innerHTML = `<option value="">Alle studenten</option>` +
@@ -537,7 +563,7 @@ $("#grade-period").addEventListener("change", async (e) => {
   await loadGrades();
 });
 
-$("#grade-class").addEventListener("change", () => renderGradeTable());
+$("#grade-class").addEventListener("change", () => { renderPeriodSelects(); renderGradeTable(); });
 
 $("#grade-cohort").addEventListener("change", () => {
   renderClassSelects();
@@ -853,12 +879,21 @@ function renderClasses() {
       <td><input data-field="name" value="${esc(c.name)}"></td>
       <td><select data-field="crebo_id">${creboOptions(c.crebo_id)}</select></td>
       <td><select data-field="cohort_id">${optList(c.cohort_id, cohorts, "Geen cohort")}</select></td>
+      <td><select data-field="leertraject_id">${ltOptions(c.leertraject_id)}</select></td>
       ${users.length ? `<td><select data-field="mentor_id">${optList(c.mentor_id, users.filter((u) => u.role === "mentor" || u.role === "beheerder").map((u) => ({ id: u.id, name: u.username })), "Geen mentor")}</select></td>` : `<td>${esc(c.mentor || "")}</td>`}
       <td><button class="secondary" data-archive>Archiveren</button></td>
       <td><button class="danger" data-del>Verwijderen</button></td>
     </tr>`).join("");
   $("#class-crebo").innerHTML = creboOptions("");
   $("#class-cohort").innerHTML = optList("", cohorts, "Geen cohort");
+  $("#class-leertraject").innerHTML = ltOptions("");
+  $("#lt-crebo").innerHTML = creboOptions("");
+  const prevLt = $("#lt-manage").value;
+  $("#lt-manage").innerHTML = leertrajecten.length
+    ? leertrajecten.map((t) => `<option value="${t.id}">${esc(ltLabel(t))}</option>`).join("")
+    : `<option value="">(geen leertrajecten)</option>`;
+  if (prevLt && leertrajecten.some((t) => String(t.id) === prevLt)) $("#lt-manage").value = prevLt;
+  renderLtPeriods();
   $("#crebo-manage").innerHTML = crebos.length
     ? crebos.map((n) => `<option value="${n.id}">${esc(n.name)}</option>`).join("")
     : `<option value="">(geen crebos)</option>`;
@@ -877,6 +912,7 @@ $("#btn-add-class").addEventListener("click", async () => {
       name,
       crebo_id: $("#class-crebo").value || null,
       cohort_id: $("#class-cohort").value || null,
+      leertraject_id: $("#class-leertraject").value || null,
     }),
   });
   $("#class-name").value = "";
@@ -918,6 +954,94 @@ $("#btn-del-cohort").addEventListener("click", async () => {
   await api(`/api/cohorts/${id}`, { method: "DELETE" });
   await loadAll();
 });
+
+// ---------- Leertrajecten ----------
+function ltLabel(t) {
+  return t.crebo ? `${t.name} (${t.crebo})` : t.name;
+}
+
+function ltOptions(sel) {
+  return `<option value="">Geen leertraject</option>` +
+    leertrajecten.map((t) => `<option value="${t.id}"${String(sel) === String(t.id) ? " selected" : ""}>${esc(ltLabel(t))}</option>`).join("");
+}
+
+function renderLtPeriods() {
+  const id = $("#lt-manage").value;
+  const lt = leertrajecten.find((t) => String(t.id) === String(id));
+  const wrap = $("#lt-periods");
+  if (!lt) { wrap.innerHTML = ""; return; }
+  const years = {};
+  for (const p of periods) {
+    const y = p.year || "Zonder studiejaar";
+    (years[y] = years[y] || []).push(p);
+  }
+  wrap.innerHTML = `<p class="hint">Modules van leertraject <strong>${esc(ltLabel(lt))}</strong>:</p>` +
+    Object.entries(years).map(([year, mods]) => {
+      const anyChecked = mods.some((p) => (lt.period_ids || []).includes(p.id));
+      return `
+      <details class="year-group"${anyChecked ? " open" : ""}>
+        <summary>${esc(year)}${anyChecked ? ` <span class="badge">${mods.filter((p) => (lt.period_ids || []).includes(p.id)).length}</span>` : ""}</summary>
+        <div class="year-modules">${mods.map((p) => `
+          <label class="check"><input type="checkbox" data-lt-period="${p.id}"${(lt.period_ids || []).includes(p.id) ? " checked" : ""}> ${esc(p.name)}</label>`).join("")}</div>
+      </details>`;
+    }).join("");
+}
+
+$("#lt-manage").addEventListener("change", renderLtPeriods);
+
+$("#lt-periods").addEventListener("change", async (e) => {
+  const id = $("#lt-manage").value;
+  if (!id || e.target.dataset.ltPeriod === undefined) return;
+  const ids = [...$$("#lt-periods input[data-lt-period]:checked")].map((cb) => +cb.dataset.ltPeriod);
+  try {
+    await api(`/api/leertrajecten/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ period_ids: ids }),
+    });
+    await loadAll();
+  } catch (err) {
+    alert("Modules opslaan mislukt: " + err.message);
+  }
+});
+
+$("#btn-add-lt").addEventListener("click", async () => {
+  const name = $("#lt-name").value.trim();
+  if (!name) return alert("Vul eerst een naam in (bijv. ICT 2-jarig).");
+  try {
+    await api("/api/leertrajecten", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, crebo_id: $("#lt-crebo").value || null }),
+    });
+    $("#lt-name").value = "";
+    await loadAll();
+  } catch (err) {
+    alert("Leertraject toevoegen mislukt: " + err.message);
+  }
+});
+
+$("#btn-archive-lt").addEventListener("click", async () => {
+  const id = $("#lt-manage").value;
+  if (!id) return;
+  if (!confirm("Leertraject archiveren? Het verdwijnt uit de actieve overzichten; gegevens blijven bewaard.")) return;
+  await api(`/api/leertrajecten/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ archived: true }),
+  });
+  await loadAll();
+});
+
+$("#btn-del-lt").addEventListener("click", async () => {
+  const id = $("#lt-manage").value;
+  if (!id) return;
+  if (!confirm("Leertraject verwijderen? Klassen met dit leertraject verliezen hun leertraject.")) return;
+  await api(`/api/leertrajecten/${id}`, { method: "DELETE" });
+  await loadAll();
+});
+
+$("#report-class").addEventListener("change", () => renderPeriodSelects());
 
 $("#btn-add-crebo").addEventListener("click", async () => {
   const name = $("#crebo-name").value.trim();
@@ -1269,18 +1393,21 @@ const ARCH_TABLES = {
   "arch-classes-table": { search: "arch-classes-search", cols: ["name", "crebo", "cohort"], empty: 4 },
   "arch-subjects-table": { search: "arch-subjects-search", cols: ["name"], empty: 2 },
   "arch-cohorts-table": { search: "arch-cohorts-search", cols: ["name"], empty: 2 },
+  "arch-leertrajecten-table": { search: "arch-leertrajecten-search", cols: ["name", "crebo"], empty: 3 },
 };
 
 async function renderArchive() {
-  const [archStudents, archClasses, archSubjects, archCohorts] = await Promise.all([
+  const [archStudents, archClasses, archSubjects, archCohorts, archLeertrajecten] = await Promise.all([
     api("/api/students?archived=1"), api("/api/classes?archived=1"),
     api("/api/subjects?archived=1"), api("/api/cohorts?archived=1"),
+    api("/api/leertrajecten?archived=1"),
   ]);
   archiveData = {
     "arch-students-table": archStudents,
     "arch-classes-table": archClasses,
     "arch-subjects-table": archSubjects,
     "arch-cohorts-table": archCohorts,
+    "arch-leertrajecten-table": archLeertrajecten,
   };
   for (const tableId of Object.keys(ARCH_TABLES)) renderArchTable(tableId);
 }
