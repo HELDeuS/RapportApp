@@ -1894,7 +1894,7 @@ function renderStatReport(report, data) {
           </tr>`).join("")}</tbody>
       </table>` : `<p class="hint">Alle studenten in deze selectie hebben 720 SBU of meer aan keuzedelen.</p>`;
   } else if (report === "aanwezigheid") {
-    title = "Aanwezigheid onder de norm (&lt;85%)";
+    title = "Aanwezigheid onder de norm (<85%)";
     table = data.report_rows.length ? `
       <table class="list">
         <thead><tr><th>Student</th><th>Nr.</th><th>Klas</th><th>Aanwezigheid</th><th>Geoorloofd afwezig</th><th>Ongeoorloofd afwezig</th></tr></thead>
