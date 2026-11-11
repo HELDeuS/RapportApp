@@ -25,6 +25,7 @@ let currentUser = null;
 
 const listSort = {
   students: { key: "name", dir: 1 },
+  kdmatrix: { key: "last_name", dir: 1 },
   classes: { key: "name", dir: 1 },
   subjects: { key: "name", dir: 1 },
   periods: { key: "year", dir: 1 },
@@ -167,6 +168,7 @@ function rerenderPagedTable(tableSel) {
     "#audit-table": renderAuditTable,
     "#stat-subjects-table": () => renderStatOverview(),
     "#stat-signals-table": () => renderStatOverview(),
+    "#kd-matrix-table": renderKdMatrix,
   }[tableSel];
   if (fn) fn();
 }
@@ -379,9 +381,16 @@ function renderPeriodSelects() {
   rs.innerHTML = `<option value="">Alle studenten</option>` +
     students.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join("");
   renderClassSelects();
-  for (const sel of [$("#student-cohort"), $("#report-cohort"), $("#grade-cohort")]) {
+  for (const sel of [$("#student-cohort"), $("#report-cohort"), $("#grade-cohort"), $("#kd-matrix-cohort")]) {
     sel.innerHTML = `<option value="">Alle cohorten</option>` +
       cohorts.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("");
+  }
+  const kdmc = $("#kd-matrix-class");
+  if (kdmc) {
+    const kdmcPrev = kdmc.value;
+    kdmc.innerHTML = `<option value="">Alle klassen</option>` +
+      classes.map((c) => `<option value="${c.id}">${esc(classLabel(c))}</option>`).join("");
+    if (kdmcPrev && [...kdmc.options].some((o) => o.value === kdmcPrev)) kdmc.value = kdmcPrev;
   }
   const scFilter = $("#student-cohort") ? $("#student-cohort").value : "";
   const scList = ownClassesOnly(scFilter
@@ -1664,6 +1673,92 @@ function renderReportCards(data, periodOverride) {
     </div>`).join("");
 }
 
+// ---------- Keuzedelen-matrix ----------
+let kdMatrix = null;
+
+async function loadKdMatrix() {
+  let url = "/api/keuzedelen/matrix";
+  const params = [];
+  if ($("#kd-matrix-cohort").value) params.push("cohort_id=" + $("#kd-matrix-cohort").value);
+  if ($("#kd-matrix-class").value) params.push("class_id=" + $("#kd-matrix-class").value);
+  if (params.length) url += "?" + params.join("&");
+  kdMatrix = await api(url);
+  renderKdMatrix();
+}
+
+function renderKdMatrix() {
+  const table = $("#kd-matrix-table");
+  if (!kdMatrix) return;
+  const q = ($("#kd-matrix-search").value || "").trim().toLowerCase();
+  const typeShort = { cijfer: "1-10", letter: "V/G/O/VS", vnv: "V/NV" };
+  const mayEdit = isRole("beheerder", "docent", "mentor");
+  let rows = kdMatrix.students;
+  if (q) {
+    rows = rows.filter((s) =>
+      studentName(s).toLowerCase().includes(q) ||
+      (s.student_number || "").toLowerCase().includes(q) ||
+      (s.class_name || "").toLowerCase().includes(q));
+  }
+  rows = sortRows(rows, listSort.kdmatrix, (s, key) =>
+    key === "sbu_total" ? String(s.sbu_total).padStart(4, "0")
+    : (s[key] || ""));
+  table.querySelector("thead").innerHTML =
+    `<tr><th data-key="student_number">Nr.</th><th data-key="first_name">Voornaam</th>` +
+    `<th data-key="prefix">Tussenv.</th><th data-key="last_name">Achternaam</th>` +
+    `<th data-key="class_name">Klas</th>` +
+    kdMatrix.keuzedelen.map((k) =>
+      `<th title="Beoordeling: ${typeShort[k.assessment_type] || "1-10"}">${esc(k.name)}</th>`).join("") +
+    `<th data-key="sbu_total" title="Totale SBU aan gekoppelde keuzedelen">SBU</th></tr>`;
+  updateSortArrows("#kd-matrix-table", listSort.kdmatrix);
+  table.querySelector("tbody").innerHTML = pageSlice("#kd-matrix-table", rows).map((s) => {
+    const cells = kdMatrix.keuzedelen.map((k) => {
+      const linked = k.id in (s.grades || {}) || Object.prototype.hasOwnProperty.call(s.grades || {}, String(k.id));
+      const v = (s.grades || {})[String(k.id)] || (s.grades || {})[k.id] || "";
+      if (!linked) return `<td class="kd-unlinked" title="Niet gekoppeld">&mdash;</td>`;
+      const cls = v && tekorten(v) > 0 ? " val-onv" : (v === "VS" ? " val-vs" : (v ? " val-vol" : ""));
+      return `<td><input class="cell${cls}" data-kdm-sid="${s.id}" data-kdm-kid="${k.id}" ` +
+        `value="${esc(v)}" placeholder="${typeShort[k.assessment_type] || "1-10"}"${mayEdit ? "" : " disabled"}></td>`;
+    }).join("");
+    const doel = kdMatrix.sbu_doel;
+    return `<tr data-id="${s.id}">
+      <td>${esc(s.student_number || "")}</td>
+      <td>${esc(s.first_name || "")}</td>
+      <td>${esc(s.prefix || "")}</td>
+      <td>${esc(s.last_name || "")}</td>
+      <td>${esc(s.class_name || "")}</td>
+      ${cells}
+      <td class="${s.sbu_total >= doel ? "val-vol" : (s.sbu_total > 0 ? "val-onv" : "")}">${s.sbu_total} / ${doel}</td>
+    </tr>`;
+  }).join("");
+}
+
+$("#kd-matrix-table tbody").addEventListener("change", async (e) => {
+  const inp = e.target.closest("input[data-kdm-sid]");
+  if (!inp) return;
+  try {
+    await api("/api/keuzedelen/grade", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        student_id: +inp.dataset.kdmSid,
+        subject_id: +inp.dataset.kdmKid,
+        value: inp.value,
+      }),
+    });
+    await loadKdMatrix();
+  } catch (err) {
+    alert("Keuzedeel opslaan mislukt: " + err.message);
+    await loadKdMatrix();
+  }
+});
+
+for (const sel of ["#kd-matrix-cohort", "#kd-matrix-class"]) {
+  $(sel).addEventListener("change", () => { resetPage("#kd-matrix-table"); loadKdMatrix(); });
+}
+$("#kd-matrix-search").addEventListener("input", () => { resetPage("#kd-matrix-table"); renderKdMatrix(); });
+
+bindTableSort("#kd-matrix-table", "kdmatrix", renderKdMatrix);
+
 // ---------- Keuzedelen ----------
 let keuzedelenList = [];   // alle keuzedeel-subjects
 let kdStudentData = null;  // data van geselecteerde student
@@ -2361,7 +2456,7 @@ $$(".tab").forEach((btn) => {
   btn.addEventListener("click", () => {
     if (btn.dataset.tab === "archief") renderArchive();
     if (btn.dataset.tab === "logboek") renderAuditLog();
-    if (btn.dataset.tab === "keuzedelen") renderKeuzedelenTab();
+    if (btn.dataset.tab === "keuzedelen") { renderKeuzedelenTab(); loadKdMatrix(); }
     if (btn.dataset.tab === "statistieken") fillStatFilters();
   });
 });

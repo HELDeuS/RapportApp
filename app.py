@@ -1255,6 +1255,107 @@ def keuzedelen_collection():
     return jsonify([subject_with_periods(db, r["id"]) for r in rows])
 
 
+@app.route("/api/keuzedelen/matrix")
+def keuzedelen_matrix():
+    user, err = auth_error("beheerder", "mentor", "docent", "administratie")
+    if err:
+        return err
+    db = get_db()
+    class_id = request.args.get("class_id", type=int)
+    cohort_id = request.args.get("cohort_id", type=int)
+    where = "st.archived = 0"
+    args = []
+    if user["role"] == "mentor":
+        own = mentor_class_ids(user)
+        if not own:
+            return jsonify({"keuzedelen": [], "students": [],
+                            "sbu_doel": KEUZEDEEL_SBU_DOEL})
+        placeholders = ",".join("?" for _ in own)
+        where += f" AND st.class_id IN ({placeholders})"
+        args.extend(own)
+    if class_id:
+        where += " AND st.class_id = ?"
+        args.append(class_id)
+    elif cohort_id:
+        where += (" AND st.class_id IN (SELECT c.id FROM classes c "
+                  "JOIN leertrajecten lt ON lt.id = c.leertraject_id "
+                  "WHERE lt.cohort_id = ?)")
+        args.append(cohort_id)
+    students = db.execute(
+        f"""SELECT st.id, st.name, st.student_number, st.first_name,
+                   st.prefix, st.last_name, c.name AS class_name
+            FROM students st
+            LEFT JOIN classes c ON c.id = st.class_id
+            WHERE {where} ORDER BY st.name""",
+        args).fetchall()
+    keuzedelen = db.execute(
+        """SELECT id, name, sbu, assessment_type FROM subjects
+           WHERE archived = 0 AND kind = 'keuzedeel' ORDER BY name""").fetchall()
+    grades = {}
+    sbu_totals = {}
+    for r in db.execute(
+        """SELECT k.student_id, k.subject_id, k.grade, s.sbu
+           FROM student_keuzedelen k
+           JOIN subjects s ON s.id = k.subject_id
+           WHERE s.archived = 0""").fetchall():
+        grades[(r["student_id"], r["subject_id"])] = r["grade"]
+        sbu_totals[r["student_id"]] = sbu_totals.get(r["student_id"], 0) + (r["sbu"] or 0)
+    return jsonify({
+        "keuzedelen": [dict(k) for k in keuzedelen],
+        "students": [{
+            "id": s["id"], "name": s["name"],
+            "student_number": s["student_number"],
+            "first_name": s["first_name"], "prefix": s["prefix"],
+            "last_name": s["last_name"], "class_name": s["class_name"],
+            "grades": {str(kid): grades.get((s["id"], kid), None)
+                       for kid in [k["id"] for k in keuzedelen]
+                       if (s["id"], kid) in grades},
+            "sbu_total": sbu_totals.get(s["id"], 0),
+        } for s in students],
+        "sbu_doel": KEUZEDEEL_SBU_DOEL,
+    })
+
+
+@app.route("/api/keuzedelen/grade", methods=["POST"])
+def keuzedeel_grade():
+    user, err = auth_error("beheerder", "docent", "mentor")
+    if err:
+        return err
+    db = get_db()
+    data = request.get_json(force=True)
+    student_id = data.get("student_id")
+    subject_id = data.get("subject_id")
+    value = data.get("value")
+    if not (student_id and subject_id):
+        return jsonify({"error": "student_id en subject_id zijn verplicht"}), 400
+    student = db.execute(
+        "SELECT * FROM students WHERE id = ?", (student_id,)).fetchone()
+    if student is None:
+        return jsonify({"error": "Student bestaat niet"}), 404
+    if user["role"] == "mentor" and not mentor_owns_student(user, student):
+        return jsonify({"error": "Als mentor kun je alleen studenten van je eigen klas wijzigen"}), 403
+    row = db.execute(
+        """SELECT k.id, s.assessment_type, s.name FROM student_keuzedelen k
+           JOIN subjects s ON s.id = k.subject_id
+           WHERE k.student_id = ? AND k.subject_id = ?""",
+        (student_id, subject_id)).fetchone()
+    if row is None:
+        return jsonify({"error": "Dit keuzedeel is niet aan deze student gekoppeld"}), 400
+    parsed = None
+    if value not in (None, ""):
+        try:
+            parsed = parse_value(value, row["assessment_type"])
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+    db.execute("UPDATE student_keuzedelen SET grade = ? WHERE id = ?",
+               (parsed, row["id"]))
+    db.commit()
+    audit(db, user, "beoordeling", "keuzedeel", subject_id,
+          f"{student['name']} \u2014 {row['name']}: {display_value(parsed) if parsed else '(leeg)'}")
+    return jsonify({"ok": True, "value": display_value(parsed) if parsed else "",
+                    "tekorten": tekorten_for_value(parsed) if parsed else 0})
+
+
 @app.route("/api/students/<int:student_id>/keuzedelen", methods=["GET", "PUT"])
 def student_keuzedelen(student_id):
     user, err = auth_error("beheerder", "mentor", "docent", "administratie")

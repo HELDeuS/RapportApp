@@ -499,3 +499,5 @@ input.note-open { cursor: pointer; }
 .combo-panel .combo-item { display: block; padding: 6px 12px; cursor: pointer; white-space: nowrap; }
 .combo-panel .combo-item.active { background: var(--accent); color: #fff; }
 .combo-panel .combo-empty { display: block; padding: 6px 12px; opacity: .7; }
+
+.kd-unlinked { color: var(--subtext); text-align: center; opacity: .55; }

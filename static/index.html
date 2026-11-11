@@ -234,6 +234,25 @@
 
 <!-- Keuzedelen -->
 <section id="tab-keuzedelen" class="panel">
+  <h3>Overzicht per student</h3>
+  <div class="toolbar">
+    <input id="kd-matrix-search" placeholder="&#9906; Zoek student...">
+    <label>Cohort:
+      <select id="kd-matrix-cohort"><option value="">Alle cohorten</option></select>
+    </label>
+    <label>Klas:
+      <select id="kd-matrix-class"><option value="">Alle klassen</option></select>
+    </label>
+  </div>
+  <div class="table-wrap">
+    <table class="list sortable" id="kd-matrix-table">
+      <thead></thead>
+      <tbody></tbody>
+    </table>
+    <div class="pager" data-table="kd-matrix-table"></div>
+  </div>
+  <p class="hint">Lege cellen met een streepje: het keuzedeel is niet aan de student gekoppeld. Koppelen en beheren kan hieronder per student.</p>
+  <h3>Koppelen en beheren</h3>
   <p class="hint">Elke student volgt keuzedelen ter waarde van samen <strong>720 SBU</strong>. Vink de keuzedelen aan die de student volgt; de beoordeling vul je per keuzedeel in. Keuzedelen beheer je op het tabblad Vakken (soort = Keuzedeel, met SBU-waarde).</p>
   <div class="toolbar">
     <label>Student:
