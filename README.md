@@ -6,8 +6,8 @@ Webapp voor het bijhouden van rapportcijfers van de opleiding MBO ICT.
 
 ## Functies
 
-- **Studenten, vakken, modules en klassen** beheren (CRUD). Klassen hebben een naam, een crebo en een **startcohort** (bijv. 25-26); crebos en cohorten zijn vaste, beheerde lijsten (dropdowns) die je op het tabblad Klassen onderhoudt. Modules (voorheen periodes) hebben een naam en een studiejaar (bijv. M1, 2025-2026). Niet elk vak hoeft in elke module cijfers te hebben.
-- **Leertrajecten**: onder een crebo vallen leertrajecten (bijv. een 2-jarig en een 3-jarig traject). Aan een leertraject koppel je de modules die gevolgd worden; aan modules zijn al vakken gekoppeld. Een klas krijgt een leertraject toegewezen. Het cijferoverzicht en het rapport tonen dan alleen de modules van het leertraject van de geselecteerde klas, zodat niet elke klas dezelfde modules op hetzelfde moment hoeft te volgen. Leertrajecten kunnen ook gearchiveerd worden.
+- **Studenten, vakken, modules en klassen** beheren (CRUD). Klassen hebben een naam en een crebo; het **startcohort** (bijv. 25-26) hangt aan het leertraject. Crebos en cohorten zijn vaste, beheerde lijsten (dropdowns) die je op het tabblad Klassen onderhoudt. Modules (voorheen periodes) hebben een naam en een studiejaar (bijv. M1, 2025-2026). Niet elk vak hoeft in elke module cijfers te hebben.
+- **Leertrajecten**: onder een crebo vallen leertrajecten (bijv. een 2-jarig en een 3-jarig traject), met een eigen startcohort. Aan een leertraject koppel je de modules die gevolgd worden; aan modules zijn al vakken gekoppeld. Een klas krijgt een leertraject toegewezen en erft daarmee het startcohort. Het cijferoverzicht en het rapport tonen dan alleen de modules van het leertraject van de geselecteerde klas, zodat niet elke klas dezelfde modules op hetzelfde moment hoeft te volgen. Leertrajecten kunnen ook gearchiveerd worden.
 - **Gemaakt voor meerdere jaren**: met ~120 studenten per startcohort groeit het aantal studenten snel. Daarom heeft het studenten-tabblad een zoekveld en filters op cohort en klas, zijn de klas-dropdowns gegroepeerd per cohort, en kun je in de cijfermatrix en rapporten vooraf op cohort filteren. Modules zijn gekoppeld aan studiejaren, zodat gegevens van oudere cohorten gescheiden blijven.
 - **Overzicht per klas**: filter de cijfermatrix en het rapport op klas; het rapport toont klas en crebo per student.
 - **Vak-module-koppeling**: per vak geef je met vinkjes aan in welke module(s) het gegeven wordt. De cijfermatrix en het rapport tonen per module alléén de vakken waarvoor die module is aangevinkt. De vakkenlijst heeft een zoekfilter.
@@ -250,7 +250,7 @@ Engels
 
 ## API (kort)
 
-- `GET/POST /api/classes`, `PUT/DELETE /api/classes/<id>` (met `crebo_id`, `cohort_id` en `leertraject_id`); `GET/POST /api/crebos`, `DELETE /api/crebos/<id>`; `GET/POST /api/cohorts`, `DELETE /api/cohorts/<id>`; `GET/POST /api/leertrajecten`, `PUT/DELETE /api/leertrajecten/<id>` (met `period_ids`)
+- `GET/POST /api/classes`, `PUT/DELETE /api/classes/<id>` (met `crebo_id` en `leertraject_id`); `GET/POST /api/crebos`, `DELETE /api/crebos/<id>`; `GET/POST /api/cohorts`, `DELETE /api/cohorts/<id>`; `GET/POST /api/leertrajecten`, `PUT/DELETE /api/leertrajecten/<id>` (met `crebo_id`, `cohort_id` en `period_ids`)
 - `GET/POST /api/students`, `PUT/DELETE /api/students/<id>` (met optioneel `class_id`)
 - `GET/POST /api/subjects`, `PUT/DELETE /api/subjects/<id>` (met optioneel `period_ids`: modules en `class_ids`: klassen waarin het vak gegeven wordt)
 - `GET/POST /api/periods`, `PUT/DELETE /api/periods/<id>`

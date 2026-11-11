@@ -878,16 +878,16 @@ function renderClasses() {
     <tr data-id="${c.id}">
       <td><input data-field="name" value="${esc(c.name)}"></td>
       <td><select data-field="crebo_id">${creboOptions(c.crebo_id)}</select></td>
-      <td><select data-field="cohort_id">${optList(c.cohort_id, cohorts, "Geen cohort")}</select></td>
+      <td title="Startcohort komt van het leertraject">${esc(c.cohort || "")}</td>
       <td><select data-field="leertraject_id">${ltOptions(c.leertraject_id)}</select></td>
       ${users.length ? `<td><select data-field="mentor_id">${optList(c.mentor_id, users.filter((u) => u.role === "mentor" || u.role === "beheerder").map((u) => ({ id: u.id, name: u.username })), "Geen mentor")}</select></td>` : `<td>${esc(c.mentor || "")}</td>`}
       <td><button class="secondary" data-archive>Archiveren</button></td>
       <td><button class="danger" data-del>Verwijderen</button></td>
     </tr>`).join("");
   $("#class-crebo").innerHTML = creboOptions("");
-  $("#class-cohort").innerHTML = optList("", cohorts, "Geen cohort");
   $("#class-leertraject").innerHTML = ltOptions("");
   $("#lt-crebo").innerHTML = creboOptions("");
+  $("#lt-cohort").innerHTML = optList("", cohorts, "Geen cohort");
   const prevLt = $("#lt-manage").value;
   $("#lt-manage").innerHTML = leertrajecten.length
     ? leertrajecten.map((t) => `<option value="${t.id}">${esc(ltLabel(t))}</option>`).join("")
@@ -911,7 +911,6 @@ $("#btn-add-class").addEventListener("click", async () => {
     body: JSON.stringify({
       name,
       crebo_id: $("#class-crebo").value || null,
-      cohort_id: $("#class-cohort").value || null,
       leertraject_id: $("#class-leertraject").value || null,
     }),
   });
@@ -957,7 +956,8 @@ $("#btn-del-cohort").addEventListener("click", async () => {
 
 // ---------- Leertrajecten ----------
 function ltLabel(t) {
-  return t.crebo ? `${t.name} (${t.crebo})` : t.name;
+  const extra = [t.crebo, t.cohort].filter(Boolean).join(", ");
+  return extra ? `${t.name} (${extra})` : t.name;
 }
 
 function ltOptions(sel) {
@@ -987,7 +987,26 @@ function renderLtPeriods() {
     }).join("");
 }
 
-$("#lt-manage").addEventListener("change", renderLtPeriods);
+$("#lt-manage").addEventListener("change", () => {
+  const lt = leertrajecten.find((t) => String(t.id) === $("#lt-manage").value);
+  $("#lt-cohort").value = lt && lt.cohort_id ? lt.cohort_id : "";
+  renderLtPeriods();
+});
+
+$("#lt-cohort").addEventListener("change", async () => {
+  const id = $("#lt-manage").value;
+  if (!id) return;
+  try {
+    await api(`/api/leertrajecten/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cohort_id: $("#lt-cohort").value || null }),
+    });
+    await loadAll();
+  } catch (err) {
+    alert("Startcohort opslaan mislukt: " + err.message);
+  }
+});
 
 $("#lt-periods").addEventListener("change", async (e) => {
   const id = $("#lt-manage").value;
@@ -1012,7 +1031,8 @@ $("#btn-add-lt").addEventListener("click", async () => {
     await api("/api/leertrajecten", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, crebo_id: $("#lt-crebo").value || null }),
+      body: JSON.stringify({ name, crebo_id: $("#lt-crebo").value || null,
+                             cohort_id: $("#lt-cohort").value || null }),
     });
     $("#lt-name").value = "";
     await loadAll();

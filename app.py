@@ -208,6 +208,18 @@ def init_db():
     if "leertraject_id" not in ccols:
         db.execute("ALTER TABLE classes ADD COLUMN leertraject_id INTEGER "
                    "REFERENCES leertrajecten(id) ON DELETE SET NULL")
+    ltcols = [r[1] for r in db.execute("PRAGMA table_info(leertrajecten)").fetchall()]
+    if "cohort_id" not in ltcols:
+        db.execute("ALTER TABLE leertrajecten ADD COLUMN cohort_id INTEGER "
+                   "REFERENCES cohorts(id) ON DELETE SET NULL")
+    # Bestaand startcohort van klassen overzetten naar hun leertraject (idempotent).
+    for lt_id, cohort_id in db.execute(
+        "SELECT DISTINCT leertraject_id, cohort_id FROM classes "
+        "WHERE leertraject_id IS NOT NULL AND cohort_id IS NOT NULL"
+    ).fetchall():
+        db.execute("UPDATE leertrajecten SET cohort_id = ? "
+                   "WHERE id = ? AND cohort_id IS NULL",
+                   (cohort_id, lt_id))
     if "mentor_id" not in ccols:
         db.execute("ALTER TABLE classes ADD COLUMN mentor_id INTEGER "
                    "REFERENCES users(id) ON DELETE SET NULL")
@@ -627,13 +639,13 @@ def mentor_owns_student(user, student_row, new_class_id=None):
 def class_with_crebo(db, class_id):
     row = db.execute(
         """SELECT c.id, c.name, n.name AS crebo, c.crebo_id,
-                  co.name AS cohort, c.cohort_id,
+                  co.name AS cohort, lt.cohort_id,
                   lt.name AS leertraject, c.leertraject_id,
                   c.mentor_id, m.username AS mentor
            FROM classes c
            LEFT JOIN crebos n ON n.id = c.crebo_id
-           LEFT JOIN cohorts co ON co.id = c.cohort_id
            LEFT JOIN leertrajecten lt ON lt.id = c.leertraject_id
+           LEFT JOIN cohorts co ON co.id = lt.cohort_id
            LEFT JOIN users m ON m.id = c.mentor_id
            WHERE c.id = ?""",
         (class_id,),
@@ -729,17 +741,20 @@ def leertrajecten_collection():
         if not name:
             return jsonify({"error": "Naam is verplicht"}), 400
         crebo_id = data.get("crebo_id") or None
+        cohort_id = data.get("cohort_id") or None
         cur = db.execute(
-            "INSERT INTO leertrajecten (name, crebo_id) VALUES (?, ?)",
-            (name, crebo_id))
+            "INSERT INTO leertrajecten (name, crebo_id, cohort_id) VALUES (?, ?, ?)",
+            (name, crebo_id, cohort_id))
         db.commit()
         row = db.execute("SELECT * FROM leertrajecten WHERE id = ?",
                          (cur.lastrowid,)).fetchone()
         return jsonify(leertraject_with_periods(db, row)), 201
     archived = 1 if request.args.get("archived") == "1" else 0
     rows = db.execute(
-        """SELECT lt.*, n.name AS crebo FROM leertrajecten lt
+        """SELECT lt.*, n.name AS crebo, co.name AS cohort
+           FROM leertrajecten lt
            LEFT JOIN crebos n ON n.id = lt.crebo_id
+           LEFT JOIN cohorts co ON co.id = lt.cohort_id
            WHERE lt.archived = ? ORDER BY lt.name""",
         (archived,)).fetchall()
     return jsonify([leertraject_with_periods(db, r) for r in rows])
@@ -761,6 +776,8 @@ def leertraject_item(lt_id):
             updates["name"] = name
         if "crebo_id" in data:
             updates["crebo_id"] = data.get("crebo_id") or None
+        if "cohort_id" in data:
+            updates["cohort_id"] = data.get("cohort_id") or None
         if "archived" in data:
             updates["archived"] = 1 if data.get("archived") else 0
         if updates:
@@ -795,26 +812,25 @@ def classes_collection():
         if not name:
             return jsonify({"error": "Naam is verplicht"}), 400
         crebo_id = data.get("crebo_id") or None
-        cohort_id = data.get("cohort_id") or None
         mentor_id = data.get("mentor_id") or None
         leertraject_id = data.get("leertraject_id") or None
         cur = db.execute(
-            "INSERT INTO classes (name, crebo_id, cohort_id, leertraject_id, mentor_id) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (name, crebo_id, cohort_id, leertraject_id, mentor_id),
+            "INSERT INTO classes (name, crebo_id, leertraject_id, mentor_id) "
+            "VALUES (?, ?, ?, ?)",
+            (name, crebo_id, leertraject_id, mentor_id),
         )
         db.commit()
         return jsonify(class_with_crebo(db, cur.lastrowid)), 201
     archived = 1 if request.args.get("archived") == "1" else 0
     rows = db.execute(
         """SELECT c.id, c.name, n.name AS crebo, c.crebo_id,
-                  co.name AS cohort, c.cohort_id, c.archived,
+                  co.name AS cohort, lt.cohort_id, c.archived,
                   lt.name AS leertraject, c.leertraject_id,
                   c.mentor_id, m.username AS mentor
            FROM classes c
            LEFT JOIN crebos n ON n.id = c.crebo_id
-           LEFT JOIN cohorts co ON co.id = c.cohort_id
            LEFT JOIN leertrajecten lt ON lt.id = c.leertraject_id
+           LEFT JOIN cohorts co ON co.id = lt.cohort_id
            LEFT JOIN users m ON m.id = c.mentor_id
            WHERE c.archived = ?
            ORDER BY c.name""",
@@ -839,8 +855,6 @@ def class_item(class_id):
             updates["name"] = name
         if "crebo_id" in data:
             updates["crebo_id"] = data.get("crebo_id") or None
-        if "cohort_id" in data:
-            updates["cohort_id"] = data.get("cohort_id") or None
         if "leertraject_id" in data:
             updates["leertraject_id"] = data.get("leertraject_id") or None
         if updates:
@@ -1757,8 +1771,9 @@ def report():
         students = db.execute(
             """SELECT st.* FROM students st
                JOIN classes c ON c.id = st.class_id
-               JOIN cohorts co ON co.id = c.cohort_id
-               WHERE c.cohort_id = ? AND st.archived = 0
+               JOIN leertrajecten lt ON lt.id = c.leertraject_id
+               JOIN cohorts co ON co.id = lt.cohort_id
+               WHERE lt.cohort_id = ? AND st.archived = 0
                  AND co.archived = 0
                ORDER BY st.name""",
             (cohort_id,),

@@ -126,12 +126,14 @@ def main():
     # ----------------------------------------------------------- leertrajecten
     # 3-jarig traject (M1-M12) en 2-jarig traject (M1-M8) onder hetzelfde crebo.
     trajecten = [
-        ("ICT-medewerker 3-jarig", [f"M{i}" for i in range(1, 13)]),
-        ("ICT-medewerker 2-jarig", [f"M{i}" for i in range(1, 9)]),
+        ("ICT-medewerker 3-jarig 25-26", "25-26", [f"M{i}" for i in range(1, 13)]),
+        ("ICT-medewerker 2-jarig 24-25", "24-25", [f"M{i}" for i in range(1, 9)]),
+        ("ICT-medewerker 3-jarig 23-24", "23-24", [f"M{i}" for i in range(1, 13)]),
     ]
     leertrajecten = {}
-    for name, mods in trajecten:
-        _, body = s.post("/api/leertrajecten", {"name": name, "crebo_id": niv})
+    for name, cohort, mods in trajecten:
+        _, body = s.post("/api/leertrajecten",
+                         {"name": name, "crebo_id": niv, "cohort_id": cohorts[cohort]})
         s.put(f"/api/leertrajecten/{body['id']}",
               {"period_ids": [periods[m] for m in mods]})
         leertrajecten[name] = body["id"]
@@ -221,10 +223,10 @@ def main():
     ]
     class_ids = []
     for i, (name, leerjaar, cohort) in enumerate(class_specs):
-        traject = ("ICT-medewerker 3-jarig" if leerjaar != 2
-                   else "ICT-medewerker 2-jarig")
+        traject = ("ICT-medewerker 2-jarig 24-25" if leerjaar == 2
+                   else f"ICT-medewerker 3-jarig {cohort}")
         _, body = s.post("/api/classes", {
-            "name": name, "crebo_id": niv, "cohort_id": cohorts[cohort],
+            "name": name, "crebo_id": niv,
             "leertraject_id": leertrajecten[traject],
             "mentor_id": mentors[i]["id"]})
         class_ids.append((body["id"], leerjaar, name))
