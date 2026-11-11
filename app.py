@@ -2021,6 +2021,177 @@ def attendance_set():
 # Reports
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Statistieken
+# ---------------------------------------------------------------------------
+
+def numeric_grade(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+@app.route("/api/statistics")
+def statistics():
+    user, err = auth_error("beheerder", "mentor", "docent", "administratie")
+    if err:
+        return err
+    period_id = request.args.get("period_id", type=int)
+    if not period_id:
+        return jsonify({"error": "period_id is verplicht"}), 400
+    class_id = request.args.get("class_id", type=int)
+    cohort_id = request.args.get("cohort_id", type=int)
+    db = get_db()
+
+    # Studenten in scope (zelfde regels als rapport; mentor: alleen eigen klassen).
+    if user["role"] == "mentor":
+        mentor_ids = mentor_class_ids(user)
+        if not mentor_ids:
+            return jsonify({"subjects": [], "classes": [], "signals": []})
+        if class_id and class_id not in mentor_ids:
+            return jsonify({"error": "Deze klas is niet van jou"}), 403
+        placeholders = ",".join("?" for _ in mentor_ids)
+        where = f"st.archived = 0 AND st.class_id IN ({placeholders})"
+        args = list(mentor_ids)
+    else:
+        where = "st.archived = 0"
+        args = []
+
+    if class_id:
+        where += " AND st.class_id = ?"
+        args.append(class_id)
+    elif cohort_id:
+        where += (" AND st.class_id IN (SELECT c.id FROM classes c "
+                  "JOIN leertrajecten lt ON lt.id = c.leertraject_id "
+                  "WHERE lt.cohort_id = ?)")
+        args.append(cohort_id)
+    students = db.execute(
+        f"SELECT st.*, c.name AS class_name, c.leertraject_id FROM students st "
+        f"LEFT JOIN classes c ON c.id = st.class_id WHERE {where}",
+        args).fetchall()
+    student_ids = [s["id"] for s in students]
+
+    # Vakken van deze module.
+    subjects = [s for s in db.execute(
+        "SELECT * FROM subjects WHERE archived = 0 AND kind = 'vak' ORDER BY name"
+    ).fetchall()
+        if period_id in {r["period_id"] for r in db.execute(
+            "SELECT period_id FROM subject_periods WHERE subject_id = ?",
+            (s["id"],)).fetchall()}]
+    subject_ids = {s["id"] for s in subjects}
+
+    # Cijfers, aanwezigheid en SBU ophalen.
+    grades = {}
+    if student_ids:
+        ph = ",".join("?" for _ in student_ids)
+        for r in db.execute(
+            f"SELECT student_id, subject_id, value FROM grades "
+            f"WHERE period_id = ? AND student_id IN ({ph})",
+            [period_id, *student_ids]).fetchall():
+            grades[(r["student_id"], r["subject_id"])] = r["value"]
+    attendance = {}
+    if student_ids:
+        ph = ",".join("?" for _ in student_ids)
+        for r in db.execute(
+            f"SELECT student_id, present, absent_allowed, absent_unallowed "
+            f"FROM attendance WHERE period_id = ? AND student_id IN ({ph})",
+            [period_id, *student_ids]).fetchall():
+            attendance[r["student_id"]] = r
+    sbu = {}
+    if student_ids:
+        ph = ",".join("?" for _ in student_ids)
+        for r in db.execute(
+            f"SELECT k.student_id, SUM(s.sbu) AS totaal FROM student_keuzedelen k "
+            f"JOIN subjects s ON s.id = k.subject_id "
+            f"WHERE k.student_id IN ({ph}) GROUP BY k.student_id",
+            student_ids).fetchall():
+            sbu[r["student_id"]] = r["totaal"] or 0
+
+    def is_vol(value):
+        return value not in (None, "") and tekorten_for_value(value) == 0
+
+    # Per vak.
+    subject_stats = []
+    for su in subjects:
+        values = [v for (sid, suid), v in grades.items()
+                  if suid == su["id"] and sid in student_ids]
+        nums = [numeric_grade(v) for v in values]
+        nums = [n for n in nums if n is not None]
+        tekorten = sum(tekorten_for_value(v) for v in values)
+        subject_stats.append({
+            "name": su["name"],
+            "count": len(values),
+            "avg": round(sum(nums) / len(nums), 1) if nums else None,
+            "vol": sum(1 for v in values if is_vol(v)),
+            "onv": sum(1 for v in values if v not in (None, "") and not is_vol(v)),
+            "vs": sum(1 for v in values if v == "VS"),
+            "tekorten": tekorten,
+        })
+
+    # Per klas (voor vergelijkingen).
+    by_class = {}
+    for s in students:
+        key = s["class_name"] or "Zonder klas"
+        by_class.setdefault(key, []).append(s)
+    class_stats = []
+    for cname, group in sorted(by_class.items()):
+        gids = [g["id"] for g in group]
+        values = [v for (sid, suid), v in grades.items() if sid in gids]
+        nums = [numeric_grade(v) for v in values]
+        nums = [n for n in nums if n is not None]
+        tekorten = sum(tekorten_for_value(v) for v in values)
+        atts = [attendance[g]["present"] for g in gids
+                if g in attendance and attendance[g]["present"] is not None]
+        class_stats.append({
+            "class": cname,
+            "students": len(group),
+            "avg": round(sum(nums) / len(nums), 1) if nums else None,
+            "tekorten": tekorten,
+            "tekort_per_student": round(tekorten / len(group), 2) if group else 0,
+            "vol_pct": round(100 * sum(1 for v in values if is_vol(v)) / len(values), 1) if values else None,
+            "attendance_avg": round(sum(atts) / len(atts), 1) if atts else None,
+            "attendance_low": sum(1 for g in gids if g in attendance
+                                  and attendance[g]["present"] is not None
+                                  and attendance[g]["present"] < 85),
+        })
+
+    # Signalering: >=3 tekorten in de module, aanwezigheid < 85%, SBU-tekort.
+    signals = []
+    for s in students:
+        st_tekorten = sum(tekorten_for_value(v)
+                          for (sid, suid), v in grades.items()
+                          if sid == s["id"] and suid in subject_ids)
+        att = attendance.get(s["id"])
+        present = att["present"] if att else None
+        sbu_total = sbu.get(s["id"], 0)
+        reasons = []
+        if st_tekorten >= 3:
+            reasons.append(f"{st_tekorten} tekorten")
+        if present is not None and present < 85:
+            reasons.append(f"aanwezigheid {present}%")
+        if sbu_total < KEUZEDEEL_SBU_DOEL:
+            reasons.append(f"SBU {int(sbu_total)}/{KEUZEDEEL_SBU_DOEL}")
+        if reasons:
+            signals.append({
+                "student": s["name"],
+                "student_number": s["student_number"],
+                "class": s["class_name"] or "",
+                "reasons": reasons,
+                "tekorten": st_tekorten,
+                "present": present,
+                "sbu": int(sbu_total),
+            })
+
+    return jsonify({
+        "period": dict(db.execute("SELECT * FROM periods WHERE id = ?",
+                                  (period_id,)).fetchone()),
+        "subjects": subject_stats,
+        "classes": class_stats,
+        "signals": signals,
+    })
+
+
 @app.route("/api/report")
 def report():
     user, err = auth_error()

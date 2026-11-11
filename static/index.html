@@ -30,6 +30,7 @@
     <button data-tab="archief" class="tab">Archief</button>
     <button data-tab="logboek" class="tab">Logboek</button>
     <button data-tab="keuzedelen" class="tab">Keuzedelen</button>
+    <button data-tab="statistieken" class="tab">Statistieken</button>
     <button data-tab="gebruikers" class="tab">Gebruikers</button>
     <button id="btn-theme" class="theme-toggle" title="Donker/licht thema wisselen">&#9681;</button>
     <span id="user-info" class="user-info"></span>
@@ -237,6 +238,24 @@
     <thead><tr><th>Keuzedeel</th><th>SBU</th><th>Beoordelingstype</th><th>Gekoppeld</th><th>Beoordeling</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
+</section>
+
+<!-- Statistieken -->
+<section id="tab-statistieken" class="panel">
+  <p class="hint">Statistieken per module: gemiddelden, tekorten en verdelingen per vak, vergelijking tussen klassen en een signalering van studenten die aandacht nodig hebben. Niets hier is muteerbaar.</p>
+  <div class="toolbar">
+    <label>Module:
+      <select id="stat-period"></select>
+    </label>
+    <label>Cohort:
+      <select id="stat-cohort"><option value="">Alle cohorten</option></select>
+    </label>
+    <label>Klas:
+      <select id="stat-class"><option value="">Alle klassen</option></select>
+    </label>
+    <button id="btn-statistics">Berekenen</button>
+  </div>
+  <div id="stat-output"></div>
 </section>
 
 <!-- Rapport -->

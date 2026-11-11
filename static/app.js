@@ -197,10 +197,10 @@ const ROLE_LABELS = {
 };
 
 const ROLE_TABS = {
-  beheerder: ["cijfers", "studenten", "klassen", "vakken", "periodes", "keuzedelen", "rapport", "archief", "gebruikers", "logboek"],
-  mentor: ["cijfers", "studenten", "keuzedelen", "rapport", "archief", "logboek"],
-  docent: ["cijfers", "keuzedelen", "rapport", "logboek"],
-  administratie: ["keuzedelen", "rapport", "logboek"],
+  beheerder: ["cijfers", "studenten", "klassen", "vakken", "periodes", "keuzedelen", "statistieken", "rapport", "archief", "gebruikers", "logboek"],
+  mentor: ["cijfers", "studenten", "keuzedelen", "statistieken", "rapport", "archief", "logboek"],
+  docent: ["cijfers", "keuzedelen", "statistieken", "rapport", "logboek"],
+  administratie: ["keuzedelen", "statistieken", "rapport", "logboek"],
   student: ["rapport"],
 };
 
@@ -353,7 +353,7 @@ function renderPeriodSelects() {
   if (reportSel) {
     const isStudent = currentUser && currentUser.role === "student";
     const reportPeriods = isStudent ? periods : periodsForClass($("#report-class").value);
-    reportSel.innerHTML = (isStudent ? `<option value="all">Alle modules (totaal)</option>` : "") +
+    reportSel.innerHTML = `<option value="all">Alle modules (totaal)</option>` +
       reportPeriods.map((p) => `<option value="${p.id}">${esc(periodLabel(p))}</option>`).join("");
   }
   const rs = $("#report-student");
@@ -1398,10 +1398,22 @@ async function showReport() {
   const periodId = $("#report-period").value;
   if (!periodId) return;
   if (periodId === "all") {
+    const isStudentRole = currentUser && currentUser.role === "student";
+    const studentId = isStudentRole ? currentUser.student_id : $("#report-student").value;
+    const classId = $("#report-class").value;
+    const cohortId = $("#report-cohort").value;
+    const audience = isStudentRole ? "student" : $("#report-audience").value;
+    if (!isStudentRole && !studentId && !classId) {
+      return alert("Kies voor een totaalrapport eerst een student of een klas.");
+    }
     const out = $("#report-output");
     out.innerHTML = "";
     for (const p of periods) {
-      const data = await api(`/api/report?period_id=${p.id}&audience=student&student_id=${currentUser.student_id}`);
+      let url = `/api/report?period_id=${p.id}&audience=${audience}`;
+      if (studentId) url += `&student_id=${studentId}`;
+      if (classId) url += `&class_id=${classId}`;
+      if (!isStudentRole && cohortId) url += `&cohort_id=${cohortId}`;
+      const data = await api(url);
       renderReportCards(data, p);
     }
     if (!out.innerHTML) out.innerHTML = `<p class="hint">Er zijn nog geen modules met cijfers.</p>`;
@@ -1658,6 +1670,72 @@ $("#kd-table tbody").addEventListener("change", async (e) => {
   }
 });
 
+// ---------- Statistieken ----------
+function fillStatFilters() {
+  refillKeepingValue("#stat-period", periods.map((p) =>
+    `<option value="${p.id}">${esc(periodLabel(p))}</option>`).join(""));
+  refillKeepingValue("#stat-cohort", `<option value="">Alle cohorten</option>` +
+    cohorts.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join(""));
+  refillKeepingValue("#stat-class", `<option value="">Alle klassen</option>` +
+    classes.map((c) => `<option value="${c.id}">${esc(classLabel(c))}</option>`).join(""));
+  if (!$("#stat-period").value && periods.length) $("#stat-period").value = periods[0].id;
+}
+
+$("#btn-statistics").addEventListener("click", showStatistics);
+
+async function showStatistics() {
+  const periodId = $("#stat-period").value;
+  if (!periodId) return;
+  let url = `/api/statistics?period_id=${periodId}`;
+  if ($("#stat-cohort").value) url += `&cohort_id=${$("#stat-cohort").value}`;
+  if ($("#stat-class").value) url += `&class_id=${$("#stat-class").value}`;
+  const data = await api(url);
+  const pct = (n) => n === null || n === undefined ? "" : `${n}%`;
+  const avg = (n) => n === null || n === undefined ? "" : String(n).replace(".", ",");
+  let html = `<h2>Statistieken — ${esc(periodLabel(data.period))}</h2>`;
+  // Vakken
+  html += `<h3>Vakken</h3>` + (data.subjects.length ? `
+    <table class="list">
+      <thead><tr><th>Vak</th><th>Beoordelingen</th><th>Gemiddeld cijfer</th><th>Voldoendes</th><th>Onvoldoendes</th><th>VS</th><th>Tekorten</th></tr></thead>
+      <tbody>${data.subjects.map((s) => `
+        <tr>
+          <td>${esc(s.name)}</td><td>${s.count}</td><td>${avg(s.avg)}</td>
+          <td class="val-vol">${s.vol}</td><td class="${s.onv > 0 ? "val-onv" : ""}">${s.onv}</td>
+          <td class="val-vs">${s.vs}</td><td class="${s.tekorten > 0 ? "val-onv" : ""}">${s.tekorten}</td>
+        </tr>`).join("")}</tbody>
+    </table>` : `<p class="hint">Geen vakken met cijfers in deze module.</p>`);
+  // Klassen-vergelijking
+  if (data.classes.length > 1) {
+    html += `<h3>Klassen-vergelijking</h3>
+    <table class="list">
+      <thead><tr><th>Klas</th><th>Studenten</th><th>Gemiddeld cijfer</th><th>Tekorten</th><th>Tekort per student</th><th>% voldoende</th><th>Gem. aanwezigheid</th><th>&lt;85% aanwezig</th></tr></thead>
+      <tbody>${data.classes.map((c) => `
+        <tr>
+          <td>${esc(c.class)}</td><td>${c.students}</td><td>${avg(c.avg)}</td>
+          <td class="${c.tekorten > 0 ? "val-onv" : ""}">${c.tekorten}</td>
+          <td>${String(c.tekort_per_student).replace(".", ",")}</td>
+          <td>${c.vol_pct === null ? "" : c.vol_pct + "%"}</td>
+          <td class="${c.attendance_avg !== null && c.attendance_avg < 85 ? "val-onv" : "val-vol"}">${pct(c.attendance_avg)}</td>
+          <td class="${c.attendance_low > 0 ? "val-onv" : ""}">${c.attendance_low}</td>
+        </tr>`).join("")}</tbody>
+    </table>`;
+  }
+  // Signalering
+  html += `<h3>Signalering</h3>` + (data.signals.length ? `
+    <table class="list">
+      <thead><tr><th>Student</th><th>Nr.</th><th>Klas</th><th>Tekorten (module)</th><th>Aanwezigheid</th><th>SBU keuzedelen</th><th>Signalen</th></tr></thead>
+      <tbody>${data.signals.map((s) => `
+        <tr>
+          <td>${esc(s.student)}</td><td>${esc(s.student_number || "")}</td><td>${esc(s.class)}</td>
+          <td class="${s.tekorten >= 3 ? "val-onv" : ""}">${s.tekorten}</td>
+          <td class="${s.present !== null && s.present < 85 ? "val-onv" : ""}">${pct(s.present)}</td>
+          <td class="${s.sbu < 720 ? "val-onv" : "val-vol"}">${s.sbu} / 720</td>
+          <td>${s.reasons.map((r) => esc(r)).join(", ")}</td>
+        </tr>`).join("")}</tbody>
+    </table>` : `<p class="hint">Geen studenten met signalen in deze selectie.</p>`);
+  $("#stat-output").innerHTML = html;
+}
+
 // ---------- Archief ----------
 let archiveData = {};   // tabel-id -> rijen
 let archiveState = {};  // tabel-id -> {q, sortKey, sortDir}
@@ -1739,6 +1817,7 @@ $$(".tab").forEach((btn) => {
     if (btn.dataset.tab === "archief") renderArchive();
     if (btn.dataset.tab === "logboek") renderAuditLog();
     if (btn.dataset.tab === "keuzedelen") renderKeuzedelenTab();
+    if (btn.dataset.tab === "statistieken") fillStatFilters();
   });
 });
 
