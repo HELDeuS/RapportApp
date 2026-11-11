@@ -240,6 +240,11 @@ function applyRoleUi() {
   if (studentImport) studentImport.style.display = isAdmin() ? "" : "none";
   const kdAddBar = $("#kd-add-bar");
   if (kdAddBar) kdAddBar.style.display = isAdmin() ? "" : "none";
+  const mayLinkKd = isRole("beheerder", "mentor");
+  for (const id of ["btn-kd-bulk-link", "btn-kd-bulk-unlink"]) {
+    const el = $("#" + id);
+    if (el) el.style.display = mayLinkKd ? "" : "none";
+  }
 }
 
 function renderStudentReportUi() {
@@ -381,16 +386,15 @@ function renderPeriodSelects() {
   rs.innerHTML = `<option value="">Alle studenten</option>` +
     students.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join("");
   renderClassSelects();
-  for (const sel of [$("#student-cohort"), $("#report-cohort"), $("#grade-cohort"), $("#kd-matrix-cohort")]) {
+  for (const sel of [$("#student-cohort"), $("#report-cohort"), $("#grade-cohort"), $("#kd-matrix-cohort"), $("#kd-bulk-cohort")]) {
     sel.innerHTML = `<option value="">Alle cohorten</option>` +
       cohorts.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("");
   }
-  const kdmc = $("#kd-matrix-class");
-  if (kdmc) {
-    const kdmcPrev = kdmc.value;
-    kdmc.innerHTML = `<option value="">Alle klassen</option>` +
+  for (const kbc of [$("#kd-matrix-class"), $("#kd-bulk-class")]) {
+    const kbcPrev = kbc.value;
+    kbc.innerHTML = `<option value="">Alle klassen</option>` +
       classes.map((c) => `<option value="${c.id}">${esc(classLabel(c))}</option>`).join("");
-    if (kdmcPrev && [...kdmc.options].some((o) => o.value === kdmcPrev)) kdmc.value = kdmcPrev;
+    if (kbcPrev && [...kbc.options].some((o) => o.value === kbcPrev)) kbc.value = kbcPrev;
   }
   const scFilter = $("#student-cohort") ? $("#student-cohort").value : "";
   const scList = ownClassesOnly(scFilter
@@ -1759,6 +1763,80 @@ $("#kd-matrix-search").addEventListener("input", () => { resetPage("#kd-matrix-t
 
 bindTableSort("#kd-matrix-table", "kdmatrix", renderKdMatrix);
 
+// ---------- Keuzedelen bulk-koppeling ----------
+let kdBulkData = null;
+
+async function loadKdBulk() {
+  const params = [];
+  if ($("#kd-bulk-cohort").value) params.push("cohort_id=" + $("#kd-bulk-cohort").value);
+  if ($("#kd-bulk-class").value) params.push("class_id=" + $("#kd-bulk-class").value);
+  kdBulkData = await api("/api/keuzedelen/matrix" + (params.length ? "?" + params.join("&") : ""));
+  if (!keuzedelenList.length) await loadKeuzedelenList();
+  const kdSel = $("#kd-bulk-kd");
+  const prevKd = kdSel.value;
+  kdSel.innerHTML = `<option value="">Kies een keuzedeel...</option>` +
+    keuzedelenList.map((k) => `<option value="${k.id}">${esc(k.name)}</option>`).join("");
+  if (prevKd && [...kdSel.options].some((o) => o.value === prevKd)) kdSel.value = prevKd;
+  renderKdBulk();
+}
+
+function renderKdBulk() {
+  if (!kdBulkData) return;
+  const kid = $("#kd-bulk-kd").value;
+  const q = ($("#kd-bulk-search").value || "").trim().toLowerCase();
+  let rows = kdBulkData.students;
+  if (q) {
+    rows = rows.filter((s) =>
+      studentName(s).toLowerCase().includes(q) ||
+      (s.student_number || "").toLowerCase().includes(q) ||
+      (s.class_name || "").toLowerCase().includes(q));
+  }
+  const linked = (s) => kid && Object.prototype.hasOwnProperty.call(s.grades || {}, String(kid));
+  $("#kd-bulk-table tbody").innerHTML = pageSlice("#kd-bulk-table", rows).map((s) => `
+    <tr data-id="${s.id}">
+      <td><input type="checkbox" class="kd-bulk-check" data-id="${s.id}"></td>
+      <td>${esc(s.student_number || "")}</td>
+      <td>${esc(studentName(s))}</td>
+      <td>${esc(s.class_name || "")}</td>
+      <td>${linked(s) ? `<span class="val-vol" title="Gekoppeld aan dit keuzedeel">&#10003;</span>` : ""}</td>
+    </tr>`).join("") || `<tr><td colspan="5" class="hint">Geen studenten gevonden.</td></tr>`;
+}
+
+function kdBulkIds() {
+  return [...$$("#kd-bulk-table tbody input.kd-bulk-check:checked")].map((cb) => +cb.dataset.id);
+}
+
+async function kdBulkAction(action) {
+  const kid = $("#kd-bulk-kd").value;
+  if (!kid) return alert("Kies eerst een keuzedeel.");
+  const ids = kdBulkIds();
+  if (!ids.length) return alert("Vink eerst minimaal \u00e9\u00e9n student aan.");
+  const kdName = keuzedelenList.find((k) => k.id === +kid);
+  if (!confirm(`${action === "link" ? "Koppel" : "Ontkoppel"} '${kdName ? kdName.name : ""}' aan ${ids.length} student(en)?`)) return;
+  try {
+    await api("/api/keuzedelen/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subject_id: +kid, student_ids: ids, action }),
+    });
+    await loadKdBulk();
+    await loadKdMatrix();
+  } catch (err) {
+    alert("Bulk-koppeling mislukt: " + err.message);
+  }
+}
+
+$("#btn-kd-bulk-link").addEventListener("click", () => kdBulkAction("link"));
+$("#btn-kd-bulk-unlink").addEventListener("click", () => kdBulkAction("unlink"));
+$("#kd-bulk-kd").addEventListener("change", renderKdBulk);
+$("#kd-bulk-search").addEventListener("input", () => { resetPage("#kd-bulk-table"); renderKdBulk(); });
+for (const sel of ["#kd-bulk-cohort", "#kd-bulk-class"]) {
+  $(sel).addEventListener("change", () => { resetPage("#kd-bulk-table"); loadKdBulk(); });
+}
+$("#kd-bulk-select-all").addEventListener("change", (e) => {
+  $$("#kd-bulk-table tbody input.kd-bulk-check").forEach((cb) => { cb.checked = e.target.checked; });
+});
+
 // ---------- Keuzedelen ----------
 let keuzedelenList = [];   // alle keuzedeel-subjects
 let kdStudentData = null;  // data van geselecteerde student
@@ -2456,7 +2534,7 @@ $$(".tab").forEach((btn) => {
   btn.addEventListener("click", () => {
     if (btn.dataset.tab === "archief") renderArchive();
     if (btn.dataset.tab === "logboek") renderAuditLog();
-    if (btn.dataset.tab === "keuzedelen") { renderKeuzedelenTab(); loadKdMatrix(); }
+    if (btn.dataset.tab === "keuzedelen") { renderKeuzedelenTab(); loadKdMatrix(); loadKdBulk(); }
     if (btn.dataset.tab === "statistieken") fillStatFilters();
   });
 });

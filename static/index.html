@@ -251,7 +251,30 @@
     </table>
     <div class="pager" data-table="kd-matrix-table"></div>
   </div>
-  <p class="hint">Lege cellen met een streepje: het keuzedeel is niet aan de student gekoppeld. Koppelen en beheren kan hieronder per student.</p>
+  <p class="hint">Lege cellen met een streepje: het keuzedeel is niet aan de student gekoppeld. Koppelen kan hieronder in bulk of per student.</p>
+  <h3>Meerdere studenten koppelen</h3>
+  <div class="toolbar">
+    <label>Keuzedeel:
+      <select id="kd-bulk-kd"><option value="">Kies een keuzedeel...</option></select>
+    </label>
+    <input id="kd-bulk-search" placeholder="&#9906; Zoek student...">
+    <label>Cohort:
+      <select id="kd-bulk-cohort"><option value="">Alle cohorten</option></select>
+    </label>
+    <label>Klas:
+      <select id="kd-bulk-class"><option value="">Alle klassen</option></select>
+    </label>
+    <button id="btn-kd-bulk-link">Koppel geselecteerden</button>
+    <button id="btn-kd-bulk-unlink" class="secondary">Ontkoppel geselecteerden</button>
+  </div>
+  <table class="list" id="kd-bulk-table">
+    <thead><tr>
+      <th style="width:30px"><input type="checkbox" id="kd-bulk-select-all" title="Alles selecteren"></th>
+      <th>Nr.</th><th>Student</th><th>Klas</th><th>Gekoppeld</th>
+    </tr></thead>
+    <tbody></tbody>
+  </table>
+  <div class="pager" data-table="kd-bulk-table"></div>
   <h3>Koppelen en beheren</h3>
   <p class="hint">Elke student volgt keuzedelen ter waarde van samen <strong>720 SBU</strong>. Vink de keuzedelen aan die de student volgt; de beoordeling vul je per keuzedeel in. Keuzedelen beheer je op het tabblad Vakken (soort = Keuzedeel, met SBU-waarde).</p>
   <div class="toolbar">

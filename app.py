@@ -1316,6 +1316,50 @@ def keuzedelen_matrix():
     })
 
 
+@app.route("/api/keuzedelen/bulk", methods=["POST"])
+def keuzedelen_bulk():
+    user, err = auth_error("beheerder", "mentor")
+    if err:
+        return err
+    db = get_db()
+    data = request.get_json(force=True)
+    subject_id = data.get("subject_id")
+    student_ids = data.get("student_ids") or []
+    action = data.get("action")
+    if not subject_id or action not in ("link", "unlink"):
+        return jsonify({"error": "subject_id en action (link/unlink) zijn verplicht"}), 400
+    if not student_ids:
+        return jsonify({"error": "Kies eerst minimaal \u00e9\u00e9n student"}), 400
+    subject = db.execute(
+        "SELECT name FROM subjects WHERE id = ? AND kind = 'keuzedeel'",
+        (subject_id,)).fetchone()
+    if subject is None:
+        return jsonify({"error": "Keuzedeel bestaat niet"}), 404
+    students = db.execute(
+        f"""SELECT st.* FROM students st WHERE st.id IN
+           ({','.join('?' for _ in student_ids)})""",
+        student_ids).fetchall()
+    if user["role"] == "mentor":
+        students = [s for s in students if mentor_owns_student(user, s)]
+    if not students:
+        return jsonify({"error": "Geen van deze studenten mag je wijzigen"}), 403
+    if action == "link":
+        for s in students:
+            db.execute(
+                "INSERT OR IGNORE INTO student_keuzedelen (student_id, subject_id) "
+                "VALUES (?, ?)", (s["id"], subject_id))
+    else:
+        for s in students:
+            db.execute(
+                "DELETE FROM student_keuzedelen WHERE student_id = ? AND subject_id = ?",
+                (s["id"], subject_id))
+    db.commit()
+    audit(db, user, "bulk-" + action, "keuzedeel", subject_id,
+          f"{subject['name']} \u2014 {len(students)} student(en) "
+          f"{'gekoppeld' if action == 'link' else 'ontkoppeld'}")
+    return jsonify({"ok": True, "affected": len(students)})
+
+
 @app.route("/api/keuzedelen/grade", methods=["POST"])
 def keuzedeel_grade():
     user, err = auth_error("beheerder", "docent", "mentor")
