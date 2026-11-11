@@ -76,6 +76,10 @@ const IMPORT_TEMPLATES = {
     file: "voorbeeld-cijfers.csv",
     text: "Naam;Vaknaam 1;Vaknaam 2\nJan Jansen;7,5;VS\nPiet Pietersen;O;5,2\n",
   },
+  keuzedeel: {
+    file: "voorbeeld-keuzedeel-resultaten.csv",
+    text: "Studentnummer;Resultaat\n10001;8\n10002;VS\n10003;G\n",
+  },
   studenten: {
     file: "voorbeeld-studenten.csv",
     text: "Studentnummer,Voornaam,Tussenvoegsel,Achternaam,Email,Klas\n"
@@ -241,6 +245,8 @@ function applyRoleUi() {
   if (studentImport) studentImport.style.display = isAdmin() ? "" : "none";
   const kdAddBar = $("#kd-add-bar");
   if (kdAddBar) kdAddBar.style.display = isAdmin() ? "" : "none";
+  const kdImportBar = $("#kd-import-bar");
+  if (kdImportBar) kdImportBar.style.display = maySetGrades() || isRole("mentor") ? "" : "none";
   const mayLinkKd = isRole("beheerder", "mentor");
   for (const id of ["btn-kd-bulk-link", "btn-kd-bulk-unlink"]) {
     const el = $("#" + id);
@@ -1774,11 +1780,12 @@ async function loadKdBulk() {
   if ($("#kd-bulk-class").value) params.push("class_id=" + $("#kd-bulk-class").value);
   kdBulkData = await api("/api/keuzedelen/matrix" + (params.length ? "?" + params.join("&") : ""));
   if (!keuzedelenList.length) await loadKeuzedelenList();
-  const kdSel = $("#kd-bulk-kd");
-  const prevKd = kdSel.value;
-  kdSel.innerHTML = `<option value="">Kies een keuzedeel...</option>` +
-    keuzedelenList.map((k) => `<option value="${k.id}">${esc(k.name)}</option>`).join("");
-  if (prevKd && [...kdSel.options].some((o) => o.value === prevKd)) kdSel.value = prevKd;
+  for (const sel of [$("#kd-bulk-kd"), $("#kd-import-kd")]) {
+    const prevKd = sel.value;
+    sel.innerHTML = `<option value="">Kies een keuzedeel...</option>` +
+      keuzedelenList.map((k) => `<option value="${k.id}">${esc(k.name)}</option>`).join("");
+    if (prevKd && [...sel.options].some((o) => o.value === prevKd)) sel.value = prevKd;
+  }
   renderKdBulk();
 }
 
@@ -1834,6 +1841,34 @@ async function kdBulkAction(action) {
 }
 
 $("#btn-kd-bulk-link").addEventListener("click", () => kdBulkAction("link"));
+
+$("#kd-import-file").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const kid = $("#kd-import-kd").value;
+  if (!kid) {
+    alert("Kies eerst een keuzedeel.");
+    e.target.value = "";
+    return;
+  }
+  const fd = new FormData();
+  fd.append("subject_id", kid);
+  fd.append("file", file);
+  try {
+    const res = await api("/api/keuzedelen/import", { method: "POST", body: fd });
+    const el = $("#kd-import-result");
+    el.classList.remove("hidden");
+    let msg = `Toegevoegd: ${res.imported}`;
+    if (res.skipped) msg += `, leeg (gewist): ${res.skipped}`;
+    if (res.errors && res.errors.length) msg += "\nFouten:\n" + res.errors.join("\n");
+    el.textContent = msg;
+    await loadKdMatrix();
+    await loadKdBulk();
+  } catch (err) {
+    alert("Import mislukt: " + err.message);
+  }
+  e.target.value = "";
+});
 $("#btn-kd-bulk-unlink").addEventListener("click", () => kdBulkAction("unlink"));
 $("#kd-bulk-kd").addEventListener("change", renderKdBulk);
 $("#kd-bulk-search").addEventListener("input", () => { resetPage("#kd-bulk-table"); renderKdBulk(); });

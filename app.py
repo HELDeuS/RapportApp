@@ -1360,6 +1360,73 @@ def keuzedelen_bulk():
     return jsonify({"ok": True, "affected": len(students)})
 
 
+@app.route("/api/keuzedelen/import", methods=["POST"])
+def keuzedelen_import():
+    user, err = auth_error("beheerder", "docent", "mentor")
+    if err:
+        return err
+    db = get_db()
+    subject_id = request.form.get("subject_id", type=int)
+    file = request.files.get("file")
+    if not subject_id:
+        return jsonify({"error": "Kies eerst een keuzedeel"}), 400
+    if not file:
+        return jsonify({"error": "Geen bestand meegestuurd"}), 400
+    subject = db.execute(
+        "SELECT name, assessment_type FROM subjects "
+        "WHERE id = ? AND kind = 'keuzedeel'", (subject_id,)).fetchone()
+    if subject is None:
+        return jsonify({"error": "Keuzedeel bestaat niet"}), 404
+    rows = rows_from_upload(file)
+    if not rows:
+        return jsonify({"error": "Geen data gevonden"}), 400
+    header = [str(c).strip().lower() for c in rows[0]]
+    if header and ("studentnummer" in header[0] or "resultaat" in " ".join(header)):
+        rows = rows[1:]
+    imported, skipped = 0, 0
+    errors = []
+    for i, row in enumerate(rows, start=1):
+        if not row or not row[0].strip():
+            continue
+        if len(row) < 2:
+            errors.append(f"Regel {i}: te weinig kolommen (verwacht: studentnummer;resultaat)")
+            continue
+        number = row[0].strip()
+        value = row[1].strip()
+        student = db.execute(
+            "SELECT * FROM students WHERE student_number = ?", (number,)).fetchone()
+        if student is None:
+            errors.append(f"Regel {i}: geen student met nummer {number}")
+            continue
+        if user["role"] == "mentor" and not mentor_owns_student(user, student):
+            errors.append(f"Regel {i}: {number} is niet van jouw klas")
+            continue
+        db.execute(
+            "INSERT OR IGNORE INTO student_keuzedelen (student_id, subject_id) "
+            "VALUES (?, ?)", (student["id"], subject_id))
+        parsed = None
+        if value != "":
+            try:
+                parsed = parse_value(value, subject["assessment_type"])
+            except ValueError as e:
+                errors.append(f"Regel {i} ({number}): {e}")
+                continue
+        db.execute(
+            """UPDATE student_keuzedelen SET grade = ?
+               WHERE student_id = ? AND subject_id = ?""",
+            (parsed, student["id"], subject_id))
+        if not value:
+            skipped += 1
+        else:
+            imported += 1
+    db.commit()
+    audit(db, user, "import", "keuzedeel", subject_id,
+          f"{subject['name']}: {imported} resultaat(en) ge\u00efmporteerd, "
+          f"{skipped} leeg, {len(errors)} fout(en)")
+    return jsonify({"imported": imported, "skipped": skipped,
+                    "errors": errors[:50]})
+
+
 @app.route("/api/keuzedelen/grade", methods=["POST"])
 def keuzedeel_grade():
     user, err = auth_error("beheerder", "docent", "mentor")
