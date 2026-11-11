@@ -278,9 +278,12 @@
       <select id="stat-class"><option value="">Alle klassen</option></select>
     </label>
     <label>Student:
-      <select id="stat-student"><option value="">Alle studenten</option></select>
+      <span class="combo" id="stat-student-combo">
+        <input id="stat-student-type" placeholder="Zoek student..." autocomplete="off">
+        <span class="combo-panel hidden" id="stat-student-panel"></span>
+      </span>
+      <select id="stat-student" class="hidden"><option value="">Alle studenten</option></select>
     </label>
-    <input id="stat-student-type" class="type-filter" placeholder="&#9906; Filter student...">
     <label>Rapport:
       <select id="stat-report">
         <option value="">Volledig overzicht</option>
@@ -303,9 +306,12 @@
       <select id="report-period"></select>
     </label>
     <label>Student:
-      <select id="report-student"><option value="">Alle studenten</option></select>
+      <span class="combo" id="report-student-combo">
+        <input id="report-student-type" placeholder="Zoek student..." autocomplete="off">
+        <span class="combo-panel hidden" id="report-student-panel"></span>
+      </span>
+      <select id="report-student" class="hidden"><option value="">Alle studenten</option></select>
     </label>
-    <input id="report-student-type" class="type-filter" placeholder="&#9906; Filter student...">
     <label>Cohort:
       <select id="report-cohort"><option value="">Alle cohorten</option></select>
     </label>

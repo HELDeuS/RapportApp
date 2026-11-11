@@ -376,12 +376,8 @@ function renderPeriodSelects() {
       reportPeriods.map((p) => `<option value="${p.id}">${esc(periodLabel(p))}</option>`).join("");
   }
   const rs = $("#report-student");
-  const rq = ($("#report-student-type") ? $("#report-student-type").value : "").trim().toLowerCase();
-  const rlist = rq ? students.filter((s) =>
-    studentName(s).toLowerCase().includes(rq) ||
-    (s.student_number || "").toLowerCase().includes(rq)) : students;
   rs.innerHTML = `<option value="">Alle studenten</option>` +
-    rlist.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join("");
+    students.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join("");
   renderClassSelects();
   for (const sel of [$("#student-cohort"), $("#report-cohort"), $("#grade-cohort")]) {
     sel.innerHTML = `<option value="">Alle cohorten</option>` +
@@ -1807,10 +1803,87 @@ function statPeriodOptions() {
     `<option value="all">Alle modules</option>`;
 }
 
-function statStudentOptions() {
+function bindCombo(inputSel, panelSel, selectSel, itemsFn) {
+  const input = $(inputSel), panel = $(panelSel), sel = $(selectSel);
+  let active = 0;
+  let items = [];
+
+  function labelOf(id) {
+    const it = itemsFn("").find((x) => String(x.id) === String(id));
+    return it ? it.label : "";
+  }
+
+  function render() {
+    if (!items.length) {
+      panel.innerHTML = `<span class="combo-empty">Geen student gevonden.</span>`;
+      return;
+    }
+    panel.innerHTML = items.map((it, i) =>
+      `<span class="combo-item${i === active ? " active" : ""}" data-id="${it.id}">${esc(it.label)}</span>`).join("");
+  }
+
+  function open() {
+    const q = input.value.trim().toLowerCase();
+    items = itemsFn(q);
+    active = 0;
+    render();
+    panel.classList.remove("hidden");
+  }
+
+  function close() {
+    panel.classList.add("hidden");
+  }
+
+  function choose(id, label) {
+    sel.value = id;
+    input.value = label;
+    close();
+    sel.dispatchEvent(new Event("change"));
+  }
+
+  input.addEventListener("focus", open);
+  input.addEventListener("input", () => {
+    if (!input.value.trim()) {
+      sel.value = "";
+      sel.dispatchEvent(new Event("change"));
+    }
+    open();
+  });
+  input.addEventListener("keydown", (e) => {
+    if (panel.classList.contains("hidden")) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); open(); }
+      return;
+    }
+    if (e.key === "ArrowDown") { e.preventDefault(); active = Math.min(active + 1, items.length - 1); render(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); active = Math.max(active - 1, 0); render(); }
+    else if (e.key === "Enter") {
+      e.preventDefault();
+      if (items[active]) choose(items[active].id, items[active].label);
+    } else if (e.key === "Escape") close();
+  });
+  panel.addEventListener("mousedown", (e) => {
+    const item = e.target.closest(".combo-item");
+    if (!item) return;
+    e.preventDefault();
+    choose(item.dataset.id, item.textContent);
+  });
+  document.addEventListener("click", (e) => {
+    if (!input.contains(e.target) && !panel.contains(e.target)) close();
+  });
+  input.addEventListener("blur", () => {
+    setTimeout(() => {
+      if (![...panel.children].some((c) => c.contains(document.activeElement))) {
+        input.value = sel.value ? labelOf(sel.value) : "";
+      }
+    }, 120);
+  });
+  if (sel.value) input.value = labelOf(sel.value);
+}
+
+function statStudentItems(q) {
   const classFilter = $("#stat-class") ? $("#stat-class").value : "";
   const cohortFilter = $("#stat-cohort") ? $("#stat-cohort").value : "";
-  const q = ($("#stat-student-type") ? $("#stat-student-type").value : "").trim().toLowerCase();
+  const cls = new Map(classes.map((c) => [c.id, c]));
   let list = students;
   if (q) {
     list = list.filter((s) =>
@@ -1820,23 +1893,27 @@ function statStudentOptions() {
   if (classFilter) {
     list = list.filter((s) => String(s.class_id) === classFilter);
   } else if (cohortFilter) {
-    const cls = new Map(classes.map((c) => [c.id, c]));
     list = list.filter((s) => {
       const c = cls.get(s.class_id);
       return c && String(c.cohort_id) === cohortFilter;
     });
   }
-  const cls = new Map(classes.map((c) => [c.id, c]));
-  const byClass = new Map();
-  for (const s of list) {
-    const key = s.class_id ? (cls.get(s.class_id) || {}).name || "Zonder klas" : "Zonder klas";
-    if (!byClass.has(key)) byClass.set(key, []);
-    byClass.get(key).push(s);
-  }
-  let out = `<option value="">Alle studenten</option>`;
-  for (const [cname, group] of [...byClass.entries()].sort((a, b) => a[0].localeCompare(b[0], "nl"))) {
-    out += `<optgroup label="${esc(cname)}">` + group.map((s) =>
-      `<option value="${s.id}">${esc(studentName(s))}${s.student_number ? ` (${esc(s.student_number)})` : ""}</option>`).join("") + `</optgroup>`;
+  const items = list.map((s) => {
+    const c = s.class_id ? cls.get(s.class_id) : null;
+    const label = `${studentName(s)}${s.student_number ? ` (${s.student_number})` : ""}${c ? ` \u2014 ${c.name}` : ""}`;
+    return { id: s.id, label };
+  }).sort((a, b) => a.label.localeCompare(b.label, "nl"));
+  if (!q) items.unshift({ id: "", label: "Alle studenten" });
+  return items;
+}
+
+function statStudentOptions() {
+  const items = statStudentItems("");
+  let out = "";
+  for (const it of items) {
+    out += it.id === ""
+      ? `<option value="">${esc(it.label)}</option>`
+      : `<option value="${it.id}">${esc(it.label)}</option>`;
   }
   return out;
 }
@@ -1847,6 +1924,13 @@ function fillStatFilters() {
     years.map((y) => `<option value="${esc(y)}">${esc(y)}</option>`).join(""));
   refillKeepingValue("#stat-period", statPeriodOptions());
   refillKeepingValue("#stat-student", statStudentOptions());
+  const statTypeInput = $("#stat-student-type");
+  if (statTypeInput) {
+    const statSelEl = $("#stat-student");
+    statTypeInput.value = statSelEl.value
+      ? (statStudentItems("").find((x) => String(x.id) === statSelEl.value) || {}).label || ""
+      : "";
+  }
   refillKeepingValue("#stat-cohort", `<option value="">Alle cohorten</option>` +
     cohorts.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join(""));
   refillKeepingValue("#stat-class", `<option value="">Alle klassen</option>` +
@@ -2100,21 +2184,31 @@ for (const sel of ["#stat-cohort", "#stat-class"]) {
   });
 }
 
-$("#stat-student-type").addEventListener("input", () => {
-  refillKeepingValue("#stat-student", statStudentOptions());
-});
+function reportStudentItems(q) {
+  let list = students;
+  if (q) {
+    list = list.filter((s) =>
+      studentName(s).toLowerCase().includes(q) ||
+      (s.student_number || "").toLowerCase().includes(q));
+  }
+  const items = list.map((s) => ({
+    id: s.id,
+    label: `${studentName(s)}${s.student_number ? ` (${s.student_number})` : ""}`,
+  })).sort((a, b) => a.label.localeCompare(b.label, "nl"));
+  if (!q) items.unshift({ id: "", label: "Alle studenten" });
+  return items;
+}
 
-$("#report-student-type").addEventListener("input", () => {
-  const rs = $("#report-student");
-  const prev = rs.value;
-  const rq = ($("#report-student-type").value || "").trim().toLowerCase();
-  const rlist = rq ? students.filter((s) =>
-    studentName(s).toLowerCase().includes(rq) ||
-    (s.student_number || "").toLowerCase().includes(rq)) : students;
-  rs.innerHTML = `<option value="">Alle studenten</option>` +
-    rlist.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join("");
-  if (prev && [...rs.options].some((o) => o.value === prev)) rs.value = prev;
-});
+bindCombo("#stat-student-type", "#stat-student-panel", "#stat-student", statStudentItems);
+bindCombo("#report-student-type", "#report-student-panel", "#report-student", reportStudentItems);
+
+for (const sel of ["#stat-cohort", "#stat-class"]) {
+  $(sel).addEventListener("change", () => {
+    refillKeepingValue("#stat-student", statStudentOptions());
+    const typeInput = $("#stat-student-type");
+    if (typeInput && !$("#stat-student").value) typeInput.value = "";
+  });
+}
 
 // ---------- Archief ----------
 let archiveData = {};   // tabel-id -> rijen
