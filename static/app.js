@@ -204,6 +204,16 @@ const ROLE_TABS = {
   student: ["rapport"],
 };
 
+const isRole = (...roles) => currentUser && roles.includes(currentUser.role);
+const maySetGrades = () => isRole("beheerder", "docent");
+const maySetAttendanceNotes = () => isRole("beheerder", "docent", "mentor");
+const isAdmin = () => isRole("beheerder");
+
+function ownClassesOnly(list) {
+  if (!currentUser || currentUser.role !== "mentor") return list;
+  return list.filter((c) => String(c.mentor_id) === String(currentUser.id));
+}
+
 function applyRoleUi() {
   const role = currentUser ? currentUser.role : null;
   $$(".tab").forEach((btn) => {
@@ -219,6 +229,12 @@ function applyRoleUi() {
     if (isStudent) { reportAudience.value = "student"; reportAudience.disabled = true; }
     else reportAudience.disabled = false;
   }
+  const gradeImport = $("#grade-import-ui");
+  if (gradeImport) gradeImport.style.display = maySetGrades() ? "" : "none";
+  const studentImport = $("#student-import-ui");
+  if (studentImport) studentImport.style.display = isAdmin() ? "" : "none";
+  const kdAddBar = $("#kd-add-bar");
+  if (kdAddBar) kdAddBar.style.display = isAdmin() ? "" : "none";
 }
 
 function renderStudentReportUi() {
@@ -365,14 +381,14 @@ function renderPeriodSelects() {
       cohorts.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("");
   }
   $("#student-class-filter").innerHTML = `<option value="">Alle klassen</option>` +
-    classes.map((c) => `<option value="${c.id}">${esc(classLabel(c))}</option>`).join("");
+    ownClassesOnly(classes).map((c) => `<option value="${c.id}">${esc(classLabel(c))}</option>`).join("");
 }
 
 function renderClassSelects() {
   const cohortFilter = $("#grade-cohort").value;
-  const visibleClasses = cohortFilter
+  const visibleClasses = ownClassesOnly(cohortFilter
     ? classes.filter((c) => String(c.cohort_id) === cohortFilter)
-    : classes;
+    : classes);
   const grouped = (sel) => {
     const byCohort = {};
     for (const c of visibleClasses) {
@@ -468,6 +484,8 @@ function renderGradeTable() {
   }
   const periodSubjects = orderGradeColumns(subjectsForPeriod());
   const typeShort = { cijfer: "1-10", letter: "V/G/O/VS", vnv: "V/NV" };
+  const gradeDis = maySetGrades() ? "" : " disabled";
+  const attDis = maySetAttendanceNotes() ? "" : " disabled";
   thead.innerHTML = `<tr><th data-key="student_number">Nr.</th><th data-key="first_name">Voornaam</th><th data-key="prefix">Tussenv.</th><th data-key="last_name">Achternaam</th>` +
     periodSubjects.map((s) => `<th draggable="true" data-subject="${s.id}" title="Beoordeling: ${typeShort[s.assessment_type] || "1-10"} — sleep om te herschikken">${esc(s.name)}<br><small>${typeShort[s.assessment_type] || "1-10"}</small></th>`).join("") +
     `<th title="Aanwezigheid">Aanw. %</th>` +
@@ -492,20 +510,20 @@ function renderGradeTable() {
       total += tekorten(v);
       const cls = v && tekorten(v) > 0 ? ` class="tekort-${tekorten(v)}"` : "";
       const kind = gradeKind(v);
-      return `<td${cls}><input class="cell${kind ? " val-" + kind : ""}" data-sid="${st.id}" data-suid="${su.id}" value="${esc(v)}"></td>`;
+      return `<td${cls}><input class="cell${kind ? " val-" + kind : ""}" data-sid="${st.id}" data-suid="${su.id}" value="${esc(v)}"${gradeDis}></td>`;
     }).join("");
     const att = attendance[st.id] || {};
     const attCell = (field, cls) => {
       const v = att[field] === null || att[field] === undefined ? "" : att[field];
       const kind = cls === "att-present" && v !== "" && parseFloat(v) < 85 ? " att-onv" : "";
-      return `<td><input class="cell ${cls}${kind}" data-att="${field}" data-sid="${st.id}" value="${esc(v)}"></td>`;
+      return `<td><input class="cell ${cls}${kind}" data-att="${field}" data-sid="${st.id}" value="${esc(v)}"${attDis}></td>`;
     };
     return `<tr><td>${esc(st.student_number || "")}</td><td>${esc(st.first_name || "")}</td><td>${esc(st.prefix || "")}</td><td>${esc(st.last_name || "")}</td>${cells}` +
       attCell("present", "att-present") +
       attCell("absent_allowed", "att-allowed") +
       attCell("absent_unallowed", "att-unallowed") +
-      `<td><input class="cell note-cell" data-note="comment" data-sid="${st.id}" value="${esc((notes[st.id] || {}).comment || "")}"></td>` +
-      `<td><input class="cell note-cell" data-note="teacher_comment" data-sid="${st.id}" value="${esc((notes[st.id] || {}).teacher_comment || "")}"></td>` +
+      `<td><input class="cell note-cell" data-note="comment" data-sid="${st.id}" value="${esc((notes[st.id] || {}).comment || "")}"${attDis}></td>` +
+      `<td><input class="cell note-cell" data-note="teacher_comment" data-sid="${st.id}" value="${esc((notes[st.id] || {}).teacher_comment || "")}"${attDis}></td>` +
       `<td class="total" data-total="${st.id}" data-name="${esc(st.name)}">${total}</td></tr>`;
   }).join("");
 
@@ -806,7 +824,7 @@ function visibleStudentsList() {
 
 function renderStudents() {
   const classOptions = (sel) => `<option value="">Geen klas</option>` +
-    classes.map((c) => `<option value="${c.id}"${String(sel) === String(c.id) ? " selected" : ""}>${esc(classLabel(c))}</option>`).join("");
+    ownClassesOnly(classes).map((c) => `<option value="${c.id}"${String(sel) === String(c.id) ? " selected" : ""}>${esc(classLabel(c))}</option>`).join("");
   const classOf = (s) => {
     const c = classes.find((x) => x.id === s.class_id);
     return c ? c.name : "";
@@ -931,12 +949,20 @@ $("#students-table tbody").addEventListener("change", async (e) => {
     }
     return;
   }
-  s[e.target.dataset.field] = e.target.value === "" ? null : e.target.value;
-  await api(`/api/students/${s.id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(s),
-  });
+  const field = e.target.dataset.field;
+  if (!field) return;
+  const value = e.target.value === "" ? null : e.target.value;
+  s[field] = value;
+  try {
+    await api(`/api/students/${s.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [field]: value }),
+    });
+  } catch (err) {
+    alert("Opslaan mislukt: " + err.message);
+  }
+  await loadAll();
 });
 
 // ---------- Klassen ----------
@@ -1570,13 +1596,14 @@ function renderKdTable() {
   const grades = {};
   (kdStudentData && kdStudentData.keuzedelen || []).forEach((k) => { grades[k.subject_id] = k.grade || ""; });
   const typeShort = { cijfer: "1-10", letter: "V/G/O/VS", vnv: "V/NV" };
-  const mayManage = currentUser && currentUser.role === "beheerder";
+  const mayManage = isAdmin();
+  const kdDis = mayManage ? "" : " disabled";
   $("#kd-table tbody").innerHTML = keuzedelenList.length
     ? keuzedelenList.map((k) => `
       <tr data-id="${k.id}">
-        <td><input data-field="name" value="${esc(k.name)}"></td>
-        <td><input data-field="sbu" type="number" min="0" value="${k.sbu || 0}" style="width:80px"></td>
-        <td><select data-field="assessment_type">
+        <td><input data-field="name" value="${esc(k.name)}"${kdDis}></td>
+        <td><input data-field="sbu" type="number" min="0" value="${k.sbu || 0}" style="width:80px"${kdDis}></td>
+        <td><select data-field="assessment_type"${kdDis}>
           <option value="cijfer"${k.assessment_type === "cijfer" ? " selected" : ""}>Cijfer (1-10)</option>
           <option value="letter"${k.assessment_type === "letter" ? " selected" : ""}>Letter (V/G/O/VS)</option>
           <option value="vnv"${k.assessment_type === "vnv" ? " selected" : ""}>Voldaan / niet voldaan (V/NV)</option>
@@ -1915,7 +1942,8 @@ function renderArchTable(tableId) {
     th.innerHTML = esc(label) + ` <span class="${cls}">${mark}</span>`;
   });
   const kind = table.dataset.kind;
-  const unarchiveBtn = `<button class="secondary" data-unarchive>Terugzetten</button>`;
+  const mayUnarchive = kind === "students" ? isRole("beheerder", "mentor") : isAdmin();
+  const unarchiveBtn = mayUnarchive ? `<button class="secondary" data-unarchive>Terugzetten</button>` : "";
   const cells = (r) => cfg.cols.map((c) => `<td>${esc(r[c] || "")}</td>`).join("");
   const pageRows = pageSlice("#" + table.id, rows);
   table.querySelector("tbody").innerHTML = rows.length

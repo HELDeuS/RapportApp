@@ -50,11 +50,13 @@
     <label>Klas:
       <select id="grade-class"><option value="">Alle klassen</option></select>
     </label>
-    <button id="btn-paste-open">Plakken uit Excel</button>
-    <label class="file-label">Import (CSV/Excel)
-      <input type="file" id="import-file" accept=".csv,.txt,.tsv,.xlsx,.xlsm">
-    </label>
-    <a href="#" class="template-link" data-template="cijfers"> Voorbeeld downloaden</a>
+    <span id="grade-import-ui">
+      <button id="btn-paste-open">Plakken uit Excel</button>
+      <label class="file-label">Import (CSV/Excel)
+        <input type="file" id="import-file" accept=".csv,.txt,.tsv,.xlsx,.xlsm">
+      </label>
+      <a href="#" class="template-link" data-template="cijfers"> Voorbeeld downloaden</a>
+    </span>
   </div>
   <div id="import-result" class="result hidden"></div>
 
@@ -98,10 +100,12 @@
     <input id="student-email" type="email" placeholder="E-mailadres *" style="width:170px">
     <select id="student-class"><option value="">Geen klas</option></select>
     <button id="btn-add-student">Toevoegen</button>
-    <label class="file-label">Import CSV/Excel
-      <input type="file" id="import-students-file" accept=".csv,.txt,.tsv,.xlsx,.xlsm">
-    </label>
-    <a href="#" class="template-link" data-template="studenten"> Voorbeeld downloaden</a>
+    <span id="student-import-ui">
+      <label class="file-label">Import CSV/Excel
+        <input type="file" id="import-students-file" accept=".csv,.txt,.tsv,.xlsx,.xlsm">
+      </label>
+      <a href="#" class="template-link" data-template="studenten"> Voorbeeld downloaden</a>
+    </span>
   </div>
   <div id="students-import-result" class="result hidden"></div>
   <div class="toolbar hidden" id="bulk-bar">
@@ -226,7 +230,7 @@
     </label>
     <input id="kd-student-filter" placeholder="&#9906; Filter student...">
   </div>
-  <div class="toolbar subtoolbar">
+  <div class="toolbar subtoolbar" id="kd-add-bar">
     <strong>Keuzedeel toevoegen:</strong>
     <input id="kd-name" placeholder="Naam keuzedeel">
     <input id="kd-sbu" type="number" min="0" step="1" placeholder="SBU" style="max-width:100px">
