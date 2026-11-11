@@ -165,6 +165,8 @@ function rerenderPagedTable(tableSel) {
     "#arch-cohorts-table": () => renderArchTable("arch-cohorts-table"),
     "#arch-leertrajecten-table": () => renderArchTable("arch-leertrajecten-table"),
     "#audit-table": renderAuditTable,
+    "#stat-subjects-table": () => renderStatOverview(),
+    "#stat-signals-table": () => renderStatOverview(),
   }[tableSel];
   if (fn) fn();
 }
@@ -1794,10 +1796,18 @@ $("#kd-table tbody").addEventListener("change", async (e) => {
 });
 
 // ---------- Statistieken ----------
+function statPeriodOptions() {
+  const y = $("#stat-year") ? $("#stat-year").value : "";
+  const list = y ? periods.filter((p) => (p.year || "") === y) : periods;
+  return list.map((p) => `<option value="${p.id}">${esc(periodLabel(p))}</option>`).join("") +
+    `<option value="all">Alle modules</option>`;
+}
+
 function fillStatFilters() {
-  refillKeepingValue("#stat-period", periods.map((p) =>
-    `<option value="${p.id}">${esc(periodLabel(p))}</option>`).join("") +
-    `<option value="all">Alle modules</option>`);
+  const years = [...new Set(periods.map((p) => p.year || "").filter(Boolean))].sort();
+  refillKeepingValue("#stat-year", `<option value="">Alle leerjaren</option>` +
+    years.map((y) => `<option value="${esc(y)}">${esc(y)}</option>`).join(""));
+  refillKeepingValue("#stat-period", statPeriodOptions());
   refillKeepingValue("#stat-cohort", `<option value="">Alle cohorten</option>` +
     cohorts.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join(""));
   refillKeepingValue("#stat-class", `<option value="">Alle klassen</option>` +
@@ -1905,6 +1915,7 @@ document.addEventListener("click", async (e) => {
   if (link.dataset.class) url += `&class_id=${link.dataset.class}`;
   if (link.dataset.filter) url += `&filter=${link.dataset.filter}`;
   if ($("#stat-cohort").value) url += `&cohort_id=${$("#stat-cohort").value}`;
+  if ($("#stat-year").value) url += `&year=${encodeURIComponent($("#stat-year").value)}`;
   try {
     const data = await api(url);
     renderStatReport(kind, data);
@@ -1913,27 +1924,65 @@ document.addEventListener("click", async (e) => {
   }
 });
 
+let statData = null;
+const statSort = {};
+
+function statTh(tableId, key, label) {
+  const st = statSort[tableId];
+  const active = st && st.key === key;
+  const mark = active ? (st.dir === 1 ? "\u25BE" : "\u25B4") : "\u21C5";
+  return `<th data-stat-table="${tableId}" data-stat-key="${key}" title="Sorteren op ${esc(label)}">${label} <span class="sort-indicator${active ? " active" : ""}">${mark}</span></th>`;
+}
+
+function statSortRows(tableId, rows) {
+  const st = statSort[tableId];
+  if (!st || !st.key) return rows;
+  const dir = st.dir;
+  return [...rows].sort((a, b) => {
+    let av = a[st.key], bv = b[st.key];
+    if (av === null || av === undefined) av = -Infinity;
+    if (bv === null || bv === undefined) bv = -Infinity;
+    if (typeof av === "number" || typeof bv === "number") {
+      return (av < bv ? -1 : av > bv ? 1 : 0) * dir;
+    }
+    const as = String(av).toLowerCase(), bs = String(bv).toLowerCase();
+    return as < bs ? -dir : as > bs ? dir : 0;
+  });
+}
+
 async function showStatistics() {
   const periodId = $("#stat-period").value;
   if (!periodId) return;
   let url = `/api/statistics?period_id=${periodId}`;
   if ($("#stat-cohort").value) url += `&cohort_id=${$("#stat-cohort").value}`;
   if ($("#stat-class").value) url += `&class_id=${$("#stat-class").value}`;
+  if ($("#stat-year").value) url += `&year=${encodeURIComponent($("#stat-year").value)}`;
   const report = $("#stat-report").value;
   if (report) url += `&report=${report}`;
   const data = await api(url);
-  const pct = (n) => n === null || n === undefined ? "" : `${n}%`;
-  const avg = (n) => n === null || n === undefined ? "" : String(n).replace(".", ",");
   if (data.report_rows !== undefined) {
+    statData = null;
     renderStatReport(report, data);
     return;
   }
+  statData = data;
+  renderStatOverview();
+}
+
+function renderStatOverview() {
+  const data = statData;
+  if (!data) return;
+  const pct = (n) => n === null || n === undefined ? "" : `${n}%`;
+  const avg = (n) => n === null || n === undefined ? "" : String(n).replace(".", ",");
+  const subjects = pageSlice("#stat-subjects-table", statSortRows("stat-subjects-table", data.subjects));
+  const signals = pageSlice("#stat-signals-table", statSortRows("stat-signals-table", data.signals));
+  const classes = statSortRows("stat-classes-table", data.classes);
   let html = `<h2>Statistieken — ${esc(periodLabel(data.period))}</h2>`;
   // Vakken
   html += `<h3>Vakken</h3>` + (data.subjects.length ? `
-    <table class="list">
-      <thead><tr><th>Vak</th><th>Beoordelingen</th><th>Gemiddeld cijfer</th><th>Voldoendes</th><th>Onvoldoendes</th><th>VS</th><th>Tekorten</th></tr></thead>
-      <tbody>${data.subjects.map((s) => `
+    <table class="list sortable" id="stat-subjects-table">
+      <thead><tr>${statTh("stat-subjects-table", "name", "Vak")}${statTh("stat-subjects-table", "count", "Beoordelingen")}${statTh("stat-subjects-table", "avg", "Gemiddeld cijfer")}${statTh("stat-subjects-table", "vol", "Voldoendes")}${statTh("stat-subjects-table", "onv", "Onvoldoendes")}${statTh("stat-subjects-table", "vs", "VS")}${statTh("stat-subjects-table", "tekorten", "Tekorten")}</tr></thead>
+      <tbody>${subjects.map((s) => `
         <tr>
           <td><a href="#" class="stat-drill" data-drill="detail" data-subject="${s.id}" title="Toon alle beoordelingen voor dit vak">${esc(s.name)}</a></td>
           <td><a href="#" class="stat-drill" data-drill="detail" data-subject="${s.id}" title="Toon alle beoordelingen voor dit vak">${s.count}</a></td><td>${avg(s.avg)}</td>
@@ -1942,13 +1991,13 @@ async function showStatistics() {
           <td class="val-vs"><a href="#" class="stat-drill" data-drill="detail" data-subject="${s.id}" data-filter="vs" title="Toon de vrijstellingen voor dit vak">${s.vs}</a></td>
           <td class="${s.tekorten > 0 ? "val-onv" : ""}"><a href="#" class="stat-drill" data-drill="detail" data-subject="${s.id}" data-filter="onvoldoendes" title="Toon de onvoldoendes voor dit vak">${s.tekorten}</a></td>
         </tr>`).join("")}</tbody>
-    </table>` : `<p class="hint">Geen vakken met cijfers in deze module.</p>`);
+    </table><div class="pager" data-table="stat-subjects-table"></div>` : `<p class="hint">Geen vakken met cijfers in deze module.</p>`);
   // Klassen-vergelijking
   if (data.classes.length > 1) {
     html += `<h3>Klassen-vergelijking</h3>
-    <table class="list">
-      <thead><tr><th>Klas</th><th>Studenten</th><th>Gemiddeld cijfer</th><th>Tekorten</th><th>Tekort per student</th><th>% voldoende</th><th>Gem. aanwezigheid</th><th>&lt;85% aanwezig</th></tr></thead>
-      <tbody>${data.classes.map((c) => `
+    <table class="list sortable" id="stat-classes-table">
+      <thead><tr>${statTh("stat-classes-table", "class", "Klas")}${statTh("stat-classes-table", "students", "Studenten")}${statTh("stat-classes-table", "avg", "Gemiddeld cijfer")}${statTh("stat-classes-table", "tekorten", "Tekorten")}${statTh("stat-classes-table", "tekort_per_student", "Tekort per student")}${statTh("stat-classes-table", "vol_pct", "% voldoende")}${statTh("stat-classes-table", "attendance_avg", "Gem. aanwezigheid")}${statTh("stat-classes-table", "attendance_low", "Aanwezig onder norm")}</tr></thead>
+      <tbody>${classes.map((c) => `
         <tr>
           <td><a href="#" class="stat-drill" data-drill="onvoldoendes" data-class="${c.class_id}" title="Toon de onvoldoendes in deze klas">${esc(c.class)}</a></td><td>${c.students}</td><td>${avg(c.avg)}</td>
           <td class="${c.tekorten > 0 ? "val-onv" : ""}">${c.tekorten > 0 ? `<a href="#" class="stat-drill" data-drill="onvoldoendes" data-class="${c.class_id}" title="Toon de tekorten en onvoldoendes in deze klas">${c.tekorten}</a>` : c.tekorten}</td>
@@ -1961,9 +2010,9 @@ async function showStatistics() {
   }
   // Signalering
   html += `<h3>Signalering</h3>` + (data.signals.length ? `
-    <table class="list">
-      <thead><tr><th>Student</th><th>Nr.</th><th>Klas</th><th>Tekorten (module)</th><th>Aanwezigheid</th><th>SBU keuzedelen</th><th>Signalen</th></tr></thead>
-      <tbody>${data.signals.map((s) => `
+    <table class="list sortable" id="stat-signals-table">
+      <thead><tr>${statTh("stat-signals-table", "student", "Student")}${statTh("stat-signals-table", "student_number", "Nr.")}${statTh("stat-signals-table", "class", "Klas")}${statTh("stat-signals-table", "tekorten", "Tekorten (module)")}${statTh("stat-signals-table", "present", "Aanwezigheid")}${statTh("stat-signals-table", "sbu", "SBU keuzedelen")}${statTh("stat-signals-table", "reasons", "Signalen")}</tr></thead>
+      <tbody>${signals.map((s) => `
         <tr>
           <td>${esc(s.student)}</td><td>${esc(s.student_number || "")}</td><td>${esc(s.class)}</td>
           <td class="${s.tekorten >= 3 ? "val-onv" : ""}">${s.tekorten}</td>
@@ -1971,9 +2020,23 @@ async function showStatistics() {
           <td class="${s.sbu < 720 ? "val-onv" : "val-vol"}">${s.sbu} / 720</td>
           <td>${s.reasons.map((r) => esc(r)).join(", ")}</td>
         </tr>`).join("")}</tbody>
-    </table>` : `<p class="hint">Geen studenten met signalen in deze selectie.</p>`);
+    </table><div class="pager" data-table="stat-signals-table"></div>` : `<p class="hint">Geen studenten met signalen in deze selectie.</p>`);
   $("#stat-output").innerHTML = html;
 }
+
+$("#stat-output").addEventListener("click", (e) => {
+  const th = e.target.closest("th[data-stat-key]");
+  if (!th) return;
+  const t = th.dataset.statTable, k = th.dataset.statKey;
+  const st = statSort[t] || (statSort[t] = { key: null, dir: 1 });
+  if (st.key === k) st.dir = st.dir === 1 ? -1 : 1;
+  else { st.key = k; st.dir = 1; }
+  renderStatOverview();
+});
+
+$("#stat-year").addEventListener("change", () => {
+  refillKeepingValue("#stat-period", statPeriodOptions());
+});
 
 // ---------- Archief ----------
 let archiveData = {};   // tabel-id -> rijen

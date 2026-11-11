@@ -2066,9 +2066,14 @@ def statistics():
     all_periods = request.args.get("period_id") == "all"
     if not period_id and not all_periods:
         return jsonify({"error": "period_id is verplicht"}), 400
+    year = (request.args.get("year") or "").strip()
     class_id = request.args.get("class_id", type=int)
     cohort_id = request.args.get("cohort_id", type=int)
     db = get_db()
+    year_period_ids = None
+    if all_periods and year:
+        year_period_ids = [r["id"] for r in db.execute(
+            "SELECT id FROM periods WHERE year = ?", (year,)).fetchall()]
 
     def period_dict():
         if all_periods:
@@ -2104,11 +2109,23 @@ def statistics():
         args).fetchall()
     student_ids = [s["id"] for s in students]
 
-    # Vakken van deze module (bij 'alle modules': alle vakken).
+    # Vakken van deze module (bij 'alle modules': alle vakken,
+    # eventueel beperkt tot de modules van het gekozen leerjaar).
     if all_periods:
-        subjects = db.execute(
-            "SELECT * FROM subjects WHERE archived = 0 AND kind = 'vak' ORDER BY name"
-        ).fetchall()
+        if year_period_ids is None:
+            subjects = db.execute(
+                "SELECT * FROM subjects WHERE archived = 0 AND kind = 'vak' ORDER BY name"
+            ).fetchall()
+        elif year_period_ids:
+            ph_p = ",".join("?" for _ in year_period_ids)
+            subjects = [s for s in db.execute(
+                "SELECT * FROM subjects WHERE archived = 0 AND kind = 'vak' ORDER BY name"
+            ).fetchall()
+                if any(r["period_id"] in year_period_ids for r in db.execute(
+                    f"SELECT period_id FROM subject_periods WHERE subject_id = ?",
+                    (s["id"],)).fetchall())]
+        else:
+            subjects = []
     else:
         subjects = [s for s in db.execute(
             "SELECT * FROM subjects WHERE archived = 0 AND kind = 'vak' ORDER BY name"
@@ -2124,11 +2141,20 @@ def statistics():
     if student_ids:
         ph = ",".join("?" for _ in student_ids)
         if all_periods:
-            for r in db.execute(
-                f"SELECT student_id, subject_id, value FROM grades "
-                f"WHERE student_id IN ({ph}) ORDER BY period_id",
-                student_ids).fetchall():
-                grades[(r["student_id"], r["subject_id"])] = r["value"]
+            year_filter = ""
+            year_args = []
+            if year_period_ids is not None:
+                if not year_period_ids:
+                    year_args = None
+                else:
+                    year_filter = f" AND period_id IN ({','.join('?' for _ in year_period_ids)})"
+                    year_args = year_period_ids
+            if year_args is not None:
+                for r in db.execute(
+                    f"SELECT student_id, subject_id, value FROM grades "
+                    f"WHERE student_id IN ({ph}){year_filter} ORDER BY period_id",
+                    [*student_ids, *year_args]).fetchall():
+                    grades[(r["student_id"], r["subject_id"])] = r["value"]
         else:
             for r in db.execute(
                 f"SELECT student_id, subject_id, value FROM grades "
@@ -2139,14 +2165,23 @@ def statistics():
     if student_ids:
         ph = ",".join("?" for _ in student_ids)
         if all_periods:
-            for r in db.execute(
-                f"""SELECT student_id, AVG(present) AS present,
-                          AVG(absent_allowed) AS absent_allowed,
-                          AVG(absent_unallowed) AS absent_unallowed
-                   FROM attendance WHERE student_id IN ({ph})
-                   GROUP BY student_id""",
-                student_ids).fetchall():
-                attendance[r["student_id"]] = r
+            year_filter = ""
+            year_args = []
+            if year_period_ids is not None:
+                if not year_period_ids:
+                    year_args = None
+                else:
+                    year_filter = f" AND period_id IN ({','.join('?' for _ in year_period_ids)})"
+                    year_args = year_period_ids
+            if year_args is not None:
+                for r in db.execute(
+                    f"""SELECT student_id, AVG(present) AS present,
+                              AVG(absent_allowed) AS absent_allowed,
+                              AVG(absent_unallowed) AS absent_unallowed
+                       FROM attendance WHERE student_id IN ({ph}){year_filter}
+                       GROUP BY student_id""",
+                    [*student_ids, *year_args]).fetchall():
+                    attendance[r["student_id"]] = r
         else:
             for r in db.execute(
                 f"SELECT student_id, present, absent_allowed, absent_unallowed "
