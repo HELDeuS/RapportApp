@@ -678,6 +678,13 @@ def mentor_owns_student(user, student_row, new_class_id=None):
     return class_id in ids if ids is not None else False
 
 
+def name_of(db, table, row_id, default="onbekend"):
+    if not row_id:
+        return default
+    r = db.execute(f"SELECT name FROM {table} WHERE id = ?", (row_id,)).fetchone()
+    return r["name"] if r else default
+
+
 def audit(db, user, action, entity, entity_id, detail):
     """Registreer een mutatie in het auditlog; faalt nooit op de hoofdstroom."""
     try:
@@ -1356,7 +1363,9 @@ def grade_set():
         )
     db.commit()
     audit(db, user, "cijfer", "student", student_id,
-          f"Vak #{subject_id}, module #{period_id}: "
+          f"{name_of(db, 'students', student_id)} — "
+          f"vak {name_of(db, 'subjects', subject_id)}, "
+          f"module {name_of(db, 'periods', period_id)}: "
           f"{'verwijderd' if value == '' else value}")
     return jsonify({"ok": True, "value": value,
                     "tekorten": tekorten_for_value(value)})
@@ -1402,7 +1411,8 @@ def grade_bulk():
         imported += 1
     db.commit()
     audit(db, user, "cijfers-kolom", "vak", subject_id,
-          f"{imported} cijfer(s) voor module #{period_id}"
+          f"{imported} cijfer(s) voor vak {subject['name']}, "
+          f"module {name_of(db, 'periods', period_id)}"
           + (f"; fouten: {'; '.join(errors[:3])}" if errors else ""))
     return jsonify({"ok": True, "imported": imported, "errors": errors[:50]})
 
@@ -1532,7 +1542,8 @@ def import_grades():
     db.commit()
     audit(db, user, "import", "cijfers", None,
           f"{imported} cijfer(s) geïmporteerd, {skipped} overgeslagen, "
-          f"{len(errors)} foutmelding(en) voor module #{period_id}")
+          f"{len(errors)} foutmelding(en) voor module "
+          f"{name_of(db, 'periods', period_id)}")
     return jsonify({"imported": imported, "skipped": skipped,
                    "errors": errors[:50]})
 
@@ -1762,7 +1773,8 @@ def note_set():
         )
     db.commit()
     audit(db, user, "opmerkingen", "student", student_id,
-          f"Opmerkingen voor module #{period_id} "
+          f"{name_of(db, 'students', student_id)} — opmerkingen voor "
+          f"module {name_of(db, 'periods', period_id)} "
           + ("verwijderd" if not comment and not teacher_comment else "opgeslagen"))
     return jsonify({"ok": True})
 
@@ -1841,7 +1853,8 @@ def attendance_set():
         )
     db.commit()
     audit(db, user, "aanwezigheid", "student", student_id,
-          f"Aanwezigheid module #{period_id}: "
+          f"{name_of(db, 'students', student_id)} — aanwezigheid "
+          f"module {name_of(db, 'periods', period_id)}: "
           f"{present or 0}% / {allowed or 0}% / {unallowed or 0}%")
     return jsonify({"ok": True})
 
