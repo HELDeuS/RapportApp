@@ -139,11 +139,60 @@ sudo -u rapportapp venv/bin/pip install -r requirements.txt
 sudo systemctl restart rapportapp
 ```
 
-Maak regelmatig een backup van de database:
+## Backups
+
+`backup.py` maakt een consistente kopie van de database (werkt ook terwijl de server draait) en bewaart standaard de laatste 14 dagen. Draai het dagelijks met een systemd-timer:
 
 ```bash
-sudo cp /opt/RapportApp/rapportapp.db /backup/rapportapp-$(date +%F).db
+# 1. Backup-service
+sudo tee /etc/systemd/system/rapportapp-backup.service > /dev/null <<'EOF'
+[Unit]
+Description=RapportApp database-backup
+
+[Service]
+Type=oneshot
+User=rapportapp
+WorkingDirectory=/opt/RapportApp
+ExecStart=/opt/RapportApp/venv/bin/python /opt/RapportApp/backup.py
+EOF
+
+# 2. Timer: dagelijks om 02:30
+sudo tee /etc/systemd/system/rapportapp-backup.timer > /dev/null <<'EOF'
+[Unit]
+Description=Dagelijkse RapportApp database-backup
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now rapportapp-backup.timer
 ```
+
+Controle: `systemctl list-timers rapportapp-backup*` en `ls -lh /opt/RapportApp/backups/`. Handmatig draaien kan met `sudo -u rapportapp venv/bin/python backup.py`.
+
+### Backup terugzetten
+
+```bash
+sudo systemctl stop rapportapp
+cp /opt/RapportApp/rapportapp.db /tmp/rapportapp-kaput.db   # kapotte versie apart houden
+cp /opt/RapportApp/backups/rapportapp-YYYYMMDD-HHMMSS.db /opt/RapportApp/rapportapp.db
+sudo systemctl start rapportapp
+```
+
+### Backup naar een andere locatie
+
+Backups op dezelfde schijf beschermen niet tegen schijfverlies. Kopieer ze bijvoorbeeld dagelijks naar een andere machine of nas:
+
+```bash
+rsync -a /opt/RapportApp/backups/ gebruiker@andere-server:/backup/rapportapp/
+```
+
+Ook handig: een (wekelijkse) kopie naar een externe locatie en controleren of een teruggezette backup daadwerkelijk opent en de verwachte gegevens bevat.
 
 ## Importformaat
 
