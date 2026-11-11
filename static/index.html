@@ -69,6 +69,7 @@
       <thead></thead>
       <tbody></tbody>
     </table>
+  <div class="pager" data-table="grade-table"></div>
   </div>
   <p class="hint">Waarden per vak volgens het beoordelingstype (zie tabblad Vakken). <b>VS</b> = vrijstelling, overal toegestaan en telt als voldoende. Een cijfer dat afgerond onder 6 is, geeft 6 &minus; afgerond cijfer tekorten (5 &rarr; 1, 4 &rarr; 2).</p>
 </section>
@@ -108,14 +109,15 @@
     <thead><tr><th style="width:30px"><input type="checkbox" id="students-select-all" title="Alles selecteren"></th><th data-key="last_name">Naam</th><th data-key="student_number">Studentnummer</th><th data-key="email">E-mail</th><th data-key="class">Klas</th><th data-key="login_enabled" title="Account mag inloggen">Inlog</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
+  <div class="pager" data-table="students-table"></div>
 </section>
 
 <!-- Klassen -->
 <section id="tab-klassen" class="panel">
   <div class="toolbar">
     <input id="class-name" placeholder="Klasnaam (bijv. IAO4A)">
-    <label>Niveau:
-      <select id="class-niveau"><option value="">Geen niveau</option></select>
+    <label>Crebo:
+      <select id="class-crebo"><option value="">Geen crebo</option></select>
     </label>
     <label>Startcohort:
       <select id="class-cohort"><option value="">Geen cohort</option></select>
@@ -124,11 +126,11 @@
     <input id="class-search" placeholder="&#9906; Zoek klas..." style="margin-left:auto;">
   </div>
   <div class="toolbar subtoolbar">
-    <strong>Niveaus:</strong>
-    <input id="niveau-name" placeholder="Nieuw niveau (bijv. niveau 4)">
-    <button id="btn-add-niveau" class="secondary">Niveau toevoegen</button>
-    <select id="niveau-manage"></select>
-    <button id="btn-del-niveau" class="danger">Verwijderen</button>
+    <strong>Crebos:</strong>
+    <input id="crebo-name" placeholder="Nieuw crebo (bijv. niveau 4)">
+    <button id="btn-add-crebo" class="secondary">Crebo toevoegen</button>
+    <select id="crebo-manage"></select>
+    <button id="btn-del-crebo" class="danger">Verwijderen</button>
   </div>
   <div class="toolbar subtoolbar">
     <strong>Startcohorten:</strong>
@@ -139,9 +141,10 @@
     <button id="btn-archive-cohort" class="secondary">Archiveren</button>
   </div>
   <table class="list sortable" id="classes-table">
-    <thead><tr><th data-key="name">Klas</th><th data-key="niveau">Niveau</th><th data-key="cohort">Startcohort</th><th data-key="mentor">Mentor</th><th></th></tr></thead>
+    <thead><tr><th data-key="name">Klas</th><th data-key="crebo">Crebo</th><th data-key="cohort">Startcohort</th><th data-key="mentor">Mentor</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
+  <div class="pager" data-table="classes-table"></div>
 </section>
 
 <!-- Vakken -->
@@ -159,6 +162,7 @@
     <thead><tr><th data-key="name">Vak</th><th data-key="assessment_type">Beoordeling</th><th>Gegeven in module(s)</th><th>Gegeven aan klas(sen)</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
+  <div class="pager" data-table="subjects-table"></div>
 </section>
 
 <!-- Modules -->
@@ -173,6 +177,7 @@
     <thead><tr><th data-key="name">Module</th><th data-key="year">Studiejaar</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
+  <div class="pager" data-table="periods-table"></div>
 </section>
 
 <!-- Rapport -->
@@ -226,6 +231,7 @@
     <thead><tr><th>Gebruikersnaam</th><th>Voornaam</th><th>Achternaam</th><th>E-mail</th><th>Rol</th><th>Student</th><th>Actief</th><th></th><th></th></tr></thead>
     <tbody></tbody>
   </table>
+  <div class="pager" data-table="users-table"></div>
   <p class="hint">Wachtwoord wijzigen: typ een nieuw wachtwoord in de kolom en klik buiten het veld. Studentaccounts worden beheerd via het vinkje "Inlog" op het tabblad Studenten (standaardwachtwoord: welkom).</p>
 </section>
 
@@ -241,15 +247,17 @@
     <thead><tr><th data-key="name">Naam</th><th data-key="student_number">Studentnummer</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
+  <div class="pager" data-table="arch-students-table"></div>
 
   <div class="toolbar subtoolbar">
     <strong>Klassen</strong>
     <input id="arch-classes-search" placeholder="&#9906; Zoek in archief...">
   </div>
   <table class="list sortable" id="arch-classes-table" data-kind="classes">
-    <thead><tr><th data-key="name">Klas</th><th data-key="niveau">Niveau</th><th data-key="cohort">Cohort</th><th></th></tr></thead>
+    <thead><tr><th data-key="name">Klas</th><th data-key="crebo">Crebo</th><th data-key="cohort">Cohort</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
+  <div class="pager" data-table="arch-classes-table"></div>
 
   <div class="toolbar subtoolbar">
     <strong>Vakken</strong>
@@ -259,6 +267,7 @@
     <thead><tr><th data-key="name">Vak</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
+  <div class="pager" data-table="arch-subjects-table"></div>
 
   <div class="toolbar subtoolbar">
     <strong>Cohorten</strong>
@@ -268,6 +277,7 @@
     <thead><tr><th data-key="name">Cohort</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
+  <div class="pager" data-table="arch-cohorts-table"></div>
 </section>
 
 <script src="/static/app.js"></script>

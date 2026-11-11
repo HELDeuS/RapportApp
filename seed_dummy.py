@@ -80,6 +80,8 @@ def main():
     ap.add_argument("--url", default="http://127.0.0.1:5000")
     ap.add_argument("--username", default="beheerder")
     ap.add_argument("--password", required=True)
+    ap.add_argument("--reset", action="store_true",
+                    help="Leeg de database (alle data en gebruikers behalve jezelf)")
     args = ap.parse_args()
     s = Client(args.url)
     status, body = s.post("/api/auth/login",
@@ -88,18 +90,26 @@ def main():
         sys.exit(f"Inloggen mislukt: {body.get('error', body)}")
     print("Ingelogd.")
 
-    # ---------------------------------------------------------------- niveaus
-    s.post("/api/niveaus", {"name": "niveau 4"})
-    _, data = s.get("/api/niveaus")
-    niveaus = {n["name"]: n["id"] for n in data}
-    niv = niveaus["niveau 4"]
+    if args.reset:
+        status, body = s.post("/api/admin/reset", {})
+        if status != 200:
+            sys.exit(f"Reset mislukt: {body.get('error', body)}")
+        print("Database geleegd: studenten, cijfers, vakken, modules, klassen, "
+              "cohorten, crebos en alle andere gebruikers zijn verwijderd.")
+        return
+
+    # ---------------------------------------------------------------- crebos
+    s.post("/api/crebos", {"name": "niveau 4"})
+    _, data = s.get("/api/crebos")
+    crebos = {n["name"]: n["id"] for n in data}
+    niv = crebos["niveau 4"]
 
     # --------------------------------------------------------------- cohorten
     for c in ["23-24", "24-25", "25-26"]:
         s.post("/api/cohorts", {"name": c})
     _, data = s.get("/api/cohorts")
     cohorts = {c["name"]: c["id"] for c in data}
-    print("Niveaus en cohorten klaar.")
+    print("Crebos en cohorten klaar.")
 
     # ---------------------------------------------------------------- modules
     # 3 leerjaren x 4 modules; modules tellen door (M1..M12).
@@ -195,7 +205,7 @@ def main():
     class_ids = []
     for i, (name, leerjaar, cohort) in enumerate(class_specs):
         _, body = s.post("/api/classes", {
-            "name": name, "niveau_id": niv, "cohort_id": cohorts[cohort],
+            "name": name, "crebo_id": niv, "cohort_id": cohorts[cohort],
             "mentor_id": mentors[i]["id"]})
         class_ids.append((body["id"], leerjaar, name))
     print("Klassen klaar.")

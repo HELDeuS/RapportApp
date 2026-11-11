@@ -3,7 +3,7 @@ const $$ = (sel) => document.querySelectorAll(sel);
 
 let students = [];
 let classes = [];
-let niveaus = [];
+let crebos = [];
 let cohorts = [];
 let subjects = [];
 let periods = [];
@@ -65,6 +65,88 @@ function bindTableSort(tableSel, stateKey, rerender) {
     rerender();
   });
 }
+
+// ---------- Paginering ----------
+const PAGE_SIZES = [25, 50, 100, 250];
+const pagers = {};
+
+function pagerState(tableSel) {
+  if (!pagers[tableSel]) pagers[tableSel] = { page: 1, size: 50 };
+  return pagers[tableSel];
+}
+
+function resetPage(tableSel) {
+  const p = pagers[tableSel];
+  if (p) p.page = 1;
+}
+
+function pageSlice(tableSel, rows) {
+  const p = pagerState(tableSel);
+  const pages = Math.max(1, Math.ceil(rows.length / p.size));
+  if (p.page > pages) p.page = pages;
+  if (p.page < 1) p.page = 1;
+  const start = (p.page - 1) * p.size;
+  renderPager(tableSel, rows.length, start);
+  return rows.slice(start, start + p.size);
+}
+
+function renderPager(tableSel, total, start) {
+  const el = document.querySelector(`.pager[data-table="${tableSel.slice(1)}"]`);
+  if (!el) return;
+  if (total <= PAGE_SIZES[0]) { el.innerHTML = ""; return; }
+  const p = pagers[tableSel];
+  const pages = Math.max(1, Math.ceil(total / p.size));
+  const from = start + 1;
+  const to = Math.min(total, start + p.size);
+  el.innerHTML = `
+    <button class="secondary" data-page="prev"${from === 1 ? " disabled" : ""}>\u25C0</button>
+    <span class="pager-info">Pagina ${p.page} / ${pages} &mdash; ${from}&ndash;${to} van ${total}</span>
+    <button class="secondary" data-page="next"${to >= total ? " disabled" : ""}>\u25B6</button>
+    <label class="pager-size">Per pagina
+      <select data-page-size>
+        ${PAGE_SIZES.map((n) => `<option value="${n}"${n === p.size ? " selected" : ""}>${n}</option>`).join("")}
+      </select>
+    </label>`;
+}
+
+function rerenderPagedTable(tableSel) {
+  const fn = {
+    "#grade-table": renderGradeTable,
+    "#students-table": renderStudents,
+    "#classes-table": renderClasses,
+    "#subjects-table": renderSubjects,
+    "#periods-table": renderPeriods,
+    "#users-table": renderUsers,
+    "#arch-students-table": () => renderArchTable("arch-students-table"),
+    "#arch-classes-table": () => renderArchTable("arch-classes-table"),
+    "#arch-subjects-table": () => renderArchTable("arch-subjects-table"),
+    "#arch-cohorts-table": () => renderArchTable("arch-cohorts-table"),
+  }[tableSel];
+  if (fn) fn();
+}
+
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".pager [data-page]");
+  if (!btn || btn.disabled) return;
+  const pagerEl = btn.closest(".pager");
+  const tableSel = "#" + pagerEl.dataset.table;
+  const p = pagers[tableSel];
+  if (!p) return;
+  p.page += btn.dataset.page === "prev" ? -1 : 1;
+  rerenderPagedTable(tableSel);
+});
+
+document.addEventListener("change", (e) => {
+  const sel = e.target.closest(".pager [data-page-size]");
+  if (!sel) return;
+  const pagerEl = sel.closest(".pager");
+  const tableSel = "#" + pagerEl.dataset.table;
+  const p = pagers[tableSel];
+  if (!p) return;
+  p.size = +sel.value;
+  p.page = 1;
+  rerenderPagedTable(tableSel);
+});
 
 const ROLE_LABELS = {
   beheerder: "Beheerder", mentor: "Mentor", docent: "Docent",
@@ -178,8 +260,8 @@ async function loadAll() {
     renderStudentReportUi();
     return;
   }
-  [students, classes, niveaus, cohorts, subjects, periods] = await Promise.all([
-    api("/api/students"), api("/api/classes"), api("/api/niveaus"), api("/api/cohorts"), api("/api/subjects"), api("/api/periods"),
+  [students, classes, crebos, cohorts, subjects, periods] = await Promise.all([
+    api("/api/students"), api("/api/classes"), api("/api/crebos"), api("/api/cohorts"), api("/api/subjects"), api("/api/periods"),
   ]);
   if (currentUser && currentUser.role === "beheerder") {
     users = await api("/api/users").catch(() => []);
@@ -187,7 +269,7 @@ async function loadAll() {
   }
   students.sort((a, b) => a.name.localeCompare(b.name, "nl"));
   classes.sort((a, b) => a.name.localeCompare(b.name, "nl"));
-  niveaus.sort((a, b) => a.name.localeCompare(b.name, "nl"));
+  crebos.sort((a, b) => a.name.localeCompare(b.name, "nl"));
   subjects.sort((a, b) => a.name.localeCompare(b.name, "nl"));
   renderPeriodSelects();
   renderStudents();
@@ -253,7 +335,7 @@ function studentName(s) {
 }
 
 function classLabel(c) {
-  return c.niveau ? `${c.name} (${c.niveau})` : c.name;
+  return c.crebo ? `${c.name} (${c.crebo})` : c.name;
 }
 
 function visibleStudents() {
@@ -316,7 +398,7 @@ function renderGradeTable() {
     (sum, su) => sum + tekorten(grades[`${st.id}:${su.id}`] || ""), 0);
   const gradeRows = sortRows(visibleStudents(), listSort.grades, (st, key) =>
     key === "tekorten" ? String(tekortTotal(st)).padStart(3, "0") : st.name);
-  tbody.innerHTML = gradeRows.map((st) => {
+  tbody.innerHTML = pageSlice("#grade-table", gradeRows).map((st) => {
     let total = 0;
     const cells = periodSubjects.map((su) => {
       const key = `${st.id}:${su.id}`;
@@ -462,9 +544,9 @@ $("#grade-cohort").addEventListener("change", () => {
   renderGradeTable();
 });
 
-$("#student-search").addEventListener("input", renderStudents);
-$("#student-cohort").addEventListener("change", renderStudents);
-$("#student-class-filter").addEventListener("change", renderStudents);
+$("#student-search").addEventListener("input", () => { resetPage("#students-table"); renderStudents(); });
+$("#student-cohort").addEventListener("change", () => { resetPage("#students-table"); renderStudents(); });
+$("#student-class-filter").addEventListener("change", () => { resetPage("#students-table"); renderStudents(); });
 
 bindTableSort("#students-table", "students", renderStudents);
 bindTableSort("#classes-table", "classes", renderClasses);
@@ -472,8 +554,8 @@ bindTableSort("#subjects-table", "subjects", renderSubjects);
 bindTableSort("#periods-table", "periods", renderPeriods);
 bindTableSort("#grade-table", "grades", renderGradeTable);
 
-$("#class-search").addEventListener("input", renderClasses);
-$("#period-search").addEventListener("input", renderPeriods);
+$("#class-search").addEventListener("input", () => { resetPage("#classes-table"); renderClasses(); });
+$("#period-search").addEventListener("input", () => { resetPage("#periods-table"); renderPeriods(); });
 
 // ---------- Import: bestand ----------
 $("#import-file").addEventListener("change", async (e) => {
@@ -556,7 +638,7 @@ function renderStudents() {
     : key === "login_enabled" ? (s.login_enabled ? "1" : "0")
     : s[key]);
   updateSortArrows("#students-table", listSort.students);
-  $("#students-table tbody").innerHTML = rows.map((s) => `
+  $("#students-table tbody").innerHTML = pageSlice("#students-table", rows).map((s) => `
     <tr data-id="${s.id}">
       <td><input type="checkbox" class="row-select" data-id="${s.id}"></td>
       <td><input data-field="first_name" value="${esc(s.first_name || "")}" style="width:110px" title="${esc(s.prefix || "")}"></td>
@@ -678,9 +760,9 @@ $("#students-table tbody").addEventListener("change", async (e) => {
 });
 
 // ---------- Klassen ----------
-function niveauOptions(sel) {
-  return `<option value="">Geen niveau</option>` +
-    niveaus.map((n) => `<option value="${n.id}"${String(sel) === String(n.id) ? " selected" : ""}>${esc(n.name)}</option>`).join("");
+function creboOptions(sel) {
+  return `<option value="">Geen crebo</option>` +
+    crebos.map((n) => `<option value="${n.id}"${String(sel) === String(n.id) ? " selected" : ""}>${esc(n.name)}</option>`).join("");
 }
 
 function optList(sel, items, emptyLabel) {
@@ -696,25 +778,25 @@ function renderClasses() {
   const q = ($("#class-search") ? $("#class-search").value : "").trim().toLowerCase();
   const visible = q ? classes.filter((c) =>
     (c.name || "").toLowerCase().includes(q) ||
-    (c.niveau || "").toLowerCase().includes(q) ||
+    (c.crebo || "").toLowerCase().includes(q) ||
     (c.cohort || "").toLowerCase().includes(q) ||
     (c.mentor || "").toLowerCase().includes(q)) : classes;
   const rows = sortRows(visible, listSort.classes, (c, key) => c[key]);
   updateSortArrows("#classes-table", listSort.classes);
-  $("#classes-table tbody").innerHTML = rows.map((c) => `
+  $("#classes-table tbody").innerHTML = pageSlice("#classes-table", rows).map((c) => `
     <tr data-id="${c.id}">
       <td><input data-field="name" value="${esc(c.name)}"></td>
-      <td><select data-field="niveau_id">${niveauOptions(c.niveau_id)}</select></td>
+      <td><select data-field="crebo_id">${creboOptions(c.crebo_id)}</select></td>
       <td><select data-field="cohort_id">${optList(c.cohort_id, cohorts, "Geen cohort")}</select></td>
       ${users.length ? `<td><select data-field="mentor_id">${optList(c.mentor_id, users.filter((u) => u.role === "mentor" || u.role === "beheerder").map((u) => ({ id: u.id, name: u.username })), "Geen mentor")}</select></td>` : `<td>${esc(c.mentor || "")}</td>`}
       <td><button class="secondary" data-archive>Archiveren</button></td>
       <td><button class="danger" data-del>Verwijderen</button></td>
     </tr>`).join("");
-  $("#class-niveau").innerHTML = niveauOptions("");
+  $("#class-crebo").innerHTML = creboOptions("");
   $("#class-cohort").innerHTML = optList("", cohorts, "Geen cohort");
-  $("#niveau-manage").innerHTML = niveaus.length
-    ? niveaus.map((n) => `<option value="${n.id}">${esc(n.name)}</option>`).join("")
-    : `<option value="">(geen niveaus)</option>`;
+  $("#crebo-manage").innerHTML = crebos.length
+    ? crebos.map((n) => `<option value="${n.id}">${esc(n.name)}</option>`).join("")
+    : `<option value="">(geen crebos)</option>`;
   $("#cohort-manage").innerHTML = cohorts.length
     ? cohorts.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("")
     : `<option value="">(geen cohorten)</option>`;
@@ -728,7 +810,7 @@ $("#btn-add-class").addEventListener("click", async () => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name,
-      niveau_id: $("#class-niveau").value || null,
+      crebo_id: $("#class-crebo").value || null,
       cohort_id: $("#class-cohort").value || null,
     }),
   });
@@ -772,23 +854,23 @@ $("#btn-del-cohort").addEventListener("click", async () => {
   await loadAll();
 });
 
-$("#btn-add-niveau").addEventListener("click", async () => {
-  const name = $("#niveau-name").value.trim();
+$("#btn-add-crebo").addEventListener("click", async () => {
+  const name = $("#crebo-name").value.trim();
   if (!name) return;
-  await api("/api/niveaus", {
+  await api("/api/crebos", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name }),
   });
-  $("#niveau-name").value = "";
+  $("#crebo-name").value = "";
   await loadAll();
 });
 
-$("#btn-del-niveau").addEventListener("click", async () => {
-  const id = $("#niveau-manage").value;
+$("#btn-del-crebo").addEventListener("click", async () => {
+  const id = $("#crebo-manage").value;
   if (!id) return;
-  if (!confirm("Niveau verwijderen? Klassen met dit niveau verliezen hun niveau.")) return;
-  await api(`/api/niveaus/${id}`, { method: "DELETE" });
+  if (!confirm("Crebo verwijderen? Klassen met dit crebo verliezen hun crebo.")) return;
+  await api(`/api/crebos/${id}`, { method: "DELETE" });
   await loadAll();
 });
 
@@ -871,12 +953,12 @@ function renderSubjects() {
     const y = p.year || "Zonder studiejaar";
     (years[y] = years[y] || []).push(p);
   }
-  const niveaus = {};
+  const crebos = {};
   for (const c of classes) {
-    const n = c.niveau || "Zonder niveau";
-    (niveaus[n] = niveaus[n] || []).push(c);
+    const n = c.crebo || "Zonder crebo";
+    (crebos[n] = crebos[n] || []).push(c);
   }
-  const classChecks = (s) => Object.entries(niveaus).map(([niveau, cls]) => {
+  const classChecks = (s) => Object.entries(crebos).map(([niveau, cls]) => {
     const checkedCount = cls.filter((c) => (s.class_ids || []).includes(c.id)).length;
     const anyChecked = checkedCount > 0;
     const allChecked = checkedCount === cls.length;
@@ -884,7 +966,7 @@ function renderSubjects() {
       <details class="year-group"${anyChecked ? " open" : ""}>
         <summary>${esc(niveau)}${anyChecked ? ` <span class="badge">${checkedCount}</span>` : ""}</summary>
         <div class="year-modules">
-          <label class="check check-all"><input type="checkbox" data-classgroup="1"${allChecked ? " checked" : ""}> <em>Heel niveau</em></label>
+          <label class="check check-all"><input type="checkbox" data-classgroup="1"${allChecked ? " checked" : ""}> <em>Heel crebo</em></label>
           ${cls.map((c) => `
           <label class="check"><input type="checkbox" data-class="${c.id}"${(s.class_ids || []).includes(c.id) ? " checked" : ""}> ${esc(c.name)}</label>`).join("")}
         </div>
@@ -901,7 +983,7 @@ function renderSubjects() {
   }).join("");
   const rows = sortRows(visible, listSort.subjects, (s, key) => s[key]);
   updateSortArrows("#subjects-table", listSort.subjects);
-  $("#subjects-table tbody").innerHTML = rows.map((s) => `
+  $("#subjects-table tbody").innerHTML = pageSlice("#subjects-table", rows).map((s) => `
     <tr data-id="${s.id}">
       <td><input data-field="name" value="${esc(s.name)}"></td>
       <td><select data-field="assessment_type">
@@ -916,7 +998,7 @@ function renderSubjects() {
     </tr>`).join("");
 }
 
-$("#subject-filter").addEventListener("input", renderSubjects);
+$("#subject-filter").addEventListener("input", () => { resetPage("#subjects-table"); renderSubjects(); });
 
 $("#btn-add-subject").addEventListener("click", async () => {
   const name = $("#subject-name").value.trim();
@@ -997,7 +1079,7 @@ function renderPeriods() {
     (p.year || "").toLowerCase().includes(q)) : periods;
   const rows = sortRows(visible, listSort.periods, (p, key) => p[key]);
   updateSortArrows("#periods-table", listSort.periods);
-  $("#periods-table tbody").innerHTML = rows.map((p) => `
+  $("#periods-table tbody").innerHTML = pageSlice("#periods-table", rows).map((p) => `
     <tr data-id="${p.id}">
       <td><input data-field="name" value="${esc(p.name)}"></td>
       <td><input data-field="year" value="${esc(p.year || "")}"></td>
@@ -1082,7 +1164,7 @@ function renderReportCards(data, periodOverride) {
     data.students.map((s) => `
     <div class="report-card">
       <h2>${esc(s.student.name)}</h2>
-      <div class="sub">${s.class ? `${esc(s.class.name)}${s.class.niveau ? ` &mdash; ${esc(s.class.niveau)}` : ""} &mdash; ` : ""}${s.student.student_number ? `Nr. ${esc(s.student.student_number)} &mdash; ` : ""}Module: ${esc(periodLabel(data.period))}</div>
+      <div class="sub">${s.class ? `${esc(s.class.name)}${s.class.crebo ? ` &mdash; ${esc(s.class.crebo)}` : ""} &mdash; ` : ""}${s.student.student_number ? `Nr. ${esc(s.student.student_number)} &mdash; ` : ""}Module: ${esc(periodLabel(data.period))}</div>
       ${s.attendance ? `
       <table class="att-table">
         <thead><tr><th>Aanwezigheid</th><th>Geoorloofd afwezig</th><th>Ongeoorloofd afwezig</th></tr></thead>
@@ -1119,7 +1201,7 @@ let archiveState = {};  // tabel-id -> {q, sortKey, sortDir}
 
 const ARCH_TABLES = {
   "arch-students-table": { search: "arch-students-search", cols: ["name", "student_number"], empty: 3 },
-  "arch-classes-table": { search: "arch-classes-search", cols: ["name", "niveau", "cohort"], empty: 4 },
+  "arch-classes-table": { search: "arch-classes-search", cols: ["name", "crebo", "cohort"], empty: 4 },
   "arch-subjects-table": { search: "arch-subjects-search", cols: ["name"], empty: 2 },
   "arch-cohorts-table": { search: "arch-cohorts-search", cols: ["name"], empty: 2 },
 };
@@ -1170,8 +1252,9 @@ function renderArchTable(tableId) {
   const kind = table.dataset.kind;
   const unarchiveBtn = `<button class="secondary" data-unarchive>Terugzetten</button>`;
   const cells = (r) => cfg.cols.map((c) => `<td>${esc(r[c] || "")}</td>`).join("");
+  const pageRows = pageSlice("#" + table.id, rows);
   table.querySelector("tbody").innerHTML = rows.length
-    ? rows.map((r) => `<tr data-id="${r.id}" data-kind="${kind}">${cells(r)}<td>${unarchiveBtn}</td></tr>`).join("")
+    ? pageRows.map((r) => `<tr data-id="${r.id}" data-kind="${kind}">${cells(r)}<td>${unarchiveBtn}</td></tr>`).join("")
     : `<tr><td colspan="${cfg.empty}" class="hint">${q ? "Niets gevonden voor deze zoekopdracht." : "Niets gearchiveerd."}</td></tr>`;
 }
 
@@ -1194,6 +1277,7 @@ $$(".tab").forEach((btn) => {
 for (const tableId of Object.keys(ARCH_TABLES)) {
   $("#" + ARCH_TABLES[tableId].search).addEventListener("input", (e) => {
     archiveState[tableId].q = e.target.value;
+    resetPage("#" + tableId);
     renderArchTable(tableId);
   });
   $("#" + tableId).querySelector("thead").addEventListener("click", (e) => {
@@ -1232,7 +1316,7 @@ for (const tableId of Object.keys(ARCH_TABLES)) {
 // ---------- Gebruikers ----------
 function renderUsers() {
   if (!$("#users-table")) return;
-  $("#users-table tbody").innerHTML = users.map((u) => `
+  $("#users-table tbody").innerHTML = pageSlice("#users-table", users).map((u) => `
     <tr data-id="${u.id}">
       <td>${esc(u.username)}</td>
       <td><input data-field="first_name" value="${esc(u.first_name || "")}" style="width:110px"></td>

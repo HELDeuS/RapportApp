@@ -335,3 +335,14 @@ td.tekort-2, td.tekort-3, td.tekort-4, td.tekort-5 { color: var(--tekort); font-
     --th-bg: #fff; --border: #999; --row-input-bg: #fff;
   }
 }
+
+/* Paginering */
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0 4px;
+  font-size: 13px;
+}
+.pager .pager-info { opacity: 0.85; }
+.pager .pager-size { margin-left: auto; display: flex; align-items: center; gap: 6px; }

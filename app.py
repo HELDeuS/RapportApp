@@ -68,7 +68,7 @@ app.teardown_appcontext(close_db)
 
 
 SCHEMA = """
-CREATE TABLE IF NOT EXISTS niveaus (
+CREATE TABLE IF NOT EXISTS crebos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE
 );
@@ -79,8 +79,7 @@ CREATE TABLE IF NOT EXISTS cohorts (
 CREATE TABLE IF NOT EXISTS classes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    niveau TEXT DEFAULT '',
-    niveau_id INTEGER REFERENCES niveaus(id) ON DELETE SET NULL,
+    crebo_id INTEGER REFERENCES crebos(id) ON DELETE SET NULL,
     cohort_id INTEGER REFERENCES cohorts(id) ON DELETE SET NULL,
     mentor_id INTEGER REFERENCES users(id) ON DELETE SET NULL
 );
@@ -167,18 +166,31 @@ def init_db():
     pcols = [r[1] for r in db.execute("PRAGMA table_info(periods)").fetchall()]
     if "year" not in pcols:
         db.execute("ALTER TABLE periods ADD COLUMN year TEXT DEFAULT ''")
+    # Migratie niveau -> crebo: oude tabel en kolom hernoemen.
+    tables = [r[0] for r in db.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()]
+    if "niveaus" in tables:
+        db.execute("INSERT OR IGNORE INTO crebos (id, name) "
+                   "SELECT id, name FROM niveaus")
+        db.execute("DROP TABLE niveaus")
     ccols = [r[1] for r in db.execute("PRAGMA table_info(classes)").fetchall()]
-    if "niveau_id" not in ccols:
-        db.execute("ALTER TABLE classes ADD COLUMN niveau_id INTEGER "
-                   "REFERENCES niveaus(id) ON DELETE SET NULL")
-        # Bestaande vrije-tekst niveaus overzetten naar de niveaulijst.
+    if "niveau_id" in ccols and "crebo_id" not in ccols:
+        db.execute("ALTER TABLE classes RENAME COLUMN niveau_id TO crebo_id")
+        ccols = [r[1] for r in db.execute("PRAGMA table_info(classes)").fetchall()]
+    if "crebo_id" not in ccols:
+        db.execute("ALTER TABLE classes ADD COLUMN crebo_id INTEGER "
+                   "REFERENCES crebos(id) ON DELETE SET NULL")
+        ccols = [r[1] for r in db.execute("PRAGMA table_info(classes)").fetchall()]
+    if "niveau" in ccols:
         for (cname,) in db.execute(
-            "SELECT DISTINCT niveau FROM classes WHERE niveau IS NOT NULL AND niveau != ''"
+            "SELECT DISTINCT niveau FROM classes "
+            "WHERE niveau IS NOT NULL AND niveau != '' "
+            "AND crebo_id IS NULL"
         ).fetchall():
-            cur = db.execute("INSERT OR IGNORE INTO niveaus (name) VALUES (?)", (cname,))
+            db.execute("INSERT OR IGNORE INTO crebos (name) VALUES (?)", (cname,))
             db.execute(
-                "UPDATE classes SET niveau_id = (SELECT id FROM niveaus WHERE name = ?) "
-                "WHERE niveau = ?", (cname, cname))
+                "UPDATE classes SET crebo_id = (SELECT id FROM crebos WHERE name = ?) "
+                "WHERE niveau = ? AND crebo_id IS NULL", (cname, cname))
     if "cohort_id" not in ccols:
         db.execute("ALTER TABLE classes ADD COLUMN cohort_id INTEGER "
                    "REFERENCES cohorts(id) ON DELETE SET NULL")
@@ -192,6 +204,9 @@ def init_db():
         if col not in stcols:
             db.execute(f"ALTER TABLE students ADD COLUMN {col} TEXT DEFAULT ''")
     ucols = [r[1] for r in db.execute("PRAGMA table_info(users)").fetchall()]
+    if "student_id" not in ucols:
+        db.execute("ALTER TABLE users ADD COLUMN student_id INTEGER")
+        ucols.append("student_id")
     for col in ("first_name", "last_name", "email"):
         if col not in ucols:
             db.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT DEFAULT ''")
@@ -383,6 +398,31 @@ def users_collection():
     return jsonify([dict(r) for r in rows])
 
 
+def would_lose_last_admin(db, user_id, new_role=None, new_active=None):
+    """True als deze wijziging de laatste actieve beheerder weghaalt."""
+    row = db.execute(
+        "SELECT role, active FROM users WHERE id = ?", (user_id,)).fetchone()
+    if row is None or row["role"] != "beheerder" or not row["active"]:
+        return False
+    if new_role is not None and new_role != "beheerder":
+        return True
+    if new_active is not None and not new_active and new_role is None:
+        return True
+    return False
+
+
+def last_admin_check(db, user_id, new_role=None, new_active=None):
+    if not would_lose_last_admin(db, user_id, new_role, new_active):
+        return None
+    remaining = db.execute(
+        "SELECT COUNT(*) FROM users "
+        "WHERE role = 'beheerder' AND active = 1 AND id != ?", (user_id,)
+    ).fetchone()[0]
+    if remaining == 0:
+        return "Dit is de laatste actieve beheerder; wijziging niet toegestaan"
+    return None
+
+
 @app.route("/api/users/<int:user_id>", methods=["PUT", "DELETE"])
 def user_item(user_id):
     user, err = auth_error("beheerder")
@@ -397,6 +437,9 @@ def user_item(user_id):
         if "role" in data:
             if data["role"] not in ROLES:
                 return jsonify({"error": "Onbekende rol"}), 400
+            err = last_admin_check(db, user_id, new_role=data["role"])
+            if err:
+                return jsonify({"error": err}), 400
             db.execute("UPDATE users SET role = ? WHERE id = ?", (data["role"], user_id))
         if "student_id" in data:
             db.execute("UPDATE users SET student_id = ? WHERE id = ?",
@@ -408,14 +451,44 @@ def user_item(user_id):
         if "active" in data:
             if user_id == user["id"] and not data["active"]:
                 return jsonify({"error": "Je kunt jezelf niet deactiveren"}), 400
+            err = last_admin_check(db, user_id, new_active=data["active"])
+            if err:
+                return jsonify({"error": err}), 400
             db.execute("UPDATE users SET active = ? WHERE id = ?",
                        (1 if data["active"] else 0, user_id))
         db.commit()
     else:
         if user_id == user["id"]:
             return jsonify({"error": "Je kunt jezelf niet verwijderen"}), 400
+        err = last_admin_check(db, user_id, new_role="")
+        if err:
+            return jsonify({"error": err}), 400
         db.execute("DELETE FROM users WHERE id = ?", (user_id,))
         db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/reset", methods=["POST"])
+def admin_reset():
+    """Dummydata-script: leegt alle gegevens, houdt alleen de ingelogde
+    beheerder (en het standaardaccount) in stand."""
+    user, err = auth_error("beheerder")
+    if err:
+        return err
+    db = get_db()
+    keep = {user["id"]}
+    admin = db.execute(
+        "SELECT id FROM users WHERE username = 'beheerder' AND role = 'beheerder'"
+    ).fetchone()
+    if admin:
+        keep.add(admin["id"])
+    for table in ("grades", "attendance", "notes", "subject_periods",
+                 "subject_classes", "students", "subjects", "periods",
+                 "classes", "cohorts", "crebos"):
+        db.execute(f"DELETE FROM {table}")
+    db.execute("DELETE FROM users WHERE id NOT IN (%s)" % ",".join("?" * len(keep)),
+               tuple(keep))
+    db.commit()
     return jsonify({"ok": True})
 
 
@@ -534,16 +607,16 @@ def mentor_owns_student(user, student_row, new_class_id=None):
 
 
 # ---------------------------------------------------------------------------
-# Classes (klassen met niveau)
+# Classes (klassen met crebo)
 # ---------------------------------------------------------------------------
 
-def class_with_niveau(db, class_id):
+def class_with_crebo(db, class_id):
     row = db.execute(
-        """SELECT c.id, c.name, n.name AS niveau, c.niveau_id,
+        """SELECT c.id, c.name, n.name AS crebo, c.crebo_id,
                   co.name AS cohort, c.cohort_id,
                   c.mentor_id, m.username AS mentor
            FROM classes c
-           LEFT JOIN niveaus n ON n.id = c.niveau_id
+           LEFT JOIN crebos n ON n.id = c.crebo_id
            LEFT JOIN cohorts co ON co.id = c.cohort_id
            LEFT JOIN users m ON m.id = c.mentor_id
            WHERE c.id = ?""",
@@ -589,8 +662,8 @@ def cohort_item(cohort_id):
     return jsonify({"ok": True})
 
 
-@app.route("/api/niveaus", methods=["GET", "POST"])
-def niveaus_collection():
+@app.route("/api/crebos", methods=["GET", "POST"])
+def crebos_collection():
     user, err = auth_error("beheerder", "mentor", "docent", "administratie") if request.method == "GET" else auth_error("beheerder")
     if err:
         return err
@@ -600,16 +673,16 @@ def niveaus_collection():
         name = (data.get("name") or "").strip()
         if not name:
             return jsonify({"error": "Naam is verplicht"}), 400
-        db.execute("INSERT OR IGNORE INTO niveaus (name) VALUES (?)", (name,))
+        db.execute("INSERT OR IGNORE INTO crebos (name) VALUES (?)", (name,))
         db.commit()
-    rows = db.execute("SELECT * FROM niveaus ORDER BY name").fetchall()
+    rows = db.execute("SELECT * FROM crebos ORDER BY name").fetchall()
     return jsonify([dict(r) for r in rows])
 
 
-@app.route("/api/niveaus/<int:niveau_id>", methods=["DELETE"])
-def niveau_item(niveau_id):
+@app.route("/api/crebos/<int:crebo_id>", methods=["DELETE"])
+def crebo_item(crebo_id):
     db = get_db()
-    db.execute("DELETE FROM niveaus WHERE id = ?", (niveau_id,))
+    db.execute("DELETE FROM crebos WHERE id = ?", (crebo_id,))
     db.commit()
     return jsonify({"ok": True})
 
@@ -625,22 +698,22 @@ def classes_collection():
         name = (data.get("name") or "").strip()
         if not name:
             return jsonify({"error": "Naam is verplicht"}), 400
-        niveau_id = data.get("niveau_id") or None
+        crebo_id = data.get("crebo_id") or None
         cohort_id = data.get("cohort_id") or None
         mentor_id = data.get("mentor_id") or None
         cur = db.execute(
-            "INSERT INTO classes (name, niveau_id, cohort_id, mentor_id) VALUES (?, ?, ?, ?)",
-            (name, niveau_id, cohort_id, mentor_id),
+            "INSERT INTO classes (name, crebo_id, cohort_id, mentor_id) VALUES (?, ?, ?, ?)",
+            (name, crebo_id, cohort_id, mentor_id),
         )
         db.commit()
-        return jsonify(class_with_niveau(db, cur.lastrowid)), 201
+        return jsonify(class_with_crebo(db, cur.lastrowid)), 201
     archived = 1 if request.args.get("archived") == "1" else 0
     rows = db.execute(
-        """SELECT c.id, c.name, n.name AS niveau, c.niveau_id,
+        """SELECT c.id, c.name, n.name AS crebo, c.crebo_id,
                   co.name AS cohort, c.cohort_id, c.archived,
                   c.mentor_id, m.username AS mentor
            FROM classes c
-           LEFT JOIN niveaus n ON n.id = c.niveau_id
+           LEFT JOIN crebos n ON n.id = c.crebo_id
            LEFT JOIN cohorts co ON co.id = c.cohort_id
            LEFT JOIN users m ON m.id = c.mentor_id
            WHERE c.archived = ?
@@ -664,8 +737,8 @@ def class_item(class_id):
             if not name:
                 return jsonify({"error": "Naam is verplicht"}), 400
             updates["name"] = name
-        if "niveau_id" in data:
-            updates["niveau_id"] = data.get("niveau_id") or None
+        if "crebo_id" in data:
+            updates["crebo_id"] = data.get("crebo_id") or None
         if "cohort_id" in data:
             updates["cohort_id"] = data.get("cohort_id") or None
         if updates:
@@ -1257,7 +1330,7 @@ def import_students():
     name_words = ("naam", "name", "student", "leerling", "studentnaam")
     number_words = ("nummer", "studentnummer", "number", "nr", "id")
     class_words = ("klas", "class", "groep")
-    niveau_words = ("niveau", "level")
+    crebo_words = ("crebo", "niveau", "level")
     first_words = ("voornaam", "voornamen", "first", "first name")
     prefix_words = ("tussenvoegsel", "tussenvoegsels", "prefix", "voorvoegsel")
     last_words = ("achternaam", "achternamen", "last", "last name", "familienaam")
@@ -1266,7 +1339,7 @@ def import_students():
     header = [c.strip().lower() for c in rows[0]]
     has_header = header and (header[0] in name_words or header[0] in first_words
                               or header[0] in number_words)
-    col = {"name": 0, "number": 1, "class": 2, "niveau": None,
+    col = {"name": 0, "number": 1, "class": 2, "crebo": None,
            "first": None, "prefix": None, "last": None, "email": None}
     if has_header:
         for i, h in enumerate(header):
@@ -1274,8 +1347,8 @@ def import_students():
                 col["number"] = i
             elif h in class_words:
                 col["class"] = i
-            elif h in niveau_words:
-                col["niveau"] = i
+            elif h in crebo_words:
+                col["crebo"] = i
             elif h in first_words:
                 col["first"] = i
             elif h in prefix_words:
@@ -1309,38 +1382,38 @@ def import_students():
             continue
         number = cell(row, col["number"])
         class_name = cell(row, col["class"])
-        niveau = cell(row, col["niveau"])
+        niveau = cell(row, col["crebo"])
         if not name:
             continue
         class_id = None
         if class_name:
             key = class_name.lower()
             if key not in classes:
-                niveau_id = None
+                crebo_id = None
                 if niveau:
-                    db.execute("INSERT OR IGNORE INTO niveaus (name) VALUES (?)",
+                    db.execute("INSERT OR IGNORE INTO crebos (name) VALUES (?)",
                                (niveau,))
                     db.commit()
-                    niveau_id = db.execute(
-                        "SELECT id FROM niveaus WHERE name = ?", (niveau,)
+                    crebo_id = db.execute(
+                        "SELECT id FROM crebos WHERE name = ?", (niveau,)
                     ).fetchone()["id"]
                 cur = db.execute(
-                    "INSERT INTO classes (name, niveau_id) VALUES (?, ?)",
-                    (class_name, niveau_id),
+                    "INSERT INTO classes (name, crebo_id) VALUES (?, ?)",
+                    (class_name, crebo_id),
                 )
                 db.commit()
                 classes[key] = {"id": cur.lastrowid, "name": class_name,
-                                "niveau_id": niveau_id}
-            elif niveau and not classes[key].get("niveau_id"):
-                db.execute("INSERT OR IGNORE INTO niveaus (name) VALUES (?)",
+                                "crebo_id": crebo_id}
+            elif niveau and not classes[key].get("crebo_id"):
+                db.execute("INSERT OR IGNORE INTO crebos (name) VALUES (?)",
                            (niveau,))
                 db.commit()
-                nrow = db.execute("SELECT id FROM niveaus WHERE name = ?",
+                nrow = db.execute("SELECT id FROM crebos WHERE name = ?",
                                   (niveau,)).fetchone()
-                db.execute("UPDATE classes SET niveau_id = ? WHERE id = ?",
+                db.execute("UPDATE classes SET crebo_id = ? WHERE id = ?",
                            (nrow["id"], classes[key]["id"]))
                 db.commit()
-                classes[key]["niveau_id"] = nrow["id"]
+                classes[key]["crebo_id"] = nrow["id"]
             class_id = classes[key]["id"]
         if name.lower() in existing:
             skipped += 1
@@ -1591,13 +1664,13 @@ def report():
         subject_class_map.setdefault(r["subject_id"], set()).add(r["class_id"])
     class_map = {}
     for r in db.execute(
-        """SELECT st.id AS sid, c.name AS cname, n.name AS cniveau
+        """SELECT st.id AS sid, c.name AS cname, n.name AS ccrebo
            FROM students st
            LEFT JOIN classes c ON c.id = st.class_id
-           LEFT JOIN niveaus n ON n.id = c.niveau_id"""
+           LEFT JOIN crebos n ON n.id = c.crebo_id"""
     ).fetchall():
         class_map[r["sid"]] = (
-            {"name": r["cname"], "niveau": r["cniveau"]} if r["cname"] else None
+            {"name": r["cname"], "crebo": r["ccrebo"]} if r["cname"] else None
         )
     audience = "student" if user["role"] == "student" else request.args.get("audience", "staff")
     notes_map = {}
