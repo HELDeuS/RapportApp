@@ -366,3 +366,13 @@ td.tekort-2, td.tekort-3, td.tekort-4, td.tekort-5 { color: var(--tekort); font-
 /* Kolommen herschikken in cijferoverzicht */
 #grade-table thead th[data-subject] { cursor: grab; }
 #grade-table thead th[data-subject]:active { cursor: grabbing; }
+
+/* Invoervelden in werkbalken vullen de beschikbare breedte mee */
+.toolbar > input {
+  flex: 1 1 140px;
+  min-width: 120px;
+  max-width: 340px;
+}
+.toolbar > input[style*="margin-left"] {
+  margin-left: auto;
+}
