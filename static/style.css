@@ -354,3 +354,11 @@ td.tekort-2, td.tekort-3, td.tekort-4, td.tekort-5 { color: var(--tekort); font-
 }
 .pager .pager-info { opacity: 0.85; }
 .pager .pager-size { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+
+.disclaimer {
+  margin-top: 18px;
+  font-size: .8rem;
+  color: var(--subtext);
+  max-width: 420px;
+  opacity: .85;
+}

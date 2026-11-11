@@ -2,6 +2,8 @@
 
 Webapp voor het bijhouden van rapportcijfers van de opleiding MBO ICT.
 
+> **Disclaimer:** deze applicatie is met behulp van AI gebouwd. De code is niet door mensen gereviewed en is niet geschikt voor productieomgevingen.
+
 ## Functies
 
 - **Studenten, vakken, modules en klassen** beheren (CRUD). Klassen hebben een naam, een crebo en een **startcohort** (bijv. 25-26); crebos en cohorten zijn vaste, beheerde lijsten (dropdowns) die je op het tabblad Klassen onderhoudt. Modules (voorheen periodes) hebben een naam en een studiejaar (bijv. M1, 2025-2026). Niet elk vak hoeft in elke module cijfers te hebben.
