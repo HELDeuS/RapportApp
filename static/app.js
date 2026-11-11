@@ -293,11 +293,8 @@ function periodsForClass(classId) {
   const c = classes.find((x) => String(x.id) === String(classId));
   const ltId = c ? c.leertraject_id : null;
   if (!ltId) return periods;
-  const visibleSubjects = subjects.filter((s) =>
-    !(s.leertraject_ids || []).length || s.leertraject_ids.includes(ltId));
-  const pids = new Set();
-  visibleSubjects.forEach((s) => (s.period_ids || []).forEach((p) => pids.add(p)));
-  const result = periods.filter((p) => pids.has(p.id));
+  const result = periods.filter((p) =>
+    !(p.leertraject_ids || []).length || p.leertraject_ids.includes(ltId));
   return result.length ? result : periods;
 }
 
@@ -387,8 +384,7 @@ function subjectsForPeriod() {
   const ltId = cls ? cls.leertraject_id : null;
   return subjects.filter((s) =>
     (s.kind || "vak") === "vak" &&
-    (s.period_ids || []).includes(currentPeriod) &&
-    (!ltId || !(s.leertraject_ids || []).length || s.leertraject_ids.includes(ltId))
+    (s.period_ids || []).includes(currentPeriod)
   );
 }
 
@@ -1179,25 +1175,6 @@ function renderSubjects() {
     const y = p.year || "Zonder studiejaar";
     (years[y] = years[y] || []).push(p);
   }
-  const creboGroups = {};
-  for (const t of leertrajecten) {
-    const n = t.crebo || "Zonder crebo";
-    (creboGroups[n] = creboGroups[n] || []).push(t);
-  }
-  const ltChecks = (s) => Object.entries(creboGroups).map(([crebo, lts]) => {
-    const checkedCount = lts.filter((t) => (s.leertraject_ids || []).includes(t.id)).length;
-    const anyChecked = checkedCount > 0;
-    const allChecked = checkedCount === lts.length;
-    return `
-      <details class="year-group"${anyChecked ? " open" : ""}>
-        <summary>${esc(crebo)}${anyChecked ? ` <span class="badge">${checkedCount}</span>` : ""}</summary>
-        <div class="year-modules">
-          <label class="check check-all"><input type="checkbox" data-ltgroup="1"${allChecked ? " checked" : ""}> <em>Heel crebo</em></label>
-          ${lts.map((t) => `
-          <label class="check"><input type="checkbox" data-lt="${t.id}"${(s.leertraject_ids || []).includes(t.id) ? " checked" : ""}> ${esc(ltLabel(t))}</label>`).join("")}
-        </div>
-      </details>`;
-  }).join("");
   const checks = (s) => Object.entries(years).map(([year, mods]) => {
     const anyChecked = mods.some((p) => (s.period_ids || []).includes(p.id));
     return `
@@ -1221,7 +1198,7 @@ function renderSubjects() {
       </select></td>
       ${isKd
         ? `<td class="hint">Keuzedeel</td><td><input data-field="sbu" type="number" min="0" value="${s.sbu || 0}" style="width:80px"> SBU</td>`
-        : `<td class="period-checks">${checks(s)}</td><td class="period-checks">${ltChecks(s)}</td>`}
+        : `<td class="period-checks">${checks(s)}</td><td></td>`}
       <td><button class="secondary" data-archive>Archiveren</button></td>
       <td><button class="danger" data-del>Verwijderen</button></td>
     </tr>`;
@@ -1245,26 +1222,17 @@ $("#btn-add-subject").addEventListener("click", async () => {
 $("#subjects-table tbody").addEventListener("change", async (e) => {
   const tr = e.target.closest("tr");
   const id = tr.dataset.id;
-  if (e.target.dataset.ltgroup !== undefined) {
-    const group = e.target.closest(".year-modules");
-    group.querySelectorAll("input[data-lt]").forEach((cb) => {
-      cb.checked = e.target.checked;
-    });
-  }
-  if (e.target.dataset.period !== undefined || e.target.dataset.lt !== undefined ||
-      e.target.dataset.ltgroup !== undefined) {
+  if (e.target.dataset.period !== undefined) {
     const periodIds = [...tr.querySelectorAll("input[data-period]:checked")]
       .map((c) => +c.dataset.period);
-    const ltIds = [...tr.querySelectorAll("input[data-lt]:checked")]
-      .map((c) => +c.dataset.lt);
     try {
       await api(`/api/subjects/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ period_ids: periodIds, leertraject_ids: ltIds }),
+        body: JSON.stringify({ period_ids: periodIds }),
       });
       const s = subjects.find((x) => x.id === +id);
-      if (s) { s.period_ids = periodIds; s.leertraject_ids = ltIds; }
+      if (s) { s.period_ids = periodIds; }
       renderSubjects();
       renderGradeTable();
     } catch (err) {
@@ -1321,6 +1289,8 @@ function renderPeriods() {
     <tr data-id="${p.id}">
       <td><input data-field="name" value="${esc(p.name)}"></td>
       <td><input data-field="year" value="${esc(p.year || "")}"></td>
+      <td class="period-checks">${leertrajecten.length ? leertrajecten.map((t) => `
+        <label class="check"><input type="checkbox" data-lt="${t.id}"${(p.leertraject_ids || []).includes(t.id) ? " checked" : ""}> ${esc(ltLabel(t))}</label>`).join("") : `<span class="hint">(geen leertrajecten)</span>`}</td>
       <td><button class="danger" data-del>Verwijderen</button></td>
     </tr>`).join("");
 }
@@ -1339,6 +1309,25 @@ $("#btn-add-period").addEventListener("click", async () => {
 });
 
 $("#periods-table tbody").addEventListener("change", async (e) => {
+  if (e.target.dataset.lt !== undefined) {
+    const id = e.target.closest("tr").dataset.id;
+    const ids = [...e.target.closest("tr").querySelectorAll("input[data-lt]:checked")]
+      .map((cb) => +cb.dataset.lt);
+    try {
+      await api(`/api/periods/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leertraject_ids: ids }),
+      });
+      const p = periods.find((x) => x.id === +id);
+      if (p) p.leertraject_ids = ids;
+      renderPeriodSelects();
+      renderGradeTable();
+    } catch (err) {
+      alert("Leertrajecten opslaan mislukt: " + err.message);
+    }
+    return;
+  }
   const id = e.target.closest("tr").dataset.id;
   const p = periods.find((x) => x.id === +id);
   if (!p) return;

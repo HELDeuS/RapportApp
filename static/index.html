@@ -185,7 +185,7 @@
   </div>
   <div id="subjects-import-result" class="result hidden"></div>
   <table class="list sortable" id="subjects-table">
-    <thead><tr><th data-key="name">Vak</th><th data-key="assessment_type">Beoordeling</th><th>Gegeven in module(s)</th><th>Gekoppeld aan leertraject</th><th></th></tr></thead>
+    <thead><tr><th data-key="name">Vak</th><th data-key="assessment_type">Beoordeling</th><th>Gegeven in module(s)</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
   <div class="pager" data-table="subjects-table"></div>
@@ -193,6 +193,7 @@
 
 <!-- Modules -->
 <section id="tab-periodes" class="panel">
+  <p class="hint">Modules horen bij leertrajecten: vink per module aan in welke leertraject(en) hij zit. Een module zonder vinkjes geldt voor alle leertrajecten. De vakken van een module stel je per vak in op het tabblad Vakken.</p>
   <div class="toolbar">
     <input id="period-name" placeholder="Modulenaam (bijv. M1)">
     <input id="period-year" placeholder="Studiejaar (bijv. 2025-2026)">
@@ -200,7 +201,7 @@
     <input id="period-search" placeholder="&#9906; Zoek module..." style="margin-left:auto;">
   </div>
   <table class="list sortable" id="periods-table">
-    <thead><tr><th data-key="name">Module</th><th data-key="year">Studiejaar</th><th></th></tr></thead>
+    <thead><tr><th data-key="name">Module</th><th data-key="year">Studiejaar</th><th>Zit in leertraject(en)</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
   <div class="pager" data-table="periods-table"></div>

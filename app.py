@@ -175,6 +175,11 @@ CREATE TABLE IF NOT EXISTS audit_log (
     entity_id INTEGER,
     detail TEXT DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS leertraject_periods (
+    leertraject_id INTEGER NOT NULL REFERENCES leertrajecten(id) ON DELETE CASCADE,
+    period_id INTEGER NOT NULL REFERENCES periods(id) ON DELETE CASCADE,
+    UNIQUE (leertraject_id, period_id)
+);
 CREATE TABLE IF NOT EXISTS subject_leertrajecten (
     subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
     leertraject_id INTEGER NOT NULL REFERENCES leertrajecten(id) ON DELETE CASCADE,
@@ -264,6 +269,17 @@ def init_db():
         tcols = [r[1] for r in db.execute(f"PRAGMA table_info({table})").fetchall()]
         if "archived" not in tcols:
             db.execute(f"ALTER TABLE {table} ADD COLUMN archived INTEGER DEFAULT 0")
+    if not db.execute("SELECT COUNT(*) FROM leertraject_periods").fetchone()[0] and \
+            db.execute("SELECT COUNT(*) FROM subject_leertrajecten").fetchone()[0]:
+        # Oude vak-leertraject-koppelingen overzetten naar module-leertraject-koppelingen.
+        for lt_id, pid in db.execute(
+            """SELECT DISTINCT sl.leertraject_id, sp.period_id
+               FROM subject_leertrajecten sl
+               JOIN subject_periods sp ON sp.subject_id = sl.subject_id"""
+        ).fetchall():
+            db.execute(
+                "INSERT OR IGNORE INTO leertraject_periods "
+                "(leertraject_id, period_id) VALUES (?, ?)", (lt_id, pid))
     if not db.execute("SELECT COUNT(*) FROM subject_leertrajecten").fetchone()[0]:
         for sub_id, lt_id in db.execute(
             """SELECT DISTINCT sc.subject_id, c.leertraject_id
@@ -553,7 +569,7 @@ def admin_reset():
         keep.add(admin["id"])
     for table in ("grades", "attendance", "notes", "subject_periods",
                  "subject_classes", "subject_leertrajecten", "student_keuzedelen",
-                 "students", "subjects",
+                 "leertraject_periods", "students", "subjects",
                  "periods", "classes", "cohorts", "crebos", "leertrajecten"):
         db.execute(f"DELETE FROM {table}")
     db.execute("DELETE FROM users WHERE id NOT IN (%s)" % ",".join("?" * len(keep)),
@@ -1169,13 +1185,6 @@ def subject_with_periods(db, subject_id):
             (subject_id,),
         ).fetchall()
     ]
-    result["leertraject_ids"] = [
-        r["leertraject_id"] for r in db.execute(
-            "SELECT leertraject_id FROM subject_leertrajecten "
-            "WHERE subject_id = ? ORDER BY leertraject_id",
-            (subject_id,),
-        ).fetchall()
-    ]
     return result
 
 
@@ -1280,7 +1289,6 @@ def subjects_collection():
         if not name:
             return jsonify({"error": "Naam is verplicht"}), 400
         period_ids = data.get("period_ids") or []
-        leertraject_ids = data.get("leertraject_ids") or []
         assessment_type = data.get("assessment_type") or "cijfer"
         if assessment_type not in ASSESSMENT_TYPES:
             return jsonify({"error": "Onbekend beoordelingstype"}), 400
@@ -1300,12 +1308,6 @@ def subjects_collection():
             db.execute(
                 "INSERT OR IGNORE INTO subject_periods (subject_id, period_id) VALUES (?, ?)",
                 (subject_id, pid),
-            )
-        for ltid in leertraject_ids:
-            db.execute(
-                "INSERT OR IGNORE INTO subject_leertrajecten "
-                "(subject_id, leertraject_id) VALUES (?, ?)",
-                (subject_id, ltid),
             )
         db.commit()
         audit(db, user, "aanmaken", "vak", subject_id,
@@ -1338,15 +1340,7 @@ def subject_item(subject_id):
                     "INSERT OR IGNORE INTO subject_periods (subject_id, period_id) VALUES (?, ?)",
                     (subject_id, pid),
                 )
-        if "leertraject_ids" in data:
-            db.execute("DELETE FROM subject_leertrajecten WHERE subject_id = ?",
-                       (subject_id,))
-            for ltid in (data.get("leertraject_ids") or []):
-                db.execute(
-                    "INSERT OR IGNORE INTO subject_leertrajecten "
-                    "(subject_id, leertraject_id) VALUES (?, ?)",
-                    (subject_id, ltid),
-                )
+
         if "assessment_type" in data:
             assessment_type = data.get("assessment_type") or "cijfer"
             if assessment_type not in ASSESSMENT_TYPES:
@@ -1383,6 +1377,16 @@ def subject_item(subject_id):
 # Periods
 # ---------------------------------------------------------------------------
 
+def period_with_leertrajecten(db, row):
+    result = dict(row)
+    result["leertraject_ids"] = [
+        r["leertraject_id"] for r in db.execute(
+            "SELECT leertraject_id FROM leertraject_periods WHERE period_id = ? "
+            "ORDER BY leertraject_id", (row["id"],)).fetchall()
+    ]
+    return result
+
+
 @app.route("/api/periods", methods=["GET", "POST"])
 def periods_collection():
     user, err = auth_error() if request.method == "GET" else auth_error("beheerder")
@@ -1399,11 +1403,11 @@ def periods_collection():
         db.commit()
         audit(db, user, "aanmaken", "module", cur.lastrowid,
               f"Module '{name}' ({year})" if year else f"Module '{name}'")
-        return jsonify(dict(db.execute(
+        return jsonify(period_with_leertrajecten(db, db.execute(
             "SELECT * FROM periods WHERE id = ?", (cur.lastrowid,)
         ).fetchone())), 201
     rows = db.execute("SELECT * FROM periods ORDER BY year, id").fetchall()
-    return jsonify([dict(r) for r in rows])
+    return jsonify([period_with_leertrajecten(db, r) for r in rows])
 
 
 @app.route("/api/periods/<int:period_id>", methods=["PUT", "DELETE"])
@@ -1414,17 +1418,30 @@ def period_item(period_id):
     db = get_db()
     if request.method == "PUT":
         data = request.get_json(force=True)
-        name = (data.get("name") or "").strip()
-        if not name:
-            return jsonify({"error": "Naam is verplicht"}), 400
-        year = (data.get("year") if "year" in data else None)
-        if year is None:
-            db.execute("UPDATE periods SET name = ? WHERE id = ?", (name, period_id))
-        else:
-            db.execute("UPDATE periods SET name = ?, year = ? WHERE id = ?",
-                       (name, year.strip(), period_id))
+        if "name" in data:
+            name = (data.get("name") or "").strip()
+            if not name:
+                return jsonify({"error": "Naam is verplicht"}), 400
+            year = (data.get("year") if "year" in data else None)
+            if year is None:
+                db.execute("UPDATE periods SET name = ? WHERE id = ?", (name, period_id))
+            else:
+                db.execute("UPDATE periods SET name = ?, year = ? WHERE id = ?",
+                           (name, year.strip(), period_id))
+        elif "year" in data:
+            db.execute("UPDATE periods SET year = ? WHERE id = ?",
+                       ((data.get("year") or "").strip(), period_id))
+        if "leertraject_ids" in data:
+            db.execute("DELETE FROM leertraject_periods WHERE period_id = ?",
+                       (period_id,))
+            for ltid in (data.get("leertraject_ids") or []):
+                db.execute(
+                    "INSERT OR IGNORE INTO leertraject_periods "
+                    "(leertraject_id, period_id) VALUES (?, ?)", (ltid, period_id))
         db.commit()
-        audit(db, user, "wijzigen", "module", period_id, f"Module '{name}'")
+        gewijzigd = [k for k in ("name", "year", "leertraject_ids") if k in data]
+        audit(db, user, "wijzigen", "module", period_id,
+              f"Velden: {', '.join(gewijzigd)}" if gewijzigd else "")
     else:
         db.execute("DELETE FROM periods WHERE id = ?", (period_id,))
         db.commit()
@@ -2049,13 +2066,13 @@ def report():
         subject_period_map.setdefault(r["subject_id"], set()).add(r["period_id"])
     subjects = [s for s in subjects
                 if period_id in subject_period_map.get(s["id"], set())]
+    # Module-leertraject-koppeling: zit de module niet in het traject van de klas,
+    # dan toont het rapport voor deze student geen vakken.
+    period_lts = {r["leertraject_id"] for r in db.execute(
+        "SELECT leertraject_id FROM leertraject_periods WHERE period_id = ?",
+        (period_id,)).fetchall()}
     # Vak-klasse-koppeling: alleen vakken waarvan de klas is aangevinkt.
     # Bepaal per student de relevante klas (of de geselecteerde klas van het rapport).
-    subject_lt_map = {}
-    for r in db.execute(
-        "SELECT subject_id, leertraject_id FROM subject_leertrajecten"
-    ).fetchall():
-        subject_lt_map.setdefault(r["subject_id"], set()).add(r["leertraject_id"])
     class_lt_map = {}
     for r in db.execute(
         "SELECT id, leertraject_id FROM classes WHERE leertraject_id IS NOT NULL"
@@ -2110,10 +2127,8 @@ def report():
         student_lt = (class_lt_map.get(student_class)
                       if student_class is not None else None)
         for sub in subjects:
-            if student_lt is not None:
-                allowed = subject_lt_map.get(sub["id"], set())
-                if allowed and student_lt not in allowed:
-                    continue
+            if student_lt is not None and period_lts and student_lt not in period_lts:
+                continue
             value = grades.get((s["id"], sub["id"]))
             if value is None:
                 continue

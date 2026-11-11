@@ -126,15 +126,22 @@ def main():
     # ----------------------------------------------------------- leertrajecten
     # 3-jarig traject (M1-M12) en 2-jarig traject (M1-M8) onder hetzelfde crebo.
     trajecten = [
-        ("ICT-medewerker 3-jarig 25-26", "25-26"),
-        ("ICT-medewerker 2-jarig 24-25", "24-25"),
-        ("ICT-medewerker 3-jarig 23-24", "23-24"),
+        ("ICT-medewerker 3-jarig 25-26", "25-26", 12),
+        ("ICT-medewerker 2-jarig 24-25", "24-25", 8),
+        ("ICT-medewerker 3-jarig 23-24", "23-24", 12),
     ]
     leertrajecten = {}
-    for name, cohort in trajecten:
+    for name, cohort, nmod in trajecten:
         _, body = s.post("/api/leertrajecten",
                          {"name": name, "crebo_id": niv, "cohort_id": cohorts[cohort]})
         leertrajecten[name] = body["id"]
+    # modules aan trajecten koppelen: 2-jarig t/m M8, 3-jarig t/m M12
+    lt_per_module = {}
+    for name, _, nmod in trajecten:
+        for i in range(1, nmod + 1):
+            lt_per_module.setdefault(f"M{i}", []).append(leertrajecten[name])
+    for mod, lts in lt_per_module.items():
+        s.put(f"/api/periods/{periods[mod]}", {"leertraject_ids": lts})
     print("Leertrajecten klaar.")
 
     # ----------------------------------------------------------------- vakken
