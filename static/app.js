@@ -1171,7 +1171,8 @@ $("#import-subjects-file").addEventListener("change", async (e) => {
 // ---------- Vakken ----------
 function renderSubjects() {
   const q = $("#subject-filter").value.trim().toLowerCase();
-  const visible = q ? subjects.filter((s) => s.name.toLowerCase().includes(q)) : subjects;
+  const vakken = subjects.filter((s) => (s.kind || "vak") === "vak");
+  const visible = q ? vakken.filter((s) => s.name.toLowerCase().includes(q)) : vakken;
   const years = {};
   for (const p of periods) {
     const y = p.year || "Zonder studiejaar";
@@ -1188,9 +1189,7 @@ function renderSubjects() {
   }).join("");
   const rows = sortRows(visible, listSort.subjects, (s, key) => s[key]);
   updateSortArrows("#subjects-table", listSort.subjects);
-  $("#subjects-table tbody").innerHTML = pageSlice("#subjects-table", rows).map((s) => {
-    const isKd = (s.kind || "vak") === "keuzedeel";
-    return `
+  $("#subjects-table tbody").innerHTML = pageSlice("#subjects-table", rows).map((s) => `
     <tr data-id="${s.id}">
       <td><input data-field="name" value="${esc(s.name)}"></td>
       <td><select data-field="assessment_type">
@@ -1198,13 +1197,11 @@ function renderSubjects() {
         <option value="letter"${s.assessment_type === "letter" ? " selected" : ""}>Letter (V/G/O/VS)</option>
         <option value="vnv"${s.assessment_type === "vnv" ? " selected" : ""}>Voldaan / niet voldaan (V/NV)</option>
       </select></td>
-      ${isKd
-        ? `<td class="hint">Keuzedeel</td><td><input data-field="sbu" type="number" min="0" value="${s.sbu || 0}" style="width:80px"> SBU</td>`
-        : `<td class="period-checks">${checks(s)}</td><td></td>`}
+      <td class="period-checks">${checks(s)}</td>
+      <td></td>
       <td><button class="secondary" data-archive>Archiveren</button></td>
       <td><button class="danger" data-del>Verwijderen</button></td>
-    </tr>`;
-  }).join("");
+    </tr>`).join("");
 }
 
 $("#subject-filter").addEventListener("input", () => { resetPage("#subjects-table"); renderSubjects(); });
@@ -1488,18 +1485,24 @@ function renderKdTable() {
   const grades = {};
   (kdStudentData && kdStudentData.keuzedelen || []).forEach((k) => { grades[k.subject_id] = k.grade || ""; });
   const typeShort = { cijfer: "1-10", letter: "V/G/O/VS", vnv: "V/NV" };
+  const mayManage = currentUser && currentUser.role === "beheerder";
   $("#kd-table tbody").innerHTML = keuzedelenList.length
     ? keuzedelenList.map((k) => `
       <tr data-id="${k.id}">
-        <td>${esc(k.name)}</td>
-        <td>${k.sbu || 0}</td>
+        <td><input data-field="name" value="${esc(k.name)}"></td>
+        <td><input data-field="sbu" type="number" min="0" value="${k.sbu || 0}" style="width:80px"></td>
+        <td><select data-field="assessment_type">
+          <option value="cijfer"${k.assessment_type === "cijfer" ? " selected" : ""}>Cijfer (1-10)</option>
+          <option value="letter"${k.assessment_type === "letter" ? " selected" : ""}>Letter (V/G/O/VS)</option>
+          <option value="vnv"${k.assessment_type === "vnv" ? " selected" : ""}>Voldaan / niet voldaan (V/NV)</option>
+        </select></td>
         <td><input type="checkbox" data-kd-link ${linked.has(k.id) ? " checked" : ""}${mayLink ? "" : " disabled"}></td>
         <td>${linked.has(k.id)
           ? `<input class="cell" data-kd-grade value="${esc(grades[k.id] || "")}" placeholder="${typeShort[k.assessment_type] || "1-10"}"${mayGrade ? "" : " disabled"}>`
           : ""}</td>
-        <td></td>
+        <td>${mayManage ? `<button class="secondary" data-archive>Archiveren</button> <button class="danger" data-del>Verwijderen</button>` : ""}</td>
       </tr>`).join("")
-    : `<tr><td colspan="5" class="hint">Nog geen keuzedelen. Maak ze aan op het tabblad Vakken (soort = Keuzedeel).</td></tr>`;
+    : `<tr><td colspan="6" class="hint">Nog geen keuzedelen. Voeg ze hierboven toe.</td></tr>`;
   const total = kdStudentData ? kdStudentData.sbu_total : 0;
   const doel = kdStudentData ? kdStudentData.sbu_doel : 720;
   const pct = Math.min(100, Math.round(total / doel * 100));
@@ -1529,6 +1532,50 @@ $("#btn-add-kd").addEventListener("click", async () => {
   } catch (err) {
     alert("Keuzedeel toevoegen mislukt: " + err.message);
   }
+});
+
+$("#kd-table tbody").addEventListener("change", async (e) => {
+  const tr = e.target.closest("tr");
+  if (!tr || e.target.dataset.field === undefined) return;
+  const id = tr.dataset.id;
+  const field = e.target.dataset.field;
+  const payload = field === "sbu" ? { sbu: +e.target.value || 0 } : { [field]: e.target.value };
+  try {
+    await api(`/api/subjects/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const k = keuzedelenList.find((x) => x.id === +id);
+    if (k) {
+      if (field === "sbu") k.sbu = +e.target.value || 0;
+      else k[field] = e.target.value;
+    }
+    renderKdTable();
+  } catch (err) {
+    alert("Keuzedeel opslaan mislukt: " + err.message);
+    await loadKeuzedelenList();
+    renderKdTable();
+  }
+});
+
+$("#kd-table tbody").addEventListener("click", async (e) => {
+  const tr = e.target.closest("tr");
+  if (!tr || (e.target.dataset.archive === undefined && e.target.dataset.del === undefined)) return;
+  const id = tr.dataset.id;
+  if (e.target.dataset.archive !== undefined) {
+    if (!confirm("Keuzedeel archiveren? Het verdwijnt uit de actieve lijsten; gegevens blijven bewaard.")) return;
+    await api(`/api/subjects/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ archived: true }),
+    });
+  } else {
+    if (!confirm("Keuzedeel verwijderen? Koppelingen en beoordelingen bij studenten vervallen.")) return;
+    await api(`/api/subjects/${id}`, { method: "DELETE" });
+  }
+  await loadKeuzedelenList();
+  await loadKdStudent();
 });
 
 $("#kd-student").addEventListener("change", loadKdStudent);
