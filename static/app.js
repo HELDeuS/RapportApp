@@ -383,18 +383,29 @@ function renderPeriodSelects() {
     sel.innerHTML = `<option value="">Alle cohorten</option>` +
       cohorts.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("");
   }
-  $("#student-class-filter").innerHTML = `<option value="">Alle klassen</option>` +
-    ownClassesOnly(classes).map((c) => `<option value="${c.id}">${esc(classLabel(c))}</option>`).join("");
+  const scFilter = $("#student-cohort") ? $("#student-cohort").value : "";
+  const scList = ownClassesOnly(scFilter
+    ? classes.filter((c) => String(c.cohort_id) === scFilter)
+    : classes);
+  const scSel = $("#student-class-filter");
+  const scPrev = scSel.value;
+  scSel.innerHTML = `<option value="">Alle klassen</option>` +
+    scList.map((c) => `<option value="${c.id}">${esc(classLabel(c))}</option>`).join("");
+  if (scPrev && ![...scSel.options].some((o) => o.value === scPrev)) scSel.value = "";
 }
 
 function renderClassSelects() {
   const cohortFilter = $("#grade-cohort").value;
+  const reportCohortFilter = $("#report-cohort").value;
   const visibleClasses = ownClassesOnly(cohortFilter
     ? classes.filter((c) => String(c.cohort_id) === cohortFilter)
     : classes);
-  const grouped = (sel) => {
+  const reportClasses = ownClassesOnly(reportCohortFilter
+    ? classes.filter((c) => String(c.cohort_id) === reportCohortFilter)
+    : classes);
+  const grouped = (sel, list) => {
     const byCohort = {};
-    for (const c of visibleClasses) {
+    for (const c of list) {
       const key = c.cohort || "Zonder cohort";
       (byCohort[key] = byCohort[key] || []).push(c);
     }
@@ -406,12 +417,14 @@ function renderClassSelects() {
   };
   const gradeSel = $("#grade-class");
   const prevGrade = gradeSel.value;
-  gradeSel.innerHTML = grouped(prevGrade);
+  gradeSel.innerHTML = grouped(prevGrade, visibleClasses);
   const reportSel = $("#report-class");
   const prevReport = reportSel.value;
-  reportSel.innerHTML = grouped(prevReport);
+  const reportInList = reportClasses.some((c) => String(c.id) === String(prevReport));
+  reportSel.innerHTML = grouped(reportInList ? prevReport : "", reportClasses);
+  if (!reportInList) reportSel.value = "";
   $("#student-class").innerHTML = `<option value="">Geen klas</option>` +
-    visibleClasses.map((c) => `<option value="${c.id}">${esc(classLabel(c))}</option>`).join("");
+    ownClassesOnly(classes).map((c) => `<option value="${c.id}">${esc(classLabel(c))}</option>`).join("");
 }
 
 function studentName(s) {
@@ -737,7 +750,11 @@ $("#grade-cohort").addEventListener("change", () => {
 });
 
 $("#student-search").addEventListener("input", () => { resetPage("#students-table"); renderStudents(); });
-$("#student-cohort").addEventListener("change", () => { resetPage("#students-table"); renderStudents(); });
+$("#student-cohort").addEventListener("change", () => {
+  renderPeriodSelects();
+  resetPage("#students-table");
+  renderStudents();
+});
 $("#student-class-filter").addEventListener("change", () => { resetPage("#students-table"); renderStudents(); });
 
 bindTableSort("#students-table", "students", renderStudents);
@@ -1234,6 +1251,7 @@ $("#btn-del-lt").addEventListener("click", async () => {
 });
 
 $("#report-class").addEventListener("change", () => renderPeriodSelects());
+$("#report-cohort").addEventListener("change", () => renderClassSelects());
 
 $("#btn-add-crebo").addEventListener("click", async () => {
   const name = $("#crebo-name").value.trim();
@@ -1880,6 +1898,19 @@ function bindCombo(inputSel, panelSel, selectSel, itemsFn) {
   if (sel.value) input.value = labelOf(sel.value);
 }
 
+function statClassOptions() {
+  const cohortFilter = $("#stat-cohort") ? $("#stat-cohort").value : "";
+  let list = classes;
+  if (cohortFilter) {
+    list = list.filter((c) => String(c.cohort_id) === cohortFilter);
+  }
+  if (currentUser && currentUser.role === "mentor") {
+    list = list.filter((c) => String(c.mentor_id) === String(currentUser.id));
+  }
+  return `<option value="">Alle klassen</option>` +
+    list.map((c) => `<option value="${c.id}">${esc(classLabel(c))}</option>`).join("");
+}
+
 function statStudentItems(q) {
   const classFilter = $("#stat-class") ? $("#stat-class").value : "";
   const cohortFilter = $("#stat-cohort") ? $("#stat-cohort").value : "";
@@ -1933,8 +1964,7 @@ function fillStatFilters() {
   }
   refillKeepingValue("#stat-cohort", `<option value="">Alle cohorten</option>` +
     cohorts.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join(""));
-  refillKeepingValue("#stat-class", `<option value="">Alle klassen</option>` +
-    classes.map((c) => `<option value="${c.id}">${esc(classLabel(c))}</option>`).join(""));
+  refillKeepingValue("#stat-class", statClassOptions());
   if (!$("#stat-period").value && periods.length) $("#stat-period").value = periods[0].id;
 }
 
@@ -2202,13 +2232,20 @@ function reportStudentItems(q) {
 bindCombo("#stat-student-type", "#stat-student-panel", "#stat-student", statStudentItems);
 bindCombo("#report-student-type", "#report-student-panel", "#report-student", reportStudentItems);
 
-for (const sel of ["#stat-cohort", "#stat-class"]) {
-  $(sel).addEventListener("change", () => {
-    refillKeepingValue("#stat-student", statStudentOptions());
-    const typeInput = $("#stat-student-type");
-    if (typeInput && !$("#stat-student").value) typeInput.value = "";
-  });
-}
+$("#stat-cohort").addEventListener("change", () => {
+  refillKeepingValue("#stat-class", statClassOptions());
+  const sc = $("#stat-class");
+  if (sc.value && ![...sc.options].some((o) => o.value === sc.value)) sc.value = "";
+  refillKeepingValue("#stat-student", statStudentOptions());
+  const typeInput = $("#stat-student-type");
+  if (typeInput && !$("#stat-student").value) typeInput.value = "";
+});
+
+$("#stat-class").addEventListener("change", () => {
+  refillKeepingValue("#stat-student", statStudentOptions());
+  const typeInput = $("#stat-student-type");
+  if (typeInput && !$("#stat-student").value) typeInput.value = "";
+});
 
 // ---------- Archief ----------
 let archiveData = {};   // tabel-id -> rijen
