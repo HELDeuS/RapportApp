@@ -28,6 +28,7 @@
     <button data-tab="periodes" class="tab">Modules</button>
     <button data-tab="rapport" class="tab">Rapport</button>
     <button data-tab="archief" class="tab">Archief</button>
+    <button data-tab="logboek" class="tab">Logboek</button>
     <button data-tab="gebruikers" class="tab">Gebruikers</button>
     <button id="btn-theme" class="theme-toggle" title="Donker/licht thema wisselen">&#9681;</button>
     <span id="user-info" class="user-info"></span>
@@ -257,6 +258,19 @@
   </table>
   <div class="pager" data-table="users-table"></div>
   <p class="hint">Wachtwoord wijzigen: typ een nieuw wachtwoord in de kolom en klik buiten het veld. Studentaccounts worden beheerd via het vinkje "Inlog" op het tabblad Studenten (standaardwachtwoord: welkom).</p>
+</section>
+
+<!-- Logboek -->
+<section id="tab-logboek" class="panel">
+  <p class="hint">Overzicht van alle mutaties: wie heeft wat wanneer gewijzigd. Getoond worden de laatste 500 gebeurtenissen. Niet zichtbaar voor studenten.</p>
+  <div class="toolbar">
+    <input id="log-search" placeholder="&#9906; Zoek in logboek..." style="margin-left:auto;">
+  </div>
+  <table class="list sortable" id="audit-table">
+    <thead><tr><th data-key="ts">Tijd</th><th data-key="username">Gebruiker</th><th data-key="action">Actie</th><th data-key="entity">Soort</th><th data-key="detail">Details</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <div class="pager" data-table="audit-table"></div>
 </section>
 
 <!-- Archief -->

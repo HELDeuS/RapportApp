@@ -156,6 +156,16 @@ CREATE TABLE IF NOT EXISTS subject_classes (
     class_id INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
     UNIQUE (subject_id, class_id)
 );
+CREATE TABLE IF NOT EXISTS audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT DEFAULT (datetime('now', 'localtime')),
+    user_id INTEGER,
+    username TEXT,
+    action TEXT NOT NULL,
+    entity TEXT NOT NULL,
+    entity_id INTEGER,
+    detail TEXT DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS subject_leertrajecten (
     subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
     leertraject_id INTEGER NOT NULL REFERENCES leertrajecten(id) ON DELETE CASCADE,
@@ -373,6 +383,7 @@ def auth_login():
         return jsonify({"error": "Onjuiste gebruikersnaam of wachtwoord"}), 401
     session.permanent = True
     session["user_id"] = row["id"]
+    audit(get_db(), row, "login", "account", row["id"], "Ingelogd")
     return jsonify({"id": row["id"], "username": row["username"],
                     "role": row["role"], "student_id": row["student_id"]})
 
@@ -423,6 +434,8 @@ def users_collection():
             db.commit()
         except sqlite3.IntegrityError:
             return jsonify({"error": "Deze gebruikersnaam bestaat al"}), 400
+        audit(db, user, "aanmaken", "gebruiker", cur.lastrowid,
+              f"Gebruiker '{username}' met rol {role}")
         return jsonify({"id": cur.lastrowid, "username": username,
                         "role": role, "student_id": student_id}), 201
     rows = db.execute(
@@ -493,6 +506,10 @@ def user_item(user_id):
             db.execute("UPDATE users SET active = ? WHERE id = ?",
                        (1 if data["active"] else 0, user_id))
         db.commit()
+        gewijzigd = [k for k in ("password", "role", "student_id", "first_name",
+                                "last_name", "email", "active") if k in data]
+        audit(db, user, "wijzigen", "gebruiker", user_id,
+              f"Velden: {', '.join(gewijzigd)}")
     else:
         if user_id == user["id"]:
             return jsonify({"error": "Je kunt jezelf niet verwijderen"}), 400
@@ -501,6 +518,7 @@ def user_item(user_id):
             return jsonify({"error": err}), 400
         db.execute("DELETE FROM users WHERE id = ?", (user_id,))
         db.commit()
+        audit(db, user, "verwijderen", "gebruiker", user_id, "")
     return jsonify({"ok": True})
 
 
@@ -525,7 +543,9 @@ def admin_reset():
         db.execute(f"DELETE FROM {table}")
     db.execute("DELETE FROM users WHERE id NOT IN (%s)" % ",".join("?" * len(keep)),
                tuple(keep))
+    db.execute("DELETE FROM audit_log")
     db.commit()
+    audit(db, user, "reset", "database", None, "Alle gegevens geleegd")
     return jsonify({"ok": True})
 
 
@@ -569,6 +589,19 @@ def ensure_student_account(db, student_row):
             (username, first, last, email, existing["id"]),
         )
     return username
+
+
+@app.route("/api/auditlog")
+def auditlog_list():
+    user, err = auth_error("beheerder", "mentor", "docent", "administratie")
+    if err:
+        return err
+    db = get_db()
+    limit = min(request.args.get("limit", type=int) or 500, 2000)
+    rows = db.execute(
+        "SELECT * FROM audit_log ORDER BY id DESC LIMIT ?", (limit,)
+    ).fetchall()
+    return jsonify([dict(r) for r in rows])
 
 
 @app.route("/api/users/import", methods=["POST"])
@@ -625,6 +658,8 @@ def users_import():
         )
         imported += 1
     db.commit()
+    audit(db, user, "import", "gebruiker", None,
+          f"{imported} gebruiker(s) geïmporteerd, {skipped} overgeslagen")
     return jsonify({"imported": imported, "skipped": skipped, "errors": errors[:50]})
 
 
@@ -641,6 +676,18 @@ def mentor_owns_student(user, student_row, new_class_id=None):
     ids = mentor_class_ids(user)
     class_id = new_class_id if new_class_id is not None else student_row["class_id"]
     return class_id in ids if ids is not None else False
+
+
+def audit(db, user, action, entity, entity_id, detail):
+    """Registreer een mutatie in het auditlog; faalt nooit op de hoofdstroom."""
+    try:
+        db.execute(
+            "INSERT INTO audit_log (user_id, username, action, entity, entity_id, detail) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (user["id"], user["username"], action, entity, entity_id, detail))
+        db.commit()
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -677,6 +724,7 @@ def cohorts_collection():
             return jsonify({"error": "Naam is verplicht"}), 400
         db.execute("INSERT OR IGNORE INTO cohorts (name) VALUES (?)", (name,))
         db.commit()
+        audit(db, user, "aanmaken", "cohort", None, f"Cohort '{name}'")
     archived = 1 if request.args.get("archived") == "1" else 0
     rows = db.execute(
         "SELECT * FROM cohorts WHERE archived = ? ORDER BY name DESC", (archived,)
@@ -695,9 +743,12 @@ def cohort_item(cohort_id):
         archived = 1 if data.get("archived") else 0
         db.execute("UPDATE cohorts SET archived = ? WHERE id = ?", (archived, cohort_id))
         db.commit()
+        audit(db, user, "archiveren" if archived else "herstellen", "cohort",
+              cohort_id, "")
     else:
         db.execute("DELETE FROM cohorts WHERE id = ?", (cohort_id,))
         db.commit()
+        audit(db, user, "verwijderen", "cohort", cohort_id, "")
     return jsonify({"ok": True})
 
 
@@ -714,15 +765,20 @@ def crebos_collection():
             return jsonify({"error": "Naam is verplicht"}), 400
         db.execute("INSERT OR IGNORE INTO crebos (name) VALUES (?)", (name,))
         db.commit()
+        audit(db, user, "aanmaken", "crebo", None, f"Crebo '{name}'")
     rows = db.execute("SELECT * FROM crebos ORDER BY name").fetchall()
     return jsonify([dict(r) for r in rows])
 
 
 @app.route("/api/crebos/<int:crebo_id>", methods=["DELETE"])
 def crebo_item(crebo_id):
+    user, err = auth_error("beheerder")
+    if err:
+        return err
     db = get_db()
     db.execute("DELETE FROM crebos WHERE id = ?", (crebo_id,))
     db.commit()
+    audit(db, user, "verwijderen", "crebo", crebo_id, "")
     return jsonify({"ok": True})
 
 
@@ -751,6 +807,8 @@ def leertrajecten_collection():
             "INSERT INTO leertrajecten (name, crebo_id, cohort_id) VALUES (?, ?, ?)",
             (name, crebo_id, cohort_id))
         db.commit()
+        audit(db, user, "aanmaken", "leertraject", cur.lastrowid,
+              f"Leertraject '{name}'")
         row = db.execute("SELECT * FROM leertrajecten WHERE id = ?",
                          (cur.lastrowid,)).fetchone()
         return jsonify(leertraject_with_periods(db, row)), 201
@@ -790,12 +848,17 @@ def leertraject_item(lt_id):
             db.execute(f"UPDATE leertrajecten SET {sets} WHERE id = ?",
                        (*updates.values(), lt_id))
         db.commit()
+        gewijzigd = [k for k in ("name", "crebo_id", "cohort_id", "archived")
+                     if k in data]
+        audit(db, user, "wijzigen", "leertraject", lt_id,
+              f"Velden: {', '.join(gewijzigd)}" if gewijzigd else "")
         row = db.execute("SELECT * FROM leertrajecten WHERE id = ?", (lt_id,)).fetchone()
         if row is None:
             return jsonify({"error": "Leertraject niet gevonden"}), 404
         return jsonify(leertraject_with_periods(db, row))
     db.execute("DELETE FROM leertrajecten WHERE id = ?", (lt_id,))
     db.commit()
+    audit(db, user, "verwijderen", "leertraject", lt_id, "")
     return jsonify({"ok": True})
 
 
@@ -819,6 +882,7 @@ def classes_collection():
             (name, crebo_id, leertraject_id, mentor_id),
         )
         db.commit()
+        audit(db, user, "aanmaken", "klas", cur.lastrowid, f"Klas '{name}'")
         return jsonify(class_with_crebo(db, cur.lastrowid)), 201
     archived = 1 if request.args.get("archived") == "1" else 0
     rows = db.execute(
@@ -867,9 +931,14 @@ def class_item(class_id):
             db.execute("UPDATE classes SET archived = ? WHERE id = ?",
                        (1 if data.get("archived") else 0, class_id))
         db.commit()
+        gewijzigd = [k for k in ("name", "crebo_id", "leertraject_id",
+                                 "mentor_id", "archived") if k in data]
+        audit(db, user, "wijzigen", "klas", class_id,
+              f"Velden: {', '.join(gewijzigd)}" if gewijzigd else "")
     else:
         db.execute("DELETE FROM classes WHERE id = ?", (class_id,))
         db.commit()
+        audit(db, user, "verwijderen", "klas", class_id, "")
     return jsonify({"ok": True})
 
 
@@ -918,6 +987,8 @@ def students_collection():
             username = ensure_student_account(db, student)
             db.commit()
         student["login_username"] = username
+        audit(db, user, "aanmaken", "student", cur.lastrowid,
+              f"Student '{name}' ({number})")
         return jsonify(student), 201
     archived = 1 if request.args.get("archived") == "1" else 0
     mentor_ids = None
@@ -981,6 +1052,8 @@ def students_bulk():
             db.execute("UPDATE users SET active = 0 WHERE role = 'student' AND student_id = ?",
                        (r["id"],))
     db.commit()
+    audit(db, user, "bulk-" + action, "student", None,
+          f"{len(rows)} student(en): {action}")
     return jsonify({"ok": True, "affected": len(rows), "usernames": usernames})
 
 
@@ -1044,9 +1117,15 @@ def student_item(student_id):
             db.execute("UPDATE students SET archived = ? WHERE id = ?",
                        (1 if data.get("archived") else 0, student_id))
         db.commit()
+        gewijzigd = [k for k in ("name", "student_number", "class_id", "first_name",
+                                 "prefix", "last_name", "email", "login_enabled",
+                                 "archived") if k in data]
+        audit(db, user, "wijzigen", "student", student_id,
+              f"Velden: {', '.join(gewijzigd)}" if gewijzigd else "")
     else:
         db.execute("DELETE FROM students WHERE id = ?", (student_id,))
         db.commit()
+        audit(db, user, "verwijderen", "student", student_id, "")
     return jsonify({"ok": True})
 
 
@@ -1109,6 +1188,8 @@ def subjects_collection():
                 (subject_id, ltid),
             )
         db.commit()
+        audit(db, user, "aanmaken", "vak", subject_id,
+              f"Vak '{name}' ({assessment_type})")
         return jsonify(subject_with_periods(db, subject_id)), 201
     archived = 1 if request.args.get("archived") == "1" else 0
     rows = db.execute(
@@ -1156,9 +1237,14 @@ def subject_item(subject_id):
             db.execute("UPDATE subjects SET archived = ? WHERE id = ?",
                        (1 if data.get("archived") else 0, subject_id))
         db.commit()
+        gewijzigd = [k for k in ("name", "period_ids", "leertraject_ids",
+                                 "assessment_type", "archived") if k in data]
+        audit(db, user, "wijzigen", "vak", subject_id,
+              f"Velden: {', '.join(gewijzigd)}" if gewijzigd else "")
     else:
         db.execute("DELETE FROM subjects WHERE id = ?", (subject_id,))
         db.commit()
+        audit(db, user, "verwijderen", "vak", subject_id, "")
     return jsonify({"ok": True})
 
 
@@ -1180,6 +1266,8 @@ def periods_collection():
         year = (data.get("year") or "").strip()
         cur = db.execute("INSERT INTO periods (name, year) VALUES (?, ?)", (name, year))
         db.commit()
+        audit(db, user, "aanmaken", "module", cur.lastrowid,
+              f"Module '{name}' ({year})" if year else f"Module '{name}'")
         return jsonify(dict(db.execute(
             "SELECT * FROM periods WHERE id = ?", (cur.lastrowid,)
         ).fetchone())), 201
@@ -1205,9 +1293,11 @@ def period_item(period_id):
             db.execute("UPDATE periods SET name = ?, year = ? WHERE id = ?",
                        (name, year.strip(), period_id))
         db.commit()
+        audit(db, user, "wijzigen", "module", period_id, f"Module '{name}'")
     else:
         db.execute("DELETE FROM periods WHERE id = ?", (period_id,))
         db.commit()
+        audit(db, user, "verwijderen", "module", period_id, "")
     return jsonify({"ok": True})
 
 
@@ -1265,6 +1355,9 @@ def grade_set():
             (student_id, subject_id, period_id, value),
         )
     db.commit()
+    audit(db, user, "cijfer", "student", student_id,
+          f"Vak #{subject_id}, module #{period_id}: "
+          f"{'verwijderd' if value == '' else value}")
     return jsonify({"ok": True, "value": value,
                     "tekorten": tekorten_for_value(value)})
 
@@ -1308,6 +1401,9 @@ def grade_bulk():
         )
         imported += 1
     db.commit()
+    audit(db, user, "cijfers-kolom", "vak", subject_id,
+          f"{imported} cijfer(s) voor module #{period_id}"
+          + (f"; fouten: {'; '.join(errors[:3])}" if errors else ""))
     return jsonify({"ok": True, "imported": imported, "errors": errors[:50]})
 
 
@@ -1434,6 +1530,9 @@ def import_grades():
             )
             imported += 1
     db.commit()
+    audit(db, user, "import", "cijfers", None,
+          f"{imported} cijfer(s) geïmporteerd, {skipped} overgeslagen, "
+          f"{len(errors)} foutmelding(en) voor module #{period_id}")
     return jsonify({"imported": imported, "skipped": skipped,
                    "errors": errors[:50]})
 
@@ -1572,6 +1671,8 @@ def import_students():
         existing.add(name.lower())
         imported += 1
     db.commit()
+    audit(db, user, "import", "student", None,
+          f"{imported} student(en) geïmporteerd, {skipped} overgeslagen")
     return jsonify({"imported": imported, "skipped": skipped,
                      "errors": errors})
 
@@ -1607,6 +1708,8 @@ def import_subjects():
         existing.add(name.lower())
         imported += 1
     db.commit()
+    audit(db, user, "import", "vak", None,
+          f"{imported} vak(ken) geïmporteerd, {skipped} overgeslagen")
     return jsonify({"imported": imported, "skipped": skipped,
                      "errors": []})
 
@@ -1658,6 +1761,9 @@ def note_set():
             (student_id, period_id, comment, teacher_comment),
         )
     db.commit()
+    audit(db, user, "opmerkingen", "student", student_id,
+          f"Opmerkingen voor module #{period_id} "
+          + ("verwijderd" if not comment and not teacher_comment else "opgeslagen"))
     return jsonify({"ok": True})
 
 
@@ -1734,6 +1840,9 @@ def attendance_set():
             (student_id, period_id, present, allowed, unallowed),
         )
     db.commit()
+    audit(db, user, "aanwezigheid", "student", student_id,
+          f"Aanwezigheid module #{period_id}: "
+          f"{present or 0}% / {allowed or 0}% / {unallowed or 0}%")
     return jsonify({"ok": True})
 
 

@@ -123,6 +123,7 @@ function rerenderPagedTable(tableSel) {
     "#arch-subjects-table": () => renderArchTable("arch-subjects-table"),
     "#arch-cohorts-table": () => renderArchTable("arch-cohorts-table"),
     "#arch-leertrajecten-table": () => renderArchTable("arch-leertrajecten-table"),
+    "#audit-table": renderAuditTable,
   }[tableSel];
   if (fn) fn();
 }
@@ -156,10 +157,10 @@ const ROLE_LABELS = {
 };
 
 const ROLE_TABS = {
-  beheerder: ["cijfers", "studenten", "klassen", "vakken", "periodes", "rapport", "archief", "gebruikers"],
-  mentor: ["cijfers", "studenten", "rapport", "archief"],
-  docent: ["cijfers", "rapport"],
-  administratie: ["rapport"],
+  beheerder: ["cijfers", "studenten", "klassen", "vakken", "periodes", "rapport", "archief", "gebruikers", "logboek"],
+  mentor: ["cijfers", "studenten", "rapport", "archief", "logboek"],
+  docent: ["cijfers", "rapport", "logboek"],
+  administratie: ["rapport", "logboek"],
   student: ["rapport"],
 };
 
@@ -1498,7 +1499,52 @@ async function setArchived(kind, id, archived) {
 $$(".tab").forEach((btn) => {
   btn.addEventListener("click", () => {
     if (btn.dataset.tab === "archief") renderArchive();
+    if (btn.dataset.tab === "logboek") renderAuditLog();
   });
+});
+
+// ---------- Logboek ----------
+let auditEntries = [];
+let auditSort = { key: null, dir: 1 };
+
+async function renderAuditLog() {
+  try {
+    auditEntries = await api("/api/auditlog");
+  } catch (err) {
+    auditEntries = [];
+  }
+  renderAuditTable();
+}
+
+function renderAuditTable() {
+  const q = ($("#log-search").value || "").trim().toLowerCase();
+  let rows = auditEntries;
+  if (q) {
+    rows = rows.filter((r) =>
+      (r.username || "").toLowerCase().includes(q) ||
+      (r.action || "").toLowerCase().includes(q) ||
+      (r.entity || "").toLowerCase().includes(q) ||
+      (r.detail || "").toLowerCase().includes(q));
+  }
+  rows = sortRows(rows, auditSort, (r, key) => key === "ts" ? r[key] : (r[key] || ""));
+  updateSortArrows("#audit-table", auditSort);
+  $("#audit-table tbody").innerHTML = pageSlice("#audit-table", rows).map((r) => `
+    <tr>
+      <td>${esc(r.ts || "")}</td>
+      <td>${esc(r.username || "")}</td>
+      <td>${esc(r.action || "")}</td>
+      <td>${esc(r.entity || "")}</td>
+      <td>${esc(r.detail || "")}</td>
+    </tr>`).join("");
+}
+
+$("#log-search").addEventListener("input", () => { resetPage("#audit-table"); renderAuditTable(); });
+$("#audit-table thead").addEventListener("click", (e) => {
+  const key = e.target.dataset.key;
+  if (key === undefined) return;
+  if (auditSort.key === key) auditSort.dir = auditSort.dir === 1 ? -1 : 1;
+  else { auditSort.key = key; auditSort.dir = 1; }
+  renderAuditTable();
 });
 
 for (const tableId of Object.keys(ARCH_TABLES)) {

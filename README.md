@@ -46,6 +46,8 @@ De app vereist inloggen. Bij de eerste start wordt automatisch het account **`be
 - Rollen worden server-side afgedwongen op elk API-endpoint; de UI verbergt alleen wat niet mag.
 - **Gebruikers importeren** (beheerder, tabblad Gebruikers): CSV met kolommen `Gebruikersnaam,Wachtwoord,Rol,Voornaam,Achternaam,Email` (kopregel wordt herkend; zonder kopregel: die volgorde). Bestaande gebruikersnamen worden overgeslagen.
 
+- **Auditlog**: elke mutatie (inloggen, cijfers, aanwezigheid, opmerkingen, imports, en alle wijzigingen aan studenten, klassen, vakken, modules, cohorten, crebo's, leertrajecten en gebruikers) wordt vastgelegd met gebruiker, tijdstip en omschrijving. Zichtbaar op het tabblad **Logboek** voor alle rollen behalve studenten (laatste 500 gebeurtenissen, doorzoekbaar en sorteerbaar). Bij een database-reset wordt het log geleegd.
+
 ### Dummydata voor tests
 
 Vul een lege database met een complete testset (12 modules, 39 vakken, 6 klassen met elk 25 studenten, mentoren, docenten, cijfers, aanwezigheid en opmerkingen):
