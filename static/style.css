@@ -15,6 +15,9 @@
   --input-bg: #f6f8fb;
   --input-border: #c9d2dd;
   --row-input-bg: #f1f4f8;
+  --result-bg: #fff8e1;
+  --result-border: #e0c46c;
+  --result-text: #4d3f14;
 }
 
 [data-theme="dark"] {
@@ -35,6 +38,9 @@
   --input-border: #46515f;
   --row-input-bg: #28303c;
   --tab-active-bg: #2a3341;
+  --result-bg: #2b2718;
+  --result-border: #6b5e2e;
+  --result-text: #e8dfc0;
 }
 
 [data-theme="dark"] .tab.active { background: var(--tab-active-bg); }
@@ -274,8 +280,9 @@ td.tekort-2, td.tekort-3, td.tekort-4, td.tekort-5 { color: var(--tekort); font-
 .hint { color: var(--subtext); font-size: .9rem; }
 
 .result {
-  background: #fff8e1;
-  border: 1px solid #e0c46c;
+  background: var(--result-bg);
+  border: 1px solid var(--result-border);
+  color: var(--result-text);
   border-radius: 8px;
   padding: 10px 14px;
   margin-bottom: 12px;
@@ -333,6 +340,7 @@ td.tekort-2, td.tekort-3, td.tekort-4, td.tekort-5 { color: var(--tekort); font-
   [data-theme="dark"] {
     --bg: #fff; --card: #fff; --text: #000; --subtext: #444;
     --th-bg: #fff; --border: #999; --row-input-bg: #fff;
+    --result-bg: #fff8e1; --result-border: #e0c46c; --result-text: #4d3f14;
   }
 }
 
