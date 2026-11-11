@@ -1156,11 +1156,8 @@ def student_item(student_id):
         if existing is None:
             return jsonify({"error": "Student bestaat niet"}), 404
         if user["role"] == "mentor":
-            target_class = data.get("class_id", existing["class_id"]) or None
-            if not mentor_owns_student(user, existing, target_class):
+            if not mentor_owns_student(user, existing):
                 return jsonify({"error": "Als mentor kun je alleen studenten van je eigen klas wijzigen"}), 403
-            if "class_id" in data and (data.get("class_id") or None) not in mentor_class_ids(user):
-                return jsonify({"error": "Als mentor kun je studenten niet naar een andere klas verplaatsen"}), 403
         updates = {}
         if "name" in data:
             name = (data.get("name") or "").strip()

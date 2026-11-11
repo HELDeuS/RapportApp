@@ -830,7 +830,7 @@ function visibleStudentsList() {
 
 function renderStudents() {
   const classOptions = (sel) => `<option value="">Geen klas</option>` +
-    ownClassesOnly(classes).map((c) => `<option value="${c.id}"${String(sel) === String(c.id) ? " selected" : ""}>${esc(classLabel(c))}</option>`).join("");
+    classes.map((c) => `<option value="${c.id}"${String(sel) === String(c.id) ? " selected" : ""}>${esc(classLabel(c))}</option>`).join("");
   const classOf = (s) => {
     const c = classes.find((x) => x.id === s.class_id);
     return c ? c.name : "";
