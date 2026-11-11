@@ -316,17 +316,65 @@ td.tekort-2, td.tekort-3, td.tekort-4, td.tekort-5 { color: var(--tekort); font-
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 18px 22px;
-  margin-bottom: 18px;
+  padding: 22px 26px;
+  margin-bottom: 20px;
   page-break-inside: avoid;
 }
 
-.report-card h2 { margin: 0 0 2px; font-size: 1.15rem; }
-.report-card .sub { color: var(--subtext); font-size: .9rem; margin-bottom: 12px; }
+.report-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border-bottom: 2px solid var(--text);
+  padding-bottom: 10px;
+  margin-bottom: 14px;
+}
+.report-head-text { flex: 1; }
+.report-head-text h2 { margin: 0; font-size: 1.3rem; letter-spacing: .3px; }
+.report-school { color: var(--subtext); font-size: .9rem; }
+.report-head-module { text-align: right; font-size: .85rem; color: var(--subtext); }
+.report-head-module strong { color: var(--text); font-size: 1rem; }
+.report-logo { width: 0; }
+.report-logo img { max-height: 64px; }
 
-.report-card table { width: 100%; }
+.report-info { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+.report-info th, .report-info td {
+  border: none;
+  padding: 4px 10px 4px 0;
+  font-size: .92rem;
+  text-align: left;
+}
+.report-info th {
+  width: 130px;
+  color: var(--subtext);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: .75rem;
+  letter-spacing: .4px;
+}
 
-.report-card tfoot td { border-top: 2px solid var(--text); font-weight: 700; }
+.report-section {
+  margin: 18px 0 6px;
+  font-size: .95rem;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 3px;
+}
+.report-empty { margin-top: 10px; }
+
+.report-grades { width: 100%; }
+.report-grades td, .report-grades th { padding: 5px 8px; }
+.report-grades tfoot td { border-top: 2px solid var(--text); font-weight: 700; }
+
+.report-sign {
+  display: flex;
+  gap: 60px;
+  margin-top: 34px;
+}
+.report-sign > div { flex: 1; }
+.report-sign-line { border-bottom: 1px solid var(--text); height: 28px; }
+.report-sign-label { font-size: .8rem; color: var(--subtext); margin-top: 4px; }
 
 @media print {
   header, .toolbar, .tab, button, #import-result,
@@ -336,13 +384,19 @@ td.tekort-2, td.tekort-3, td.tekort-4, td.tekort-5 { color: var(--tekort); font-
   .panel { display: none; }
   #tab-rapport { display: block; }
   body { background: #fff; color: #000; }
-  .report-card { border: none; }
+  .report-card { border: none; padding: 0 0 12px; }
+  .report-card + .report-card { page-break-before: auto; }
+  .report-module-header { page-break-after: avoid; }
+  .report-head { page-break-after: avoid; }
+  .report-section { page-break-after: avoid; }
+  .report-sign { page-break-inside: avoid; }
   [data-theme="dark"] {
     --bg: #fff; --card: #fff; --text: #000; --subtext: #444;
     --th-bg: #fff; --border: #999; --row-input-bg: #fff;
     --result-bg: #fff8e1; --result-border: #e0c46c; --result-text: #4d3f14;
   }
 }
+@page { margin: 15mm; }
 
 /* Paginering */
 .pager {

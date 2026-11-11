@@ -1580,13 +1580,56 @@ async function showReport() {
 function renderReportCards(data, periodOverride) {
   const out = $("#report-output");
   const audience = currentUser && currentUser.role === "student" ? "student" : $("#report-audience").value;
-  out.innerHTML += (periodOverride ? `<h2 class="report-module-header">Module: ${esc(periodLabel(periodOverride))}</h2>` : "") +
+  const moduleLabel = esc(periodLabel(periodOverride || data.period));
+  const today = new Date().toLocaleDateString("nl-NL");
+  out.innerHTML += (periodOverride ? `<h2 class="report-module-header">Module: ${moduleLabel}</h2>` : "") +
     data.students.map((s) => `
     <div class="report-card">
-      <h2>${esc(s.student.name)}</h2>
-      <div class="sub">${s.class ? `${esc(s.class.name)}${s.class.crebo ? ` &mdash; ${esc(s.class.crebo)}` : ""} &mdash; ` : ""}${s.student.student_number ? `Nr. ${esc(s.student.student_number)} &mdash; ` : ""}Module: ${esc(periodLabel(data.period))}</div>
+      <div class="report-head">
+        <div class="report-logo"></div>
+        <div class="report-head-text">
+          <h2>Studierapport</h2>
+          <div class="report-school">MBO ICT-opleiding</div>
+        </div>
+        <div class="report-head-module">Module<br><strong>${moduleLabel}</strong></div>
+      </div>
+      <table class="report-info">
+        <tbody>
+          <tr>
+            <th>Student</th><td>${esc(s.student.name)}</td>
+            <th>Studentnummer</th><td>${esc(s.student.student_number || "")}</td>
+          </tr>
+          <tr>
+            <th>Klas</th><td>${esc(s.class ? s.class.name : "")}</td>
+            <th>Startcohort</th><td>${esc(s.class && s.class.cohort ? s.class.cohort : "")}</td>
+          </tr>
+          <tr>
+            <th>Crebo</th><td>${esc(s.class && s.class.crebo ? s.class.crebo : "")}</td>
+            <th>SLB'er</th><td>${esc(s.class && s.class.mentor ? s.class.mentor : "")}</td>
+          </tr>
+          <tr>
+            <th>Datum</th><td>${today}</td>
+            <th>Totaal tekorten</th><td class="${s.total_tekorten > 0 ? "val-onv" : "val-vol"}">${s.total_tekorten}</td>
+          </tr>
+        </tbody>
+      </table>
+      ${s.entries.length ? `
+      <h3 class="report-section">Beoordelingen</h3>
+      <table class="report-grades">
+        <thead><tr><th>Vak</th><th>Beoordeling</th><th>Tekorten</th></tr></thead>
+        <tbody>
+          ${s.entries.map((e) => `
+          <tr>
+            <td>${esc(e.subject)}</td>
+            <td class="${e.value === "VS" ? "val-vs" : (e.tekorten > 0 ? "val-onv" : "val-vol")}">${esc(e.value)}</td>
+            <td class="${e.tekorten > 0 ? "val-onv" : ""}">${e.tekorten}</td>
+          </tr>`).join("")}
+        </tbody>
+        <tfoot><tr><td colspan="2">Totaal tekorten</td><td>${s.total_tekorten}</td></tr></tfoot>
+      </table>` : `<p class="hint report-empty">Geen cijfers bekend in deze module.</p>`}
       ${s.attendance ? `
-      <table class="att-table">
+      <h3 class="report-section">Aanwezigheid</h3>
+      <table class="att-table report-att">
         <thead><tr><th>Aanwezigheid</th><th>Geoorloofd afwezig</th><th>Ongeoorloofd afwezig</th></tr></thead>
         <tbody><tr>
           <td class="${s.attendance.present !== null && s.attendance.present !== undefined ? (s.attendance.present >= 85 ? "val-vol" : "val-onv") : ""}">${fmtPct(s.attendance.present)}</td>
@@ -1594,40 +1637,32 @@ function renderReportCards(data, periodOverride) {
           <td class="val-onv">${fmtPct(s.attendance.absent_unallowed)}</td>
         </tr></tbody>
       </table>` : ""}
-      ${s.notes && (s.notes.comment || (audience !== "student" && s.notes.teacher_comment)) ? `
-      <div class="notes-block">
-        ${s.notes.comment ? `<p><strong>Opmerkingen:</strong> ${esc(s.notes.comment)}</p>` : ""}
-        ${audience !== "student" && s.notes.teacher_comment ? `<p><strong>Opmerking docenten:</strong> ${esc(s.notes.teacher_comment)}</p>` : ""}
-      </div>` : ""}
       ${s.keuzedelen && s.keuzedelen.length ? `
-      <div class="kd-report">
-        <h3>Keuzedelen (${s.sbu_total} van ${s.sbu_doel} SBU)</h3>
-        <table>
-          <thead><tr><th>Keuzedeel</th><th>SBU</th><th>Beoordeling</th><th>Tekorten</th></tr></thead>
-          <tbody>
-            ${s.keuzedelen.map((k) => `
-            <tr>
-              <td>${esc(k.name)}</td>
-              <td>${k.sbu}</td>
-              <td class="${k.value ? (k.value === "VS" ? "val-vs" : (k.tekorten > 0 ? "val-onv" : "val-vol")) : ""}">${esc(k.value)}</td>
-              <td>${k.tekorten}</td>
-            </tr>`).join("")}
-          </tbody>
-        </table>
-      </div>` : ""}
-      ${s.entries.length ? `
-      <table>
-        <thead><tr><th>Vak</th><th>Beoordeling</th><th>Tekorten</th></tr></thead>
+      <h3 class="report-section">Keuzedelen (${s.sbu_total} van ${s.sbu_doel} SBU)</h3>
+      <table class="report-grades">
+        <thead><tr><th>Keuzedeel</th><th>SBU</th><th>Beoordeling</th><th>Tekorten</th></tr></thead>
         <tbody>
-          ${s.entries.map((e) => `
+          ${s.keuzedelen.map((k) => `
           <tr>
-            <td>${esc(e.subject)}</td>
-            <td class="${e.value ? (e.value === "VS" ? "val-vs" : (e.tekorten > 0 ? "val-onv" : "val-vol")) : ""}">${esc(e.value)}</td>
-            <td>${e.tekorten}</td>
+            <td>${esc(k.name)}</td>
+            <td>${k.sbu}</td>
+            <td class="${k.value ? (k.value === "VS" ? "val-vs" : (k.tekorten > 0 ? "val-onv" : "val-vol")) : ""}">${esc(k.value)}</td>
+            <td class="${k.tekorten > 0 ? "val-onv" : ""}">${k.tekorten}</td>
           </tr>`).join("")}
         </tbody>
-        <tfoot><tr><td colspan="2">Totaal tekorten</td><td>${s.total_tekorten}</td></tr></tfoot>
-      </table>` : `<p>Geen cijfers bekend in deze module.</p>`}
+      </table>` : ""}
+      ${s.notes && (s.notes.comment || (audience !== "student" && s.notes.teacher_comment)) ? `
+      <h3 class="report-section">Opmerkingen</h3>
+      <div class="notes-block">
+        ${s.notes.comment ? `<p>${esc(s.notes.comment)}</p>` : ""}
+        ${audience !== "student" && s.notes.teacher_comment ? `<p><strong>Opmerking docenten:</strong> ${esc(s.notes.teacher_comment)}</p>` : ""}
+      </div>` : ""}
+      <div class="report-sign">
+        <div class="report-sign-line"></div>
+        <div class="report-sign-label">Handtekening SLB'er</div>
+        <div class="report-sign-line"></div>
+        <div class="report-sign-label">Handtekening student / ouder</div>
+      </div>
     </div>`).join("");
 }
 

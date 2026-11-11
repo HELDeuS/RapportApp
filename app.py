@@ -2516,14 +2516,25 @@ def report():
         class_lt_map[r["id"]] = r["leertraject_id"]
     class_map = {}
     for r in db.execute(
-        """SELECT st.id AS sid, c.name AS cname, n.name AS ccrebo
+        """SELECT st.id AS sid, c.name AS cname, n.name AS ccrebo,
+                  co.name AS ccohort,
+                  CASE WHEN m.id IS NOT NULL AND
+                            ((m.first_name IS NOT NULL AND m.first_name != '')
+                             OR (m.last_name IS NOT NULL AND m.last_name != ''))
+                       THEN TRIM(COALESCE(m.first_name, '') || ' ' ||
+                                 COALESCE(m.last_name, ''))
+                       ELSE m.username END AS cmentor
            FROM students st
            LEFT JOIN classes c ON c.id = st.class_id
            LEFT JOIN leertrajecten lt ON lt.id = c.leertraject_id
-           LEFT JOIN crebos n ON n.id = lt.crebo_id"""
+           LEFT JOIN crebos n ON n.id = lt.crebo_id
+           LEFT JOIN cohorts co ON co.id = lt.cohort_id
+           LEFT JOIN users m ON m.id = c.mentor_id"""
     ).fetchall():
         class_map[r["sid"]] = (
-            {"name": r["cname"], "crebo": r["ccrebo"]} if r["cname"] else None
+            {"name": r["cname"], "crebo": r["ccrebo"],
+             "cohort": r["ccohort"], "mentor": r["cmentor"]}
+            if r["cname"] else None
         )
     audience = "student" if user["role"] == "student" else request.args.get("audience", "staff")
     notes_map = {}
