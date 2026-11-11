@@ -156,16 +156,25 @@
     <button id="btn-archive-cohort" class="secondary">Archiveren</button>
   </div>
   <div class="toolbar subtoolbar">
-    <strong>Leertrajecten:</strong>
-    <input id="lt-name" placeholder="Nieuw leertraject (bijv. ICT 2-jarig)">
+    <strong>Leertraject toevoegen:</strong>
+    <input id="lt-name" placeholder="Naam (bijv. ICT 2-jarig 25-26)">
+    <label>Crebo:
+      <select id="lt-add-crebo"><option value="">Geen crebo</option></select>
+    </label>
+    <label>Startcohort:
+      <select id="lt-add-cohort"><option value="">Geen cohort</option></select>
+    </label>
+    <button id="btn-add-lt" class="secondary">Toevoegen</button>
+  </div>
+  <div class="toolbar subtoolbar">
+    <strong>Leertraject beheren:</strong>
+    <select id="lt-manage"></select>
     <label>Crebo:
       <select id="lt-crebo"><option value="">Geen crebo</option></select>
     </label>
     <label>Startcohort:
       <select id="lt-cohort"><option value="">Geen cohort</option></select>
     </label>
-    <button id="btn-add-lt" class="secondary">Leertraject toevoegen</button>
-    <select id="lt-manage"></select>
     <button id="btn-archive-lt" class="secondary">Archiveren</button>
     <button id="btn-del-lt" class="danger">Verwijderen</button>
   </div>

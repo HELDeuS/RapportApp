@@ -975,11 +975,16 @@ function renderClasses() {
     </tr>`).join("");
   refillKeepingValue("#class-crebo", creboOptions(""));
   refillKeepingValue("#class-leertraject", ltOptions(""));
+  refillKeepingValue("#lt-add-crebo", creboOptions(""));
+  refillKeepingValue("#lt-add-cohort", optList("", cohorts, "Geen cohort"));
   refillKeepingValue("#lt-crebo", creboOptions(""));
   refillKeepingValue("#lt-cohort", optList("", cohorts, "Geen cohort"));
   refillKeepingValue("#lt-manage", leertrajecten.length
     ? leertrajecten.map((t) => `<option value="${t.id}">${esc(ltLabel(t))}</option>`).join("")
     : `<option value="">(geen leertrajecten)</option>`);
+  const selLt = leertrajecten.find((t) => String(t.id) === $("#lt-manage").value);
+  $("#lt-crebo").value = selLt && selLt.crebo_id ? selLt.crebo_id : "";
+  $("#lt-cohort").value = selLt && selLt.cohort_id ? selLt.cohort_id : "";
   refillKeepingValue("#crebo-manage", crebos.length
     ? crebos.map((n) => `<option value="${n.id}">${esc(n.name)}</option>`).join("")
     : `<option value="">(geen crebos)</option>`);
@@ -1061,7 +1066,23 @@ function ltOptions(sel) {
 
 $("#lt-manage").addEventListener("change", () => {
   const lt = leertrajecten.find((t) => String(t.id) === $("#lt-manage").value);
+  $("#lt-crebo").value = lt && lt.crebo_id ? lt.crebo_id : "";
   $("#lt-cohort").value = lt && lt.cohort_id ? lt.cohort_id : "";
+});
+
+$("#lt-crebo").addEventListener("change", async () => {
+  const id = $("#lt-manage").value;
+  if (!id) return;
+  try {
+    await api(`/api/leertrajecten/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ crebo_id: $("#lt-crebo").value || null }),
+    });
+    await loadAll();
+  } catch (err) {
+    alert("Crebo opslaan mislukt: " + err.message);
+  }
 });
 
 $("#lt-cohort").addEventListener("change", async () => {
@@ -1083,14 +1104,21 @@ $("#btn-add-lt").addEventListener("click", async () => {
   const name = $("#lt-name").value.trim();
   if (!name) return alert("Vul eerst een naam in (bijv. ICT 2-jarig).");
   try {
-    await api("/api/leertrajecten", {
+    const res = await api("/api/leertrajecten", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, crebo_id: $("#lt-crebo").value || null,
-                             cohort_id: $("#lt-cohort").value || null }),
+      body: JSON.stringify({ name, crebo_id: $("#lt-add-crebo").value || null,
+                             cohort_id: $("#lt-add-cohort").value || null }),
     });
     $("#lt-name").value = "";
+    $("#lt-add-crebo").value = "";
+    $("#lt-add-cohort").value = "";
     await loadAll();
+    if (res && res.id) {
+      const manage = $("#lt-manage");
+      if ([...manage.options].some((o) => o.value === String(res.id))) manage.value = String(res.id);
+      manage.dispatchEvent(new Event("change"));
+    }
   } catch (err) {
     alert("Leertraject toevoegen mislukt: " + err.message);
   }
