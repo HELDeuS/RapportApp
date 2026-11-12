@@ -597,16 +597,17 @@ def user_item(user_id):
         gewijzigd = [k for k in ("password", "role", "student_id", "first_name",
                                 "last_name", "email", "active") if k in data]
         audit(db, user, "wijzigen", "gebruiker", user_id,
-              f"Velden: {', '.join(gewijzigd)}")
+              audit_detail(db, "users", user_id, gewijzigd))
     else:
         if user_id == user["id"]:
             return jsonify({"error": "Je kunt jezelf niet verwijderen"}), 400
         err = last_admin_check(db, user_id, new_role="")
         if err:
             return jsonify({"error": err}), 400
+        detail = audit_detail(db, "users", user_id)
         db.execute("DELETE FROM users WHERE id = ?", (user_id,))
         db.commit()
-        audit(db, user, "verwijderen", "gebruiker", user_id, "")
+        audit(db, user, "verwijderen", "gebruiker", user_id, detail)
     return jsonify({"ok": True})
 
 
@@ -828,6 +829,27 @@ def name_of(db, table, row_id, default="onbekend"):
     return r["name"] if r else default
 
 
+def entity_label(db, table, row_id):
+    if not row_id:
+        return ""
+    expr = {
+        "users": "username",
+        "students": "first_name || ' ' || COALESCE(prefix || ' ', '') || last_name",
+    }.get(table, "name")
+    r = db.execute(
+        f"SELECT {expr} AS label FROM {table} WHERE id = ?", (row_id,)
+    ).fetchone()
+    return r["label"] if r else ""
+
+
+def audit_detail(db, table, row_id, fields=None):
+    label = entity_label(db, table, row_id)
+    detail = f"'{label}'" if label else ""
+    if fields:
+        detail = f"{detail} \u2014 Velden: {', '.join(fields)}" if detail else f"Velden: {', '.join(fields)}"
+    return detail
+
+
 def audit(db, user, action, entity, entity_id, detail):
     """Registreer een mutatie in het auditlog; faalt nooit op de hoofdstroom."""
     try:
@@ -907,11 +929,12 @@ def cohort_item(cohort_id):
             action = "hernoemen" if "name" in updates and "archived" not in updates else (
                 "archiveren" if updates.get("archived") else "herstellen")
             audit(db, user, action, "cohort", cohort_id,
-                  f"Velden: {', '.join(gewijzigd)}" if gewijzigd else "")
+                  audit_detail(db, "cohorts", cohort_id, gewijzigd))
     else:
+        detail = audit_detail(db, "cohorts", cohort_id)
         db.execute("DELETE FROM cohorts WHERE id = ?", (cohort_id,))
         db.commit()
-        audit(db, user, "verwijderen", "cohort", cohort_id, "")
+        audit(db, user, "verwijderen", "cohort", cohort_id, detail)
     return jsonify({"ok": True})
 
 
@@ -939,9 +962,10 @@ def crebo_item(crebo_id):
     if err:
         return err
     db = get_db()
+    detail = audit_detail(db, "crebos", crebo_id)
     db.execute("DELETE FROM crebos WHERE id = ?", (crebo_id,))
     db.commit()
-    audit(db, user, "verwijderen", "crebo", crebo_id, "")
+    audit(db, user, "verwijderen", "crebo", crebo_id, detail)
     return jsonify({"ok": True})
 
 
@@ -1014,14 +1038,15 @@ def leertraject_item(lt_id):
         gewijzigd = [k for k in ("name", "crebo_id", "cohort_id", "archived")
                      if k in data]
         audit(db, user, "wijzigen", "leertraject", lt_id,
-              f"Velden: {', '.join(gewijzigd)}" if gewijzigd else "")
+              audit_detail(db, "leertrajecten", lt_id, gewijzigd))
         row = db.execute("SELECT * FROM leertrajecten WHERE id = ?", (lt_id,)).fetchone()
         if row is None:
             return jsonify({"error": "Leertraject niet gevonden"}), 404
         return jsonify(leertraject_with_periods(db, row))
+    detail = audit_detail(db, "leertrajecten", lt_id)
     db.execute("DELETE FROM leertrajecten WHERE id = ?", (lt_id,))
     db.commit()
-    audit(db, user, "verwijderen", "leertraject", lt_id, "")
+    audit(db, user, "verwijderen", "leertraject", lt_id, detail)
     return jsonify({"ok": True})
 
 
@@ -1094,11 +1119,12 @@ def class_item(class_id):
         gewijzigd = [k for k in ("name", "leertraject_id",
                                  "mentor_id", "archived") if k in data]
         audit(db, user, "wijzigen", "klas", class_id,
-              f"Velden: {', '.join(gewijzigd)}" if gewijzigd else "")
+              audit_detail(db, "classes", class_id, gewijzigd))
     else:
+        detail = audit_detail(db, "classes", class_id)
         db.execute("DELETE FROM classes WHERE id = ?", (class_id,))
         db.commit()
-        audit(db, user, "verwijderen", "klas", class_id, "")
+        audit(db, user, "verwijderen", "klas", class_id, detail)
     return jsonify({"ok": True})
 
 
@@ -1278,11 +1304,12 @@ def student_item(student_id):
                                  "prefix", "last_name", "email", "login_enabled",
                                  "archived") if k in data]
         audit(db, user, "wijzigen", "student", student_id,
-              f"Velden: {', '.join(gewijzigd)}" if gewijzigd else "")
+              audit_detail(db, "students", student_id, gewijzigd))
     else:
+        detail = audit_detail(db, "students", student_id)
         db.execute("DELETE FROM students WHERE id = ?", (student_id,))
         db.commit()
-        audit(db, user, "verwijderen", "student", student_id, "")
+        audit(db, user, "verwijderen", "student", student_id, detail)
     return jsonify({"ok": True})
 
 
@@ -1696,11 +1723,12 @@ def subject_item(subject_id):
         gewijzigd = [k for k in ("name", "period_ids", "leertraject_ids",
                                  "assessment_type", "archived") if k in data]
         audit(db, user, "wijzigen", "vak", subject_id,
-              f"Velden: {', '.join(gewijzigd)}" if gewijzigd else "")
+              audit_detail(db, "subjects", subject_id, gewijzigd))
     else:
+        detail = audit_detail(db, "subjects", subject_id)
         db.execute("DELETE FROM subjects WHERE id = ?", (subject_id,))
         db.commit()
-        audit(db, user, "verwijderen", "vak", subject_id, "")
+        audit(db, user, "verwijderen", "vak", subject_id, detail)
     return jsonify({"ok": True})
 
 
@@ -1772,11 +1800,12 @@ def period_item(period_id):
         db.commit()
         gewijzigd = [k for k in ("name", "year", "leertraject_ids") if k in data]
         audit(db, user, "wijzigen", "module", period_id,
-              f"Velden: {', '.join(gewijzigd)}" if gewijzigd else "")
+              audit_detail(db, "periods", period_id, gewijzigd))
     else:
+        detail = audit_detail(db, "periods", period_id)
         db.execute("DELETE FROM periods WHERE id = ?", (period_id,))
         db.commit()
-        audit(db, user, "verwijderen", "module", period_id, "")
+        audit(db, user, "verwijderen", "module", period_id, detail)
     return jsonify({"ok": True})
 
 
