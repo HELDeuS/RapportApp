@@ -127,6 +127,33 @@ sudo ufw allow 5000/tcp
 
 Of beperk de toegang tot je eigen netwerk, bijvoorbeeld `sudo ufw allow from 192.168.1.0/24 to any port 5000 proto tcp`.
 
+### HTTPS (optioneel)
+
+Standaard draait de app zonder TLS (HTTP), ook achter een reverse proxy. Wil je (voorlopig) self-signed HTTPS, dan kan dat op twee manieren:
+
+**Direct draaien (`python3 app.py`)**
+
+```bash
+RAPPORTAPP_TLS=1 python3 app.py
+# -> https://<server-ip>:5000 met een self-signed certificaat uit tls/
+```
+Met `RAPPORTAPP_TLS_CERTFILE` en `RAPPORTAPP_TLS_KEYFILE` gebruik je een eigen certificaat in plaats van het self-signed certificaat.
+
+**Onder gunicorn (zoals de systemd-service hierboven)**
+
+Genereer eenmalig het self-signed certificaat en voeg het toe aan de `ExecStart`:
+
+```bash
+sudo -u rapportapp venv/bin/python -c "import app; app.ensure_self_signed_cert()"
+sudo systemctl edit --full rapportapp
+# ExecStart=/opt/RapportApp/venv/bin/gunicorn -w 2 -b 0.0.0.0:5000 \
+#   --certfile /opt/RapportApp/tls/selfsigned.crt \
+#   --keyfile /opt/RapportApp/tls/selfsigned.key app:app
+sudo systemctl restart rapportapp
+```
+
+Komt de app later achter een reverse proxy (Caddy/nginx) met een echt certificaat, laat dan alle TLS-opties weg: de app draait dan gewoon weer over HTTP op localhost en de proxy verzorgt het HTTPS.
+
 ### Beheer
 
 ```bash

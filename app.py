@@ -2,7 +2,8 @@ import math
 import os
 import secrets
 import sqlite3
-from datetime import timedelta
+import subprocess
+from datetime import datetime, timedelta
 
 from flask import Flask, g, jsonify, request, send_from_directory, session
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -2955,5 +2956,44 @@ def report():
 
 init_db()
 
+
+# ---------------------------------------------------------------------------
+# Optioneel HTTPS: standaard uit (HTTP, zoals voorheen).
+#   RAPPORTAPP_TLS=1                              -> self-signed cert (map tls/)
+#   RAPPORTAPP_TLS_CERTFILE + ..._KEYFILE         -> eigen certificaat
+# Achter een reverse proxy (Caddy/nginx) laat je deze variabelen weg.
+# ---------------------------------------------------------------------------
+TLS_DIR = os.path.join(APP_DIR, "tls")
+
+
+def ensure_self_signed_cert():
+    cert = os.path.join(TLS_DIR, "selfsigned.crt")
+    key = os.path.join(TLS_DIR, "selfsigned.key")
+    if not (os.path.isfile(cert) and os.path.isfile(key)):
+        os.makedirs(TLS_DIR, exist_ok=True)
+        subprocess.run(
+            ["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+             "-keyout", key, "-out", cert, "-days", "825",
+             "-subj", "/CN=rapportapp"],
+            check=True,
+        )
+    return cert, key
+
+
+def tls_ssl_context():
+    if not os.environ.get("RAPPORTAPP_TLS"):
+        return None
+    cert = os.environ.get("RAPPORTAPP_TLS_CERTFILE")
+    key = os.environ.get("RAPPORTAPP_TLS_KEYFILE")
+    if cert and key:
+        if not (os.path.isfile(cert) and os.path.isfile(key)):
+            raise SystemExit(f"TLS-certificaat of -key niet gevonden: {cert} / {key}")
+        return cert, key
+    return ensure_self_signed_cert()
+
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    context = tls_ssl_context()
+    if context:
+        print("HTTPS actief (self-signed): https://<server-ip>:5000")
+    app.run(host="0.0.0.0", port=5000, debug=True, ssl_context=context)
