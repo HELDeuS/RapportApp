@@ -1724,14 +1724,13 @@ function renderReportCards(data, periodOverride) {
           </tr>
           <tr>
             <th>Klas</th><td>${esc(s.class ? s.class.name : "")}</td>
-            <th>Startcohort</th><td>${esc(s.class && s.class.cohort ? s.class.cohort : "")}</td>
-          </tr>
-          <tr>
             <th>Crebo</th><td>${esc(s.class && s.class.crebo ? s.class.crebo : "")}</td>
-            <th>SLB'er</th><td>${esc(s.class && s.class.mentor ? s.class.mentor : "")}</td>
           </tr>
           <tr>
+            <th>SLB'er</th><td>${esc(s.class && s.class.mentor ? s.class.mentor : "")}</td>
             <th>Datum</th><td>${today}</td>
+          </tr>
+          <tr>
             <th>Totaal tekorten</th><td class="${s.total_tekorten > 0 ? "val-onv" : "val-vol"}">${s.total_tekorten}</td>
           </tr>
         </tbody>
