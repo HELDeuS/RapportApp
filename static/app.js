@@ -33,6 +33,7 @@ const listSort = {
   kdmatrix: { key: "last_name", dir: 1 },
   kdbulk: { key: "last_name", dir: 1 },
   kdtable: { key: "name", dir: 1 },
+  meetings: { key: "meeting_date", dir: -1 },
   classes: { key: "name", dir: 1 },
   subjects: { key: "name", dir: 1 },
   periods: { key: "year", dir: 1 },
@@ -224,9 +225,9 @@ const ROLE_LABELS = {
 };
 
 const ROLE_TABS = {
-  beheerder: ["cijfers", "studenten", "structuur", "vakken", "periodes", "keuzedelen", "statistieken", "rapport", "archief", "gebruikers", "instellingen", "logboek"],
-  mentor: ["cijfers", "studenten", "keuzedelen", "statistieken", "rapport", "archief", "logboek"],
-  docent: ["cijfers", "keuzedelen", "statistieken", "rapport", "logboek"],
+  beheerder: ["cijfers", "studenten", "structuur", "vakken", "periodes", "keuzedelen", "statistieken", "rapport", "vergadering", "archief", "gebruikers", "instellingen", "logboek"],
+  mentor: ["cijfers", "studenten", "keuzedelen", "statistieken", "rapport", "vergadering", "archief", "logboek"],
+  docent: ["cijfers", "keuzedelen", "statistieken", "rapport", "vergadering", "logboek"],
   administratie: ["keuzedelen", "statistieken", "rapport", "logboek"],
   student: ["rapport"],
 };
@@ -2947,6 +2948,424 @@ $("#stat-class").addEventListener("change", () => {
   if (typeInput && !$("#stat-student").value) typeInput.value = "";
 });
 
+// ---------- Vergadering (rapportvergaderingen) ----------
+let meetingsList = [];
+let meetingDetail = null;   // detail van de geopende vergadering
+let beamerIndex = 0;        // actieve student in de beamermodus
+
+function meetingClassOptions() {
+  let list = ownClassesOnly(classes);
+  return list.map((c) => `<option value="${c.id}">${esc(classLabel(c))}</option>`).join("");
+}
+
+function meetingPeriodOptions() {
+  return periods.map((p) => `<option value="${p.id}">${esc(periodLabel(p))}</option>`).join("");
+}
+
+function refillMeetingSelects() {
+  refillKeepingValue("#meeting-class", meetingClassOptions());
+  refillKeepingValue("#meeting-period", meetingPeriodOptions());
+  const d = $("#meeting-date");
+  if (!d.value) {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    d.value = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  }
+}
+
+async function renderMeetingsTab() {
+  refillMeetingSelects();
+  await loadMeetings();
+}
+
+async function loadMeetings() {
+  try {
+    meetingsList = await api("/api/meetings");
+  } catch (err) {
+    meetingsList = [];
+  }
+  renderMeetingsTable();
+}
+
+function renderMeetingsTable() {
+  const q = ($("#meeting-search").value || "").trim().toLowerCase();
+  let rows = meetingsList;
+  if (q) {
+    rows = rows.filter((m) =>
+      (m.class_name || "").toLowerCase().includes(q) ||
+      (m.period_name || "").toLowerCase().includes(q) ||
+      (m.meeting_date || "").includes(q) ||
+      (m.status || "").toLowerCase().includes(q));
+  }
+  rows = sortRows(rows, listSort.meetings, (m, key) => m[key] ?? "");
+  updateSortArrows("#meetings-table", listSort.meetings);
+  const mayManage = isRole("beheerder", "mentor", "docent");
+  $("#meetings-table tbody").innerHTML = rows.length
+    ? pageSlice("#meetings-table", rows).map((m) => `
+      <tr data-id="${m.id}">
+        <td><a href="#" class="meeting-open">${esc(m.meeting_date)}</a></td>
+        <td>${esc(m.class_name)}</td>
+        <td>${esc(periodLabel({ name: m.period_name, year: m.period_year }))}</td>
+        <td>${m.items}</td>
+        <td class="${m.followups > 0 ? "val-geel" : ""}">${m.followups}</td>
+        <td>${m.status === "afgerond" ? `<span class="badge-done">afgerond</span>` : `<span class="badge-open">open</span>`}</td>
+        <td>${mayManage ? `<button class="danger meeting-del" title="Vergadering verwijderen">Verwijderen</button>` : ""}</td>
+      </tr>`).join("")
+    : `<tr><td colspan="7" class="hint">Nog geen vergaderingen. Maak er hierboven een aan.</td></tr>`;
+}
+
+bindTableSort("#meetings-table", "meetings", renderMeetingsTable);
+$("#meeting-search").addEventListener("input", () => { resetPage("#meetings-table"); renderMeetingsTable(); });
+
+$("#btn-meeting-new").addEventListener("click", async () => {
+  const classId = $("#meeting-class").value;
+  const periodId = $("#meeting-period").value;
+  if (!classId || !periodId) return alert("Kies een klas en een module.");
+  const meetingDate = $("#meeting-date").value;
+  try {
+    const res = await api("/api/meetings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ class_id: +classId, period_id: +periodId,
+                             meeting_date: meetingDate }),
+    });
+    await loadMeetings();
+    await openMeeting(res.id);
+  } catch (err) {
+    alert("Vergadering aanmaken mislukt: " + err.message);
+  }
+});
+
+$("#meetings-table tbody").addEventListener("click", async (e) => {
+  const tr = e.target.closest("tr[data-id]");
+  if (!tr) return;
+  const id = +tr.dataset.id;
+  if (e.target.closest(".meeting-del")) {
+    if (!confirm("Deze vergadering verwijderen?")) return;
+    try {
+      await api(`/api/meetings/${id}`, { method: "DELETE" });
+      if (meetingDetail && meetingDetail.meeting.id === id) {
+        meetingDetail = null;
+        $("#meeting-detail").innerHTML = "";
+      }
+      await loadMeetings();
+    } catch (err) {
+      alert("Verwijderen mislukt: " + err.message);
+    }
+    return;
+  }
+  if (e.target.closest(".meeting-open")) {
+    e.preventDefault();
+    await openMeeting(id);
+  }
+});
+
+async function openMeeting(id) {
+  try {
+    meetingDetail = await api(`/api/meetings/${id}`);
+  } catch (err) {
+    alert("Vergadering openen mislukt: " + err.message);
+    return;
+  }
+  renderMeetingDetail();
+}
+
+function meetingStatusLabel(m) {
+  return m.status === "afgerond" ? `<span class="badge-done">afgerond</span>` : `<span class="badge-open">open</span>`;
+}
+
+function renderMeetingDetail() {
+  const d = meetingDetail;
+  if (!d) return;
+  const m = d.meeting;
+  const mayManage = isRole("beheerder", "mentor", "docent");
+  const classStudents = students.filter((s) => String(s.class_id) === String(m.class_id));
+  const onList = new Set(d.items.map((i) => i.student_id));
+  const addable = classStudents.filter((s) => !onList.has(s.id));
+  let html = `<div class="meeting-detail-card">
+    <div class="toolbar">
+      <h2 style="margin:0">Vergadering ${esc(m.class_name)} — ${esc(periodLabel({ name: m.period_name, year: m.period_year }))}</h2>
+      <span class="meeting-date">${esc(m.meeting_date)}</span>
+      ${meetingStatusLabel(m)}
+      <span class="push-right"></span>
+      ${mayManage ? `<button id="btn-beamer" class="primary">Beamermodus</button>` : ""}
+      <button id="btn-meeting-print" class="secondary">Verslag afdrukken</button>
+      ${mayManage ? (m.status === "open"
+        ? `<button id="btn-meeting-close" class="secondary">Afsluiten</button>`
+        : `<button id="btn-meeting-reopen" class="secondary">Heropenen</button>`) : ""}
+      <button id="btn-meeting-back" class="secondary">Terug</button>
+    </div>
+    ${mayManage ? `
+    <div class="toolbar subtoolbar">
+      <strong>Student toevoegen:</strong>
+      <select id="meeting-add-student">${addable.map((s) =>
+        `<option value="${s.id}">${esc(studentName(s))}${s.student_number ? ` (${esc(s.student_number)})` : ""}</option>`).join("")}</select>
+      <input id="meeting-add-reason" placeholder="Reden (bijv. aandachtspunt)" style="max-width:260px">
+      <button id="btn-meeting-add">Toevoegen</button>
+    </div>` : ""}
+    ${d.items.length ? `
+    <table class="list sortable" id="meeting-items-table">
+      <thead><tr>
+        <th data-key="student">Student</th><th data-key="student_number">Nr.</th>
+        <th data-key="reason">Reden</th><th data-key="tekorten">Tekorten</th>
+        <th data-key="present">Aanwezigheid</th><th data-key="sbu">SBU</th>
+        <th data-key="conclusion">Conclusie</th><th data-key="followup">Vervolgactie</th><th></th>
+      </tr></thead>
+      <tbody>${d.items.map((i) => meetingItemRow(i, mayManage)).join("")}</tbody>
+    </table>` : `<p class="hint">Geen studenten op de bespreeklijst (niemand voldoet aan de signaleringsregels). Voeg hierboven eventueel handmatig studenten toe.</p>`}
+  </div>`;
+  $("#meeting-detail").innerHTML = html;
+  const back = $("#btn-meeting-back");
+  if (back) back.addEventListener("click", () => {
+    meetingDetail = null;
+    $("#meeting-detail").innerHTML = "";
+  });
+  const beam = $("#btn-beamer");
+  if (beam) beam.addEventListener("click", () => { beamerIndex = 0; renderBeamer(); });
+  const printBtn = $("#btn-meeting-print");
+  if (printBtn) printBtn.addEventListener("click", printMeetingReport);
+  const closeBtn = $("#btn-meeting-close");
+  if (closeBtn) closeBtn.addEventListener("click", () => setMeetingStatus("afgerond"));
+  const reopenBtn = $("#btn-meeting-reopen");
+  if (reopenBtn) reopenBtn.addEventListener("click", () => setMeetingStatus("open"));
+  const addBtn = $("#btn-meeting-add");
+  if (addBtn) addBtn.addEventListener("click", addMeetingStudent);
+  if (d.items.length) {
+    bindMeetingItemEvents();
+    updateSortArrows("#meeting-items-table", { key: null, dir: 1 });
+  }
+}
+
+function meetingItemRow(i, mayManage) {
+  const dis = mayManage ? "" : " disabled";
+  return `<tr data-sid="${i.student_id}">
+    <td>${esc(i.student)}</td><td>${esc(i.student_number || "")}</td>
+    <td><input data-field="reason" value="${esc(i.reason)}" style="width:180px"${dis}></td>
+    <td class="${i.tekorten >= 3 ? "val-onv" : ""}">${i.tekorten}</td>
+    <td class="${i.present !== null && i.present < 85 ? "val-onv" : ""}">${i.present !== null ? i.present + "%" : ""}</td>
+    <td class="${i.sbu < i.sbu_doel ? "val-onv" : "val-vol"}">${i.sbu} / ${i.sbu_doel}</td>
+    <td><textarea data-field="conclusion" rows="2" style="width:220px"${dis}>${esc(i.conclusion)}</textarea></td>
+    <td><textarea data-field="followup" rows="2" style="width:220px"${dis}>${esc(i.followup)}</textarea></td>
+    <td>${mayManage ? `<button class="danger meeting-item-del" title="Van lijst verwijderen">&times;</button>` : ""}</td>
+  </tr>`;
+}
+
+function bindMeetingItemEvents() {
+  $("#meeting-items-table tbody").addEventListener("change", async (e) => {
+    const tr = e.target.closest("tr[data-sid]");
+    if (!tr || e.target.dataset.field === undefined) return;
+    const sid = +tr.dataset.sid;
+    const field = e.target.dataset.field;
+    const value = e.target.value.trim();
+    try {
+      await api(`/api/meetings/${meetingDetail.meeting.id}/items/${sid}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [field]: value }),
+      });
+      const item = meetingDetail.items.find((x) => x.student_id === sid);
+      if (item) item[field] = value;
+    } catch (err) {
+      alert("Opslaan mislukt: " + err.message);
+    }
+  });
+  $("#meeting-items-table tbody").addEventListener("click", async (e) => {
+    const btn = e.target.closest(".meeting-item-del");
+    if (!btn) return;
+    const tr = btn.closest("tr[data-sid]");
+    if (!confirm("Deze student van de bespreeklijst verwijderen?")) return;
+    try {
+      await api(`/api/meetings/${meetingDetail.meeting.id}/items/${tr.dataset.sid}`, { method: "DELETE" });
+      await openMeeting(meetingDetail.meeting.id);
+      await loadMeetings();
+    } catch (err) {
+      alert("Verwijderen mislukt: " + err.message);
+    }
+  });
+}
+
+async function addMeetingStudent() {
+  const sid = $("#meeting-add-student").value;
+  if (!sid) return;
+  try {
+    await api(`/api/meetings/${meetingDetail.meeting.id}/items`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ student_id: +sid, reason: $("#meeting-add-reason").value }),
+    });
+    await openMeeting(meetingDetail.meeting.id);
+    await loadMeetings();
+  } catch (err) {
+    alert("Toevoegen mislukt: " + err.message);
+  }
+}
+
+async function setMeetingStatus(status) {
+  try {
+    await api(`/api/meetings/${meetingDetail.meeting.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    await loadMeetings();
+    await openMeeting(meetingDetail.meeting.id);
+  } catch (err) {
+    alert("Status wijzigen mislukt: " + err.message);
+  }
+}
+
+// ---------- Beamermodus ----------
+function beamerItem() {
+  return meetingDetail.items[beamerIndex];
+}
+
+function renderBeamer() {
+  const d = meetingDetail;
+  if (!d || !d.items.length) return alert("Er staan geen studenten op de bespreeklijst.");
+  if (beamerIndex >= d.items.length) beamerIndex = 0;
+  if (beamerIndex < 0) beamerIndex = d.items.length - 1;
+  const i = beamerItem();
+  const m = d.meeting;
+  const prev = i.previous;
+  $("#beamer-overlay").innerHTML = `
+    <div class="beamer-box">
+      <div class="beamer-head">
+        <div>
+          <div class="beamer-title">${esc(m.class_name)} — ${esc(m.period_name)}${m.period_year ? ` (${esc(m.period_year)})` : ""}</div>
+          <div class="beamer-subtitle">Rapportvergadering ${esc(m.meeting_date)}</div>
+        </div>
+        <button id="beamer-exit" class="secondary">Sluiten (Esc)</button>
+      </div>
+      <div class="beamer-student-head">
+        <span class="beamer-name">${esc(i.student)}</span>
+        <span class="beamer-number">${esc(i.student_number || "")}</span>
+        <span class="beamer-reasons">${i.signals.map((r) => esc(r)).join(" &middot; ") || esc(i.reason) || "&mdash;"}</span>
+      </div>
+      <div class="beamer-body">
+        <div class="beamer-left">
+          <table class="beamer-grades">
+            <thead><tr><th>Vak</th><th>Beoordeling</th><th>Tek.</th></tr></thead>
+            <tbody>${i.grades.map((g) => `
+              <tr>
+                <td>${esc(g.subject)}</td>
+                <td class="${g.tekorten > 0 ? "val-onv" : (g.value === "VS" ? "val-vs" : "val-vol")}">${esc(g.value)}</td>
+                <td class="${g.tekorten > 0 ? "val-onv" : ""}">${g.tekorten}</td>
+              </tr>`).join("")}</tbody>
+          </table>
+          <div class="beamer-stats">
+            <div class="${i.tekorten >= 3 ? "beamer-stat val-onv" : "beamer-stat"}"><small>Tekorten</small><strong>${i.tekorten}</strong></div>
+            <div class="${i.present !== null && i.present < 85 ? "beamer-stat val-onv" : "beamer-stat"}"><small>Aanwezigheid</small><strong>${i.present !== null ? i.present + "%" : "&mdash;"}</strong></div>
+            <div class="${i.sbu < i.sbu_doel ? "beamer-stat val-onv" : "beamer-stat val-vol"}"><small>SBU keuzedelen</small><strong>${i.sbu} / ${i.sbu_doel}</strong></div>
+          </div>
+        </div>
+        <div class="beamer-right">
+          ${i.keuzedelen.length ? `<div class="beamer-block"><h3>Keuzedelen</h3>
+            <ul class="beamer-kd">${i.keuzedelen.map((k) =>
+              `<li>${esc(k.name)} <span class="beamer-kd-sbu">${k.sbu} SBU</span>${k.value ? ` <span class="${k.value === "VS" ? "val-vs" : "val-vol"}">${esc(k.value)}</span>` : ""}</li>`).join("")}</ul></div>` : ""}
+          ${i.note ? `<div class="beamer-block"><h3>Opmerking (rapport)</h3><p>${esc(i.note)}</p></div>` : ""}
+          ${i.teacher_note ? `<div class="beamer-block"><h3>Opmerking docenten</h3><p>${esc(i.teacher_note)}</p></div>` : ""}
+          ${prev ? `<div class="beamer-block beamer-prev"><h3>Vorige vergadering (${esc(prev.meeting_date)})</h3>
+            ${prev.conclusion ? `<p><strong>Conclusie:</strong> ${esc(prev.conclusion)}</p>` : ""}
+            ${prev.followup ? `<p><strong>Vervolgactie:</strong> ${esc(prev.followup)}</p>` : ""}</div>` : ""}
+        </div>
+      </div>
+      <div class="beamer-notes">
+        <label>Conclusie:
+          <textarea id="beamer-conclusion" rows="2">${esc(i.conclusion)}</textarea>
+        </label>
+        <label>Vervolgactie:
+          <textarea id="beamer-followup" rows="2">${esc(i.followup)}</textarea>
+        </label>
+        <button id="beamer-save" class="primary">Opslaan</button>
+      </div>
+      <div class="beamer-nav">
+        <button id="beamer-prev" class="secondary"${beamerIndex === 0 ? " disabled" : ""}>&#9664; Vorige</button>
+        <span class="beamer-count">${beamerIndex + 1} / ${d.items.length}</span>
+        <button id="beamer-next" class="secondary"${beamerIndex === d.items.length - 1 ? " disabled" : ""}>Volgende &#9654;</button>
+      </div>
+    </div>`;
+  const overlay = $("#beamer-overlay");
+  overlay.classList.remove("hidden");
+  $("#beamer-exit").addEventListener("click", closeBeamer);
+  $("#beamer-prev").addEventListener("click", () => { beamerIndex--; renderBeamer(); });
+  $("#beamer-next").addEventListener("click", () => { beamerIndex++; renderBeamer(); });
+  $("#beamer-save").addEventListener("click", saveBeamerItem);
+}
+
+async function saveBeamerItem(advance) {
+  const i = beamerItem();
+  if (!i) return;
+  try {
+    const body = {
+      conclusion: $("#beamer-conclusion").value,
+      followup: $("#beamer-followup").value,
+    };
+    await api(`/api/meetings/${meetingDetail.meeting.id}/items/${i.student_id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    i.conclusion = body.conclusion;
+    i.followup = body.followup;
+    if (advance !== false) {
+      if (beamerIndex < meetingDetail.items.length - 1) {
+        beamerIndex++;
+        renderBeamer();
+      } else {
+        closeBeamer();
+      }
+    }
+  } catch (err) {
+    alert("Opslaan mislukt: " + err.message);
+  }
+}
+
+function closeBeamer() {
+  $("#beamer-overlay").classList.add("hidden");
+  $("#beamer-overlay").innerHTML = "";
+  if (meetingDetail) renderMeetingDetail();
+  loadMeetings();
+}
+
+document.addEventListener("keydown", (e) => {
+  if ($("#beamer-overlay").classList.contains("hidden")) return;
+  if (e.key === "Escape") { closeBeamer(); }
+  else if (e.key === "ArrowRight") { if (!e.target.matches("textarea, input")) { e.preventDefault(); beamerIndex++; renderBeamer(); } }
+  else if (e.key === "ArrowLeft") { if (!e.target.matches("textarea, input")) { e.preventDefault(); beamerIndex--; renderBeamer(); } }
+  else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveBeamerItem(); }
+});
+
+// ---------- Verslag (print) ----------
+function printMeetingReport() {
+  const d = meetingDetail;
+  if (!d) return;
+  const m = d.meeting;
+  $("#meeting-print").innerHTML = `
+    <div class="report-head">
+      <h2>Verslag rapportvergadering</h2>
+      <p>${esc(m.class_name)} &mdash; ${esc(periodLabel({ name: m.period_name, year: m.period_year }))} &mdash; ${esc(m.meeting_date)} (${m.status})</p>
+    </div>
+    ${d.items.length ? d.items.map((i) => `
+      <div class="report-card">
+        <div class="report-module-header"><strong>${esc(i.student)}</strong>${i.student_number ? ` (nr. ${esc(i.student_number)})` : ""}
+          ${i.signals.length ? ` &mdash; ${i.signals.map((s) => esc(s)).join(", ")}` : (i.reason ? ` &mdash; ${esc(i.reason)}` : "")}</div>
+        <div class="report-section">
+          <table class="list">
+            <thead><tr><th>Vak</th><th>Beoordeling</th><th>Tekorten</th></tr></thead>
+            <tbody>${i.grades.map((g) => `
+              <tr><td>${esc(g.subject)}</td>
+                <td class="${g.tekorten > 0 ? "val-onv" : ""}">${esc(g.value)}</td>
+                <td class="${g.tekorten > 0 ? "val-onv" : ""}">${g.tekorten}</td></tr>`).join("")}</tbody>
+          </table>
+        </div>
+        <div class="report-section"><p><strong>Aanwezigheid:</strong> ${i.present !== null ? i.present + "%" : "&mdash;"} &nbsp; <strong>SBU keuzedelen:</strong> ${i.sbu} / ${i.sbu_doel}</p></div>
+        ${i.conclusion ? `<div class="report-section"><p><strong>Conclusie:</strong> ${esc(i.conclusion)}</p></div>` : ""}
+        ${i.followup ? `<div class="report-section"><p><strong>Vervolgactie:</strong> ${esc(i.followup)}</p></div>` : ""}
+      </div>`).join("") : `<p>Geen studenten besproken.</p>`}
+  `;
+  window.print();
+}
+
 // ---------- Archief ----------
 let archiveData = {};   // tabel-id -> rijen
 let archiveState = {};  // tabel-id -> {q, sortKey, sortDir}
@@ -3030,6 +3449,7 @@ $$(".tab").forEach((btn) => {
     if (btn.dataset.tab === "logboek") renderAuditLog();
     if (btn.dataset.tab === "keuzedelen") { renderKeuzedelenTab(); loadKdMatrix(); loadKdBulk(); }
     if (btn.dataset.tab === "statistieken") fillStatFilters();
+    if (btn.dataset.tab === "vergadering") renderMeetingsTab();
   });
 });
 

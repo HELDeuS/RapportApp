@@ -389,11 +389,13 @@ td.tekort-2, td.tekort-3, td.tekort-4, td.tekort-5 { color: var(--tekort); font-
 
 @media print {
   header, .toolbar, .tab, button, #import-result,
-  #tab-cijfers, #tab-studenten, #tab-klassen, #tab-vakken, #tab-periodes {
+  #tab-cijfers, #tab-studenten, #tab-structuur, #tab-klassen, #tab-vakken, #tab-periodes,
+  #beamer-overlay {
     display: none !important;
   }
   .panel { display: none; }
   #tab-rapport { display: block; }
+  #meeting-print.hidden { display: block !important; }
   body { background: #fff; color: #000; }
   .report-card { border: none; padding: 0 0 12px; }
   .report-card + .report-card { page-break-before: auto; }
@@ -619,3 +621,90 @@ input.note-open { cursor: pointer; }
   margin-left: 3px;
 }
 .stat-report-sortable thead th.stat-sorted-asc::after { content: "\25BE"; }
+
+/* ---------- Vergadering (rapportvergaderingen) ---------- */
+.meeting-detail-card { margin-top: 14px; }
+.meeting-date { color: var(--subtext); }
+.badge-open, .badge-done {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: .8em;
+  font-weight: 600;
+}
+.badge-open { background: var(--result-bg); color: var(--result-text); border: 1px solid var(--result-border); }
+.badge-done { background: transparent; color: var(--vol); border: 1px solid var(--vol); }
+.val-geel { color: var(--geel); font-weight: 600; }
+
+#beamer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  overflow-y: auto;
+  background: var(--bg);
+  padding: 24px 4vw;
+}
+.beamer-box { max-width: 1400px; margin: 0 auto; }
+.beamer-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  border-bottom: 3px solid var(--accent);
+  padding-bottom: 10px;
+}
+.beamer-title { font-size: 1.6em; font-weight: 700; }
+.beamer-subtitle { font-size: 1.1em; color: var(--subtext); }
+.beamer-student-head { margin: 22px 0 14px; display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
+.beamer-name { font-size: 2.6em; font-weight: 800; }
+.beamer-number { font-size: 1.4em; color: var(--subtext); }
+.beamer-reasons { font-size: 1.2em; color: var(--onv); font-weight: 600; }
+.beamer-body { display: flex; gap: 28px; align-items: flex-start; flex-wrap: wrap; }
+.beamer-left { flex: 2 1 480px; }
+.beamer-right { flex: 1 1 320px; }
+.beamer-grades { font-size: 1.25em; }
+.beamer-grades th, .beamer-grades td { padding: 8px 14px; }
+.beamer-grades td:nth-child(2), .beamer-grades th:nth-child(2) { text-align: center; font-weight: 700; }
+.beamer-grades td:nth-child(3), .beamer-grades th:nth-child(3) { text-align: center; }
+.beamer-stats { display: flex; gap: 18px; margin-top: 16px; flex-wrap: wrap; }
+.beamer-stat {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 22px;
+  text-align: center;
+}
+.beamer-stat small { display: block; color: var(--subtext); font-size: .9em; }
+.beamer-stat strong { font-size: 1.7em; }
+.beamer-block {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 16px;
+  margin-bottom: 14px;
+  font-size: 1.1em;
+}
+.beamer-block h3 { margin: 0 0 6px; font-size: 1em; text-transform: uppercase; letter-spacing: .04em; color: var(--subtext); }
+.beamer-kd { list-style: none; padding: 0; margin: 0; }
+.beamer-kd li { padding: 3px 0; }
+.beamer-kd-sbu { color: var(--subtext); font-size: .85em; margin-left: 6px; }
+.beamer-prev { border-left: 4px solid var(--accent); }
+.beamer-notes {
+  display: flex;
+  gap: 16px;
+  align-items: flex-end;
+  margin-top: 20px;
+  flex-wrap: wrap;
+}
+.beamer-notes label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; flex: 1 1 320px; }
+.beamer-notes textarea { font-size: 1.05em; padding: 8px; }
+.beamer-nav {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 18px;
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.beamer-count { font-size: 1.2em; font-weight: 700; }
+#beamer-overlay button { font-size: 1.05em; padding: 8px 18px; }

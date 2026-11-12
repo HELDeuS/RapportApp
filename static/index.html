@@ -27,6 +27,7 @@
     <button data-tab="vakken" class="tab">Vakken</button>
     <button data-tab="periodes" class="tab">Modules</button>
     <button data-tab="rapport" class="tab">Rapport</button>
+    <button data-tab="vergadering" class="tab">Vergadering</button>
     <button data-tab="archief" class="tab">Archief</button>
     <button data-tab="logboek" class="tab">Logboek</button>
     <button data-tab="keuzedelen" class="tab">Keuzedelen</button>
@@ -444,6 +445,36 @@
   </div>
   <div id="report-output"></div>
 </section>
+
+<!-- Vergadering -->
+<section id="tab-vergadering" class="panel">
+  <p class="hint">Rapportvergaderingen: stel per klas en module een bespreeklijst samen (studenten met 3 of meer tekorten, aanwezigheid onder 85% of een SBU-tekort worden automatisch geselecteerd), bespreek ze op de beamer en leg per student de conclusie en eventuele vervolgactie vast.</p>
+  <div class="toolbar">
+    <label>Klas:
+      <select id="meeting-class"></select>
+    </label>
+    <label>Module:
+      <select id="meeting-period"></select>
+    </label>
+    <label>Datum:
+      <input type="date" id="meeting-date">
+    </label>
+    <button id="btn-meeting-new" class="primary">Nieuwe vergadering</button>
+  </div>
+  <div class="toolbar filterbar">
+    <input id="meeting-search" placeholder="&#9906; Zoek vergadering..." style="margin-left:auto">
+  </div>
+  <table class="list sortable" id="meetings-table">
+    <thead><tr><th data-key="meeting_date">Datum</th><th data-key="class_name">Klas</th><th data-key="period_name">Module</th><th data-key="items">Studenten</th><th data-key="followups">Vervolgacties</th><th data-key="status">Status</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <div class="pager" data-table="meetings-table"></div>
+  <div id="meeting-detail"></div>
+</section>
+
+<!-- Beamermodus -->
+<div id="beamer-overlay" class="hidden"></div>
+<div id="meeting-print" class="hidden"></div>
 
 <!-- Gebruikers -->
 <section id="tab-gebruikers" class="panel">
