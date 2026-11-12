@@ -32,6 +32,7 @@
     <button data-tab="keuzedelen" class="tab">Keuzedelen</button>
     <button data-tab="statistieken" class="tab">Statistieken</button>
     <button data-tab="gebruikers" class="tab">Gebruikers</button>
+    <button data-tab="instellingen" class="tab">Instellingen</button>
     <button id="btn-theme" class="theme-toggle" title="Donker/licht thema wisselen">&#9681;</button>
     <span id="user-info" class="user-info"></span>
     <button id="btn-logout" class="secondary">Uitloggen</button>
@@ -430,6 +431,26 @@
   </table>
   <div class="pager" data-table="users-table"></div>
   <p class="hint">Wachtwoord wijzigen: typ een nieuw wachtwoord in de kolom en klik buiten het veld. Studentaccounts worden beheerd via het vinkje "Inlog" op het tabblad Studenten (standaardwachtwoord: welkom).</p>
+</section>
+
+<!-- Instellingen -->
+<section id="tab-instellingen" class="panel">
+  <p class="hint">Schoolnaam en schoollogo worden in de kop van elk rapport getoond. Alleen beheerders kunnen deze instellingen wijzigen.</p>
+  <div class="toolbar">
+    <label>Schoolnaam:
+      <input id="settings-school-name" placeholder="Bijv. MBO ICT-opleiding">
+    </label>
+    <button id="btn-save-settings">Opslaan</button>
+  </div>
+  <div class="toolbar subtoolbar">
+    <strong>Schoollogo:</strong>
+    <label class="file-label">Kies afbeelding (max. 700 kB)
+      <input type="file" id="settings-logo-file" accept="image/*">
+    </label>
+    <img id="settings-logo-preview" class="settings-logo-preview hidden" alt="Logo preview">
+    <button id="btn-remove-logo" class="secondary hidden">Logo verwijderen</button>
+  </div>
+  <div id="settings-result" class="result hidden"></div>
 </section>
 
 <!-- Logboek -->

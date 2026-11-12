@@ -185,6 +185,10 @@ CREATE TABLE IF NOT EXISTS subject_leertrajecten (
     leertraject_id INTEGER NOT NULL REFERENCES leertrajecten(id) ON DELETE CASCADE,
     UNIQUE (subject_id, leertraject_id)
 );
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL DEFAULT ''
+);
 """
 
 
@@ -685,6 +689,61 @@ def auditlog_list():
         "SELECT * FROM audit_log ORDER BY id DESC LIMIT ?", (limit,)
     ).fetchall()
     return jsonify([dict(r) for r in rows])
+
+
+MAX_LOGO_BYTES = 700 * 1024
+
+
+def get_setting(db, key, default=""):
+    row = db.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else default
+
+
+@app.route("/api/settings")
+def settings_get():
+    user, err = auth_error()
+    if err:
+        return err
+    db = get_db()
+    return jsonify({
+        "school_name": get_setting(db, "school_name"),
+        "logo": get_setting(db, "logo"),
+    })
+
+
+@app.route("/api/settings", methods=["PUT"])
+def settings_put():
+    user, err = auth_error("beheerder")
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    db = get_db()
+    updates = {}
+    if "school_name" in data:
+        name = str(data["school_name"] or "").strip()
+        if len(name) > 120:
+            return jsonify({"error": "Schoolnaam is te lang (max. 120 tekens)"}), 400
+        updates["school_name"] = name
+    if "logo" in data:
+        logo = str(data["logo"] or "")
+        if logo:
+            if not logo.startswith("data:image/"):
+                return jsonify({"error": "Logo moet een afbeelding zijn (png, jpg, gif of svg)"}), 400
+            if len(logo) > MAX_LOGO_BYTES:
+                return jsonify({"error": "Logo is te groot (max. 700 kB)"}), 400
+        updates["logo"] = logo
+    for key, value in updates.items():
+        db.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value))
+    db.commit()
+    audit(db, user, "wijzigen", "instellingen", None,
+          ", ".join(sorted(updates)))
+    return jsonify({
+        "school_name": get_setting(db, "school_name"),
+        "logo": get_setting(db, "logo"),
+    })
 
 
 @app.route("/api/users/import", methods=["POST"])

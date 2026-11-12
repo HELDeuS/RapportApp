@@ -13,6 +13,8 @@ let attendance = {}; // studentId -> {present, absent_allowed, absent_unallowed}
 let notes = {}; // studentId -> {comment, teacher_comment}
 let currentPeriod = null;
 let users = [];
+let settings = { school_name: "", logo: "" };
+let pendingLogo = null;
 
 const api = async (url, opts) => {
   const res = await fetch(url, opts);
@@ -207,7 +209,7 @@ const ROLE_LABELS = {
 };
 
 const ROLE_TABS = {
-  beheerder: ["cijfers", "studenten", "klassen", "vakken", "periodes", "keuzedelen", "statistieken", "rapport", "archief", "gebruikers", "logboek"],
+  beheerder: ["cijfers", "studenten", "klassen", "vakken", "periodes", "keuzedelen", "statistieken", "rapport", "archief", "gebruikers", "instellingen", "logboek"],
   mentor: ["cijfers", "studenten", "keuzedelen", "statistieken", "rapport", "archief", "logboek"],
   docent: ["cijfers", "keuzedelen", "statistieken", "rapport", "logboek"],
   administratie: ["keuzedelen", "statistieken", "rapport", "logboek"],
@@ -290,6 +292,9 @@ async function init() {
   $("#app-header").classList.remove("hidden");
   applyRoleUi();
   activateDefaultTab();
+  settings = Object.assign({ school_name: "", logo: "" },
+    await api("/api/settings").catch(() => ({})));
+  renderSettingsUi();
   await loadAll();
 }
 
@@ -1606,10 +1611,10 @@ function renderReportCards(data, periodOverride) {
     data.students.map((s) => `
     <div class="report-card">
       <div class="report-head">
-        <div class="report-logo"></div>
+        <div class="report-logo">${settings.logo ? `<img src="${esc(settings.logo)}" alt="">` : ""}</div>
         <div class="report-head-text">
           <h2>Rapport</h2>
-          <div class="report-school">MBO ICT-opleiding</div>
+          <div class="report-school">${esc(settings.school_name || "MBO ICT-opleiding")}</div>
         </div>
         <div class="report-head-module"><strong>Module</strong><br>${moduleLabel}</div>
       </div>
@@ -2840,6 +2845,63 @@ function fmtPct(v) {
   if (v === null || v === undefined || v === "") return "";
   return String(v).replace(".", ",") + "%";
 }
+
+// ---------- Instellingen ----------
+function renderSettingsUi() {
+  const nameInput = $("#settings-school-name");
+  if (nameInput) nameInput.value = settings.school_name || "";
+  const preview = $("#settings-logo-preview");
+  if (preview) {
+    preview.src = settings.logo || "";
+    preview.classList.toggle("hidden", !settings.logo);
+  }
+  const removeBtn = $("#btn-remove-logo");
+  if (removeBtn) removeBtn.classList.toggle("hidden", !settings.logo);
+  pendingLogo = null;
+}
+
+$("#settings-logo-file").addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  if (file.size > 700 * 1024) return alert("Logo is te groot (max. 700 kB).");
+  const reader = new FileReader();
+  reader.onload = () => {
+    pendingLogo = reader.result;
+    const preview = $("#settings-logo-preview");
+    preview.src = pendingLogo;
+    preview.classList.remove("hidden");
+    $("#btn-remove-logo").classList.remove("hidden");
+  };
+  reader.readAsDataURL(file);
+});
+
+$("#btn-remove-logo").addEventListener("click", () => {
+  pendingLogo = "";
+  const preview = $("#settings-logo-preview");
+  preview.src = "";
+  preview.classList.add("hidden");
+  $("#btn-remove-logo").classList.add("hidden");
+});
+
+$("#btn-save-settings").addEventListener("click", async () => {
+  const body = { school_name: $("#settings-school-name").value };
+  if (pendingLogo !== null) body.logo = pendingLogo;
+  const result = $("#settings-result");
+  try {
+    settings = await api("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    pendingLogo = null;
+    result.textContent = "Instellingen opgeslagen.";
+    result.classList.remove("hidden");
+  } catch (err) {
+    result.textContent = err.message;
+    result.classList.remove("hidden");
+  }
+});
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) =>

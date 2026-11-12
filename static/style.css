@@ -335,7 +335,9 @@ td.tekort-2, td.tekort-3, td.tekort-4, td.tekort-5 { color: var(--tekort); font-
 .report-head-module { text-align: right; font-size: .85rem; color: var(--subtext); }
 .report-head-module strong { color: var(--text); font-size: 1.3rem; letter-spacing: .3px; }
 .report-logo { width: 0; }
+.report-logo:has(img) { width: auto; margin-right: 12px; }
 .report-logo img { max-height: 64px; }
+.settings-logo-preview { max-height: 48px; max-width: 160px; margin-left: 6px; }
 
 .report-info { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
 .report-info th, .report-info td {
@@ -429,6 +431,13 @@ td.tekort-2, td.tekort-3, td.tekort-4, td.tekort-5 { color: var(--tekort); font-
 }
 .toolbar > input[style*="margin-left"] {
   margin-left: auto;
+}
+
+/* Tab Klassen: vaste breedtes zodat de gestapelde werkbalken op één lijn liggen met de tabellen eronder */
+#tab-klassen .toolbar > input {
+  flex: 0 1 220px;
+  min-width: 0;
+  max-width: 220px;
 }
 
 /* Keuzedelen */
