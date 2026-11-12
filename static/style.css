@@ -503,7 +503,7 @@ html { scroll-behavior: smooth; }
 .kd-report h3 { margin: 0 0 6px; font-size: 1rem; }
 
 /* Template-links bij CSV-import */
-.template-link { font-size: .85rem; color: var(--accent); }
+.template-link { font-size: .85rem; }
 
 .stat-module-head { margin: 14px 0 4px; font-weight: 700; }
 .badge-outside {
