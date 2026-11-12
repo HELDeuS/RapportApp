@@ -156,7 +156,8 @@
     <a href="#blok-leertrajecten">Leertrajecten</a>
   </nav>
 
-  <h3 class="block-title" id="blok-klassen">Klassen</h3>
+  <details class="block" id="blok-klassen" open>
+  <summary class="block-title">Klassen</summary>
   <div class="toolbar addbar admin-only">
     <label>Nieuwe klas
       <input id="class-name" placeholder="Bijv. IAO4A">
@@ -172,7 +173,10 @@
     <tbody></tbody>
   </table>
   <div class="pager" data-table="classes-table"></div>
-  <h3 class="block-title" id="blok-crebos">Crebos</h3>
+</details>
+
+<details class="block" id="blok-crebos">
+  <summary class="block-title">Crebos</summary>
   <div class="toolbar addbar admin-only">
     <label>Nieuw crebo
       <input id="crebo-name" placeholder="Bijv. niveau 4">
@@ -185,8 +189,10 @@
     <tbody></tbody>
   </table>
   <div class="pager" data-table="crebos-table"></div>
+</details>
 
-  <h3 class="block-title" id="blok-cohorten">Startcohorten</h3>
+<details class="block" id="blok-cohorten">
+  <summary class="block-title">Startcohorten</summary>
   <div class="toolbar addbar admin-only">
     <label>Nieuw cohort
       <input id="cohort-name" placeholder="Bijv. 25-26">
@@ -199,8 +205,10 @@
     <tbody></tbody>
   </table>
   <div class="pager" data-table="cohorts-table"></div>
+</details>
 
-  <h3 class="block-title" id="blok-leertrajecten">Leertrajecten</h3>
+<details class="block" id="blok-leertrajecten" open>
+  <summary class="block-title">Leertrajecten</summary>
   <div class="toolbar addbar admin-only">
     <label>Naam
       <input id="lt-name" placeholder="Bijv. ICT 2-jarig 25-26">
@@ -219,7 +227,7 @@
     <tbody></tbody>
   </table>
   <div class="pager" data-table="leertrajecten-table"></div>
-
+</details>
 </section>
 
 <!-- Vakken -->

@@ -341,6 +341,12 @@ $("#btn-logout").addEventListener("click", async () => {
   location.reload();
 });
 
+// ---------- Snelkoppelingen tab Klassen: doelblok automatisch openen ----------
+$$("#tab-klassen .quicknav a").forEach((a) => a.addEventListener("click", () => {
+  const target = document.querySelector(a.getAttribute("href"));
+  if (target && target.tagName === "DETAILS") target.open = true;
+}));
+
 // ---------- Tabs ----------
 $$(".tab").forEach((btn) => {
   btn.addEventListener("click", () => {
