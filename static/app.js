@@ -27,6 +27,9 @@ let currentUser = null;
 
 const listSort = {
   students: { key: "name", dir: 1 },
+  crebos: { key: "name", dir: 1 },
+  cohorts: { key: "name", dir: 1 },
+  leertrajecten: { key: "name", dir: 1 },
   kdmatrix: { key: "last_name", dir: 1 },
   kdbulk: { key: "last_name", dir: 1 },
   classes: { key: "name", dir: 1 },
@@ -164,6 +167,9 @@ function rerenderPagedTable(tableSel) {
     "#grade-table": renderGradeTable,
     "#students-table": renderStudents,
     "#classes-table": renderClasses,
+    "#crebos-table": renderCrebos,
+    "#cohorts-table": renderCohorts,
+    "#leertrajecten-table": renderLeertrajecten,
     "#subjects-table": renderSubjects,
     "#periods-table": renderPeriods,
     "#users-table": renderUsers,
@@ -245,6 +251,9 @@ function applyRoleUi() {
   if (gradeImport) gradeImport.style.display = maySetGrades() ? "" : "none";
   const studentImport = $("#student-import-ui");
   if (studentImport) studentImport.style.display = isAdmin() ? "" : "none";
+  $$("#tab-klassen .admin-only").forEach((el) => {
+    el.style.display = isAdmin() ? "" : "none";
+  });
   const kdAddBar = $("#kd-add-bar");
   if (kdAddBar) kdAddBar.style.display = isAdmin() ? "" : "none";
   const kdImportBar = $("#kd-import-bar");
@@ -784,6 +793,9 @@ $("#student-class-filter").addEventListener("change", () => { resetPage("#studen
 
 bindTableSort("#students-table", "students", renderStudents);
 bindTableSort("#classes-table", "classes", renderClasses);
+bindTableSort("#crebos-table", "crebos", renderCrebos);
+bindTableSort("#cohorts-table", "cohorts", renderCohorts);
+bindTableSort("#leertrajecten-table", "leertrajecten", renderLeertrajecten);
 bindTableSort("#subjects-table", "subjects", renderSubjects);
 bindTableSort("#periods-table", "periods", renderPeriods);
 bindTableSort("#grade-table", "grades", renderGradeTable);
@@ -1087,7 +1099,58 @@ function optList(sel, items, emptyLabel) {
   return out;
 }
 
+function renderCrebos() {
+  const q = ($("#crebo-search") ? $("#crebo-search").value : "").trim().toLowerCase();
+  const visible = q ? crebos.filter((n) => (n.name || "").toLowerCase().includes(q)) : crebos;
+  const rows = sortRows(visible, listSort.crebos, (n, key) => n[key]);
+  updateSortArrows("#crebos-table", listSort.crebos);
+  const page = pageSlice("#crebos-table", rows);
+  $("#crebos-table tbody").innerHTML = page.length ? page.map((n) => `
+    <tr data-id="${n.id}">
+      <td>${esc(n.name)}</td>
+      ${isAdmin() ? `<td><button class="danger" data-del>Verwijderen</button></td>` : "<td></td>"}
+    </tr>`).join("") : `<tr><td colspan="2" class="hint">${q ? "Niets gevonden voor deze zoekopdracht." : "Nog geen crebos."}</td></tr>`;
+}
+
+function renderCohorts() {
+  const q = ($("#cohort-search") ? $("#cohort-search").value : "").trim().toLowerCase();
+  const visible = q ? cohorts.filter((c) => (c.name || "").toLowerCase().includes(q)) : cohorts;
+  const rows = sortRows(visible, listSort.cohorts, (c, key) => c[key]);
+  updateSortArrows("#cohorts-table", listSort.cohorts);
+  const page = pageSlice("#cohorts-table", rows);
+  $("#cohorts-table tbody").innerHTML = page.length ? page.map((c) => `
+    <tr data-id="${c.id}">
+      <td>${esc(c.name)}</td>
+      ${isAdmin() ? `<td><button class="secondary" data-archive>Archiveren</button></td>
+      <td><button class="danger" data-del>Verwijderen</button></td>` : "<td></td><td></td>"}
+    </tr>`).join("") : `<tr><td colspan="3" class="hint">${q ? "Niets gevonden voor deze zoekopdracht." : "Nog geen cohorten."}</td></tr>`;
+}
+
+function renderLeertrajecten() {
+  const q = ($("#lt-search") ? $("#lt-search").value : "").trim().toLowerCase();
+  const visible = q ? leertrajecten.filter((t) =>
+    (t.name || "").toLowerCase().includes(q) ||
+    (t.crebo || "").toLowerCase().includes(q) ||
+    (t.cohort || "").toLowerCase().includes(q)) : leertrajecten;
+  const rows = sortRows(visible, listSort.leertrajecten, (t, key) => t[key]);
+  updateSortArrows("#leertrajecten-table", listSort.leertrajecten);
+  refillKeepingValue("#lt-add-crebo", creboOptions(""));
+  refillKeepingValue("#lt-add-cohort", optList("", cohorts, "Geen cohort"));
+  const page = pageSlice("#leertrajecten-table", rows);
+  $("#leertrajecten-table tbody").innerHTML = page.length ? page.map((t) => `
+    <tr data-id="${t.id}">
+      <td><input data-field="name" value="${esc(t.name)}"></td>
+      <td><select data-field="crebo_id">${creboOptions(t.crebo_id)}</select></td>
+      <td><select data-field="cohort_id">${optList(t.cohort_id, cohorts, "Geen cohort")}</select></td>
+      ${isAdmin() ? `<td><button class="secondary" data-archive>Archiveren</button></td>
+      <td><button class="danger" data-del>Verwijderen</button></td>` : "<td></td><td></td>"}
+    </tr>`).join("") : `<tr><td colspan="5" class="hint">${q ? "Niets gevonden voor deze zoekopdracht." : "Nog geen leertrajecten."}</td></tr>`;
+}
+
 function renderClasses() {
+  renderCrebos();
+  renderCohorts();
+  renderLeertrajecten();
   const q = ($("#class-search") ? $("#class-search").value : "").trim().toLowerCase();
   const visible = q ? classes.filter((c) =>
     (c.name || "").toLowerCase().includes(q) ||
@@ -1107,22 +1170,6 @@ function renderClasses() {
       <td><button class="danger" data-del>Verwijderen</button></td>
     </tr>`).join("");
   refillKeepingValue("#class-leertraject", ltOptions(""));
-  refillKeepingValue("#lt-add-crebo", creboOptions(""));
-  refillKeepingValue("#lt-add-cohort", optList("", cohorts, "Geen cohort"));
-  refillKeepingValue("#lt-crebo", creboOptions(""));
-  refillKeepingValue("#lt-cohort", optList("", cohorts, "Geen cohort"));
-  refillKeepingValue("#lt-manage", leertrajecten.length
-    ? leertrajecten.map((t) => `<option value="${t.id}">${esc(ltLabel(t))}</option>`).join("")
-    : `<option value="">(geen leertrajecten)</option>`);
-  const selLt = leertrajecten.find((t) => String(t.id) === $("#lt-manage").value);
-  $("#lt-crebo").value = selLt && selLt.crebo_id ? selLt.crebo_id : "";
-  $("#lt-cohort").value = selLt && selLt.cohort_id ? selLt.cohort_id : "";
-  refillKeepingValue("#crebo-manage", crebos.length
-    ? crebos.map((n) => `<option value="${n.id}">${esc(n.name)}</option>`).join("")
-    : `<option value="">(geen crebos)</option>`);
-  refillKeepingValue("#cohort-manage", cohorts.length
-    ? cohorts.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("")
-    : `<option value="">(geen cohorten)</option>`);
 }
 
 function refillKeepingValue(sel, html) {
@@ -1164,24 +1211,23 @@ $("#btn-add-cohort").addEventListener("click", async () => {
   }
 });
 
-$("#btn-archive-cohort").addEventListener("click", async () => {
-  const id = $("#cohort-manage").value;
-  if (!id) return;
-  if (!confirm("Cohort archiveren? Het verdwijnt uit de actieve overzichten; klassen en studenten blijven bewaard.")) return;
-  await api(`/api/cohorts/${id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ archived: true }),
-  });
-  await loadAll();
-});
-
-$("#btn-del-cohort").addEventListener("click", async () => {
-  const id = $("#cohort-manage").value;
-  if (!id) return;
-  if (!confirm("Cohort verwijderen? Klassen met dit cohort verliezen hun cohort.")) return;
-  await api(`/api/cohorts/${id}`, { method: "DELETE" });
-  await loadAll();
+$("#cohorts-table tbody").addEventListener("click", async (e) => {
+  const tr = e.target.closest("tr");
+  if (!tr) return;
+  const id = tr.dataset.id;
+  if (e.target.dataset.archive !== undefined) {
+    if (!confirm("Cohort archiveren? Het verdwijnt uit de actieve overzichten; klassen en studenten blijven bewaard.")) return;
+    await api(`/api/cohorts/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ archived: true }),
+    });
+    await loadAll();
+  } else if (e.target.dataset.del !== undefined) {
+    if (!confirm("Cohort verwijderen? Klassen met dit cohort verliezen hun cohort.")) return;
+    await api(`/api/cohorts/${id}`, { method: "DELETE" });
+    await loadAll();
+  }
 });
 
 // ---------- Leertrajecten ----------
@@ -1195,47 +1241,11 @@ function ltOptions(sel) {
     leertrajecten.map((t) => `<option value="${t.id}"${String(sel) === String(t.id) ? " selected" : ""}>${esc(ltLabel(t))}</option>`).join("");
 }
 
-$("#lt-manage").addEventListener("change", () => {
-  const lt = leertrajecten.find((t) => String(t.id) === $("#lt-manage").value);
-  $("#lt-crebo").value = lt && lt.crebo_id ? lt.crebo_id : "";
-  $("#lt-cohort").value = lt && lt.cohort_id ? lt.cohort_id : "";
-});
-
-$("#lt-crebo").addEventListener("change", async () => {
-  const id = $("#lt-manage").value;
-  if (!id) return;
-  try {
-    await api(`/api/leertrajecten/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ crebo_id: $("#lt-crebo").value || null }),
-    });
-    await loadAll();
-  } catch (err) {
-    alert("Crebo opslaan mislukt: " + err.message);
-  }
-});
-
-$("#lt-cohort").addEventListener("change", async () => {
-  const id = $("#lt-manage").value;
-  if (!id) return;
-  try {
-    await api(`/api/leertrajecten/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cohort_id: $("#lt-cohort").value || null }),
-    });
-    await loadAll();
-  } catch (err) {
-    alert("Startcohort opslaan mislukt: " + err.message);
-  }
-});
-
 $("#btn-add-lt").addEventListener("click", async () => {
   const name = $("#lt-name").value.trim();
   if (!name) return alert("Vul eerst een naam in (bijv. ICT 2-jarig).");
   try {
-    const res = await api("/api/leertrajecten", {
+    await api("/api/leertrajecten", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, crebo_id: $("#lt-add-crebo").value || null,
@@ -1245,34 +1255,48 @@ $("#btn-add-lt").addEventListener("click", async () => {
     $("#lt-add-crebo").value = "";
     $("#lt-add-cohort").value = "";
     await loadAll();
-    if (res && res.id) {
-      const manage = $("#lt-manage");
-      if ([...manage.options].some((o) => o.value === String(res.id))) manage.value = String(res.id);
-      manage.dispatchEvent(new Event("change"));
-    }
   } catch (err) {
     alert("Leertraject toevoegen mislukt: " + err.message);
   }
 });
 
-$("#btn-archive-lt").addEventListener("click", async () => {
-  const id = $("#lt-manage").value;
-  if (!id) return;
-  if (!confirm("Leertraject archiveren? Het verdwijnt uit de actieve overzichten; gegevens blijven bewaard.")) return;
-  await api(`/api/leertrajecten/${id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ archived: true }),
-  });
+$("#leertrajecten-table tbody").addEventListener("change", async (e) => {
+  const tr = e.target.closest("tr");
+  const field = e.target.dataset.field;
+  if (!tr || !field) return;
+  const t = leertrajecten.find((x) => String(x.id) === tr.dataset.id);
+  if (!t) return;
+  const value = field === "name" ? e.target.value.trim() : (e.target.value === "" ? null : e.target.value);
+  if (field === "name" && !value) return alert("Naam mag niet leeg zijn.");
+  try {
+    await api(`/api/leertrajecten/${t.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [field]: value }),
+    });
+  } catch (err) {
+    alert("Opslaan mislukt: " + err.message);
+  }
   await loadAll();
 });
 
-$("#btn-del-lt").addEventListener("click", async () => {
-  const id = $("#lt-manage").value;
-  if (!id) return;
-  if (!confirm("Leertraject verwijderen? Klassen met dit leertraject verliezen hun leertraject.")) return;
-  await api(`/api/leertrajecten/${id}`, { method: "DELETE" });
-  await loadAll();
+$("#leertrajecten-table tbody").addEventListener("click", async (e) => {
+  const tr = e.target.closest("tr");
+  if (!tr) return;
+  const id = tr.dataset.id;
+  if (e.target.dataset.archive !== undefined) {
+    if (!confirm("Leertraject archiveren? Het verdwijnt uit de actieve overzichten; gegevens blijven bewaard.")) return;
+    await api(`/api/leertrajecten/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ archived: true }),
+    });
+    await loadAll();
+  } else if (e.target.dataset.del !== undefined) {
+    if (!confirm("Leertraject verwijderen? Klassen met dit leertraject verliezen hun leertraject.")) return;
+    await api(`/api/leertrajecten/${id}`, { method: "DELETE" });
+    await loadAll();
+  }
 });
 
 $("#report-class").addEventListener("change", () => renderPeriodSelects());
@@ -1290,13 +1314,17 @@ $("#btn-add-crebo").addEventListener("click", async () => {
   await loadAll();
 });
 
-$("#btn-del-crebo").addEventListener("click", async () => {
-  const id = $("#crebo-manage").value;
-  if (!id) return;
+$("#crebos-table tbody").addEventListener("click", async (e) => {
+  if (e.target.dataset.del === undefined) return;
+  const id = e.target.closest("tr").dataset.id;
   if (!confirm("Crebo verwijderen? Leertrajecten met dit crebo verliezen hun crebo.")) return;
   await api(`/api/crebos/${id}`, { method: "DELETE" });
   await loadAll();
 });
+
+$("#crebo-search").addEventListener("input", () => { resetPage("#crebos-table"); renderCrebos(); });
+$("#cohort-search").addEventListener("input", () => { resetPage("#cohorts-table"); renderCohorts(); });
+$("#lt-search").addEventListener("input", () => { resetPage("#leertrajecten-table"); renderLeertrajecten(); });
 
 $("#classes-table tbody").addEventListener("change", async (e) => {
   const tr = e.target.closest("tr");

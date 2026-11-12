@@ -433,12 +433,30 @@ td.tekort-2, td.tekort-3, td.tekort-4, td.tekort-5 { color: var(--tekort); font-
   margin-left: auto;
 }
 
-/* Tab Klassen: vaste breedtes zodat de gestapelde werkbalken op één lijn liggen met de tabellen eronder */
-#tab-klassen .toolbar > input {
+/* Tab Klassen: blokken met titel, toevoegbalk en tabel */
+.block-title {
+  margin: 22px 0 8px;
+  font-size: 1.05rem;
+}
+#tab-klassen .block-title:first-of-type { margin-top: 0; }
+
+/* Toevoegbalken: label boven het veld, alles netjes uitgelijnd */
+.addbar { align-items: flex-end; }
+.addbar label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: .85rem;
+  color: var(--subtext);
+}
+.addbar > input,
+.addbar label > input,
+.addbar label > select {
+  width: 220px;
   flex: 0 1 220px;
-  min-width: 0;
   max-width: 220px;
 }
+.addbar > input.push-right { margin-left: auto; }
 
 /* Keuzedelen */
 .kd-progress { margin-bottom: 14px; }

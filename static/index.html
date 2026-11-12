@@ -145,54 +145,69 @@
 
 <!-- Klassen -->
 <section id="tab-klassen" class="panel">
-  <div class="toolbar">
-    <input id="class-name" placeholder="Klasnaam (bijv. IAO4A)">
-    <label>Leertraject:
-      <select id="class-leertraject"><option value="">Geen leertraject</option></select>
+  <p class="hint">Beheer de bouwstenen van boven naar beneden: crebos en startcohorten, daaronder leertrajecten (met crebo en startcohort) en tot slot klassen. Een klas erft de crebo en het startcohort van zijn leertraject.</p>
+
+  <h3 class="block-title">Crebos</h3>
+  <div class="toolbar addbar admin-only">
+    <label>Nieuw crebo
+      <input id="crebo-name" placeholder="Bijv. niveau 4">
     </label>
-    <button id="btn-add-class">Toevoegen</button>
-    <input id="class-search" placeholder="&#9906; Zoek klas..." style="margin-left:auto;">
+    <button id="btn-add-crebo">Crebo toevoegen</button>
+    <input id="crebo-search" class="push-right" placeholder="&#9906; Zoek crebo...">
   </div>
-  <div class="toolbar subtoolbar">
-    <strong>Crebos:</strong>
-    <input id="crebo-name" placeholder="Nieuw crebo (bijv. niveau 4)">
-    <button id="btn-add-crebo" class="secondary">Crebo toevoegen</button>
-    <select id="crebo-manage"></select>
-    <button id="btn-del-crebo" class="danger">Verwijderen</button>
+  <table class="list sortable" id="crebos-table">
+    <thead><tr><th data-key="name">Crebo</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <div class="pager" data-table="crebos-table"></div>
+
+  <h3 class="block-title">Startcohorten</h3>
+  <div class="toolbar addbar admin-only">
+    <label>Nieuw cohort
+      <input id="cohort-name" placeholder="Bijv. 25-26">
+    </label>
+    <button id="btn-add-cohort">Cohort toevoegen</button>
+    <input id="cohort-search" class="push-right" placeholder="&#9906; Zoek cohort...">
   </div>
-  <div class="toolbar subtoolbar">
-    <strong>Startcohorten:</strong>
-    <input id="cohort-name" placeholder="Nieuw cohort (bijv. 25-26)">
-    <button id="btn-add-cohort" class="secondary">Cohort toevoegen</button>
-    <select id="cohort-manage"></select>
-    <button id="btn-del-cohort" class="danger">Verwijderen</button>
-    <button id="btn-archive-cohort" class="secondary">Archiveren</button>
-  </div>
-  <div class="toolbar subtoolbar">
-    <strong>Leertraject toevoegen:</strong>
-    <input id="lt-name" placeholder="Naam (bijv. ICT 2-jarig 25-26)">
-    <label>Crebo:
+  <table class="list sortable" id="cohorts-table">
+    <thead><tr><th data-key="name">Startcohort</th><th></th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <div class="pager" data-table="cohorts-table"></div>
+
+  <h3 class="block-title">Leertrajecten</h3>
+  <div class="toolbar addbar admin-only">
+    <label>Naam
+      <input id="lt-name" placeholder="Bijv. ICT 2-jarig 25-26">
+    </label>
+    <label>Crebo
       <select id="lt-add-crebo"><option value="">Geen crebo</option></select>
     </label>
-    <label>Startcohort:
+    <label>Startcohort
       <select id="lt-add-cohort"><option value="">Geen cohort</option></select>
     </label>
-    <button id="btn-add-lt" class="secondary">Toevoegen</button>
+    <button id="btn-add-lt">Leertraject toevoegen</button>
+    <input id="lt-search" class="push-right" placeholder="&#9906; Zoek leertraject...">
   </div>
-  <div class="toolbar subtoolbar">
-    <strong>Leertraject beheren:</strong>
-    <select id="lt-manage"></select>
-    <label>Crebo:
-      <select id="lt-crebo"><option value="">Geen crebo</option></select>
+  <table class="list sortable" id="leertrajecten-table">
+    <thead><tr><th data-key="name">Leertraject</th><th data-key="crebo">Crebo</th><th data-key="cohort">Startcohort</th><th></th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <div class="pager" data-table="leertrajecten-table"></div>
+
+  <h3 class="block-title">Klassen</h3>
+  <div class="toolbar addbar admin-only">
+    <label>Nieuwe klas
+      <input id="class-name" placeholder="Bijv. IAO4A">
     </label>
-    <label>Startcohort:
-      <select id="lt-cohort"><option value="">Geen cohort</option></select>
+    <label>Leertraject
+      <select id="class-leertraject"><option value="">Geen leertraject</option></select>
     </label>
-    <button id="btn-archive-lt" class="secondary">Archiveren</button>
-    <button id="btn-del-lt" class="danger">Verwijderen</button>
+    <button id="btn-add-class">Klas toevoegen</button>
+    <input id="class-search" class="push-right" placeholder="&#9906; Zoek klas...">
   </div>
   <table class="list sortable" id="classes-table">
-    <thead><tr><th data-key="name">Klas</th><th data-key="crebo">Crebo</th><th data-key="cohort">Startcohort</th><th data-key="leertraject">Leertraject</th><th data-key="mentor">Mentor</th><th></th></tr></thead>
+    <thead><tr><th data-key="name">Klas</th><th data-key="crebo">Crebo</th><th data-key="cohort">Startcohort</th><th data-key="leertraject">Leertraject</th><th data-key="mentor">Mentor</th><th></th><th></th></tr></thead>
     <tbody></tbody>
   </table>
   <div class="pager" data-table="classes-table"></div>
