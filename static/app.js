@@ -840,6 +840,7 @@ $("#period-search").addEventListener("input", () => { resetPage("#periods-table"
 $("#import-file").addEventListener("change", async (e) => {
   const file = e.target.files[0];
   if (!file || !currentPeriod) return;
+  setImportBusy("#import-result", file.name);
   const fd = new FormData();
   fd.append("period_id", currentPeriod);
   fd.append("file", file);
@@ -944,9 +945,21 @@ $("#btn-paste-import").addEventListener("click", async () => {
   }
 });
 
+function setImportBusy(sel, fileName) {
+  const el = $(sel);
+  el.classList.remove("hidden", "ok", "err");
+  el.textContent = `Bezig met importeren van "${fileName}"...`;
+}
+
+function setResultKind(el, hasErrors) {
+  el.classList.remove("ok", "err");
+  el.classList.add(hasErrors ? "err" : "ok");
+}
+
 function showImportResult(res) {
   const el = $("#import-result");
   el.classList.remove("hidden");
+  setResultKind(el, res.errors && res.errors.length);
   let msg = `Geïmporteerd: ${res.imported} cijfers`;
   if (res.skipped) msg += `, overgeslagen: ${res.skipped}`;
   if (res.errors && res.errors.length) msg += `\nFouten:\n` + res.errors.join("\n");
@@ -1419,6 +1432,7 @@ $("#students-table tbody").addEventListener("click", async (e) => {
 function showResult(sel, res) {
   const el = $(sel);
   el.classList.remove("hidden");
+  setResultKind(el, res.errors && res.errors.length);
   let msg = `Toegevoegd: ${res.imported}`;
   if (res.skipped) msg += `, overgeslagen (bestaat al): ${res.skipped}`;
   if (res.errors && res.errors.length) msg += `\nFouten:\n` + res.errors.join("\n");
@@ -1429,6 +1443,7 @@ function showResult(sel, res) {
 $("#import-students-file").addEventListener("change", async (e) => {
   const file = e.target.files[0];
   if (!file) return;
+  setImportBusy("#students-import-result", file.name);
   const fd = new FormData();
   fd.append("file", file);
   try {
@@ -1445,6 +1460,7 @@ $("#import-students-file").addEventListener("change", async (e) => {
 $("#import-subjects-file").addEventListener("change", async (e) => {
   const file = e.target.files[0];
   if (!file) return;
+  setImportBusy("#subjects-import-result", file.name);
   const fd = new FormData();
   fd.append("file", file);
   try {
@@ -1938,6 +1954,7 @@ $("#kd-import-file").addEventListener("change", async (e) => {
     e.target.value = "";
     return;
   }
+  setImportBusy("#kd-import-result", file.name);
   const fd = new FormData();
   fd.append("subject_id", kid);
   fd.append("file", file);
@@ -1945,6 +1962,7 @@ $("#kd-import-file").addEventListener("change", async (e) => {
     const res = await api("/api/keuzedelen/import", { method: "POST", body: fd });
     const el = $("#kd-import-result");
     el.classList.remove("hidden");
+    setResultKind(el, res.errors && res.errors.length);
     let msg = `Toegevoegd: ${res.imported}`;
     if (res.skipped) msg += `, leeg (gewist): ${res.skipped}`;
     if (res.errors && res.errors.length) msg += "\nFouten:\n" + res.errors.join("\n");
@@ -1952,7 +1970,10 @@ $("#kd-import-file").addEventListener("change", async (e) => {
     await loadKdMatrix();
     await loadKdBulk();
   } catch (err) {
-    alert("Import mislukt: " + err.message);
+    const el = $("#kd-import-result");
+    el.classList.remove("hidden");
+    setResultKind(el, true);
+    el.textContent = "Import mislukt: " + err.message;
   }
   e.target.value = "";
 });
@@ -2830,6 +2851,7 @@ function renderUsers() {
 $("#import-users-file").addEventListener("change", async (e) => {
   const file = e.target.files[0];
   if (!file) return;
+  setImportBusy("#users-import-result", file.name);
   try {
     const res = await api("/api/users/import", {
       method: "POST",
@@ -2837,13 +2859,17 @@ $("#import-users-file").addEventListener("change", async (e) => {
     });
     const el = $("#users-import-result");
     el.classList.remove("hidden");
+    setResultKind(el, res.errors && res.errors.length);
     let msg = `Toegevoegd: ${res.imported}`;
     if (res.skipped) msg += `, overgeslagen (bestaat al): ${res.skipped}`;
     if (res.errors && res.errors.length) msg += "\nFouten:\n" + res.errors.join("\n");
     el.textContent = msg;
     await loadAll();
   } catch (err) {
-    alert("Import mislukt: " + err.message);
+    const el = $("#users-import-result");
+    el.classList.remove("hidden");
+    setResultKind(el, true);
+    el.textContent = "Import mislukt: " + err.message;
   }
   e.target.value = "";
 });
@@ -2945,7 +2971,7 @@ function renderSettingsUi() {
 function markSettingsUnsaved() {
   const result = $("#settings-result");
   result.textContent = "Wijzigingen nog niet opgeslagen \u2014 klik op 'Instellingen opslaan'.";
-  result.classList.remove("hidden");
+  result.classList.remove("hidden", "ok", "err");
 }
 
 $("#settings-school-name").addEventListener("input", markSettingsUnsaved);
@@ -3012,6 +3038,7 @@ $("#btn-save-settings").addEventListener("click", async () => {
       ? (settings.logo ? "Instellingen opgeslagen, logo bewaard." : "Instellingen opgeslagen, maar logo ontbreekt op de server!")
       : (settings.logo ? "Instellingen opgeslagen (logo ongewijzigd)." : "Instellingen opgeslagen.");
     result.classList.remove("hidden");
+    setResultKind(result, logoMeegestuurd && !settings.logo);
     if ($("#report-output") && $("#report-output").innerHTML.trim()) {
       showReport().catch(() => {});
     }
@@ -3019,6 +3046,7 @@ $("#btn-save-settings").addEventListener("click", async () => {
     alert("Opslaan mislukt: " + err.message);
     result.textContent = err.message;
     result.classList.remove("hidden");
+    setResultKind(result, true);
   }
 });
 

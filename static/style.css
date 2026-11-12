@@ -289,6 +289,16 @@ td.tekort-2, td.tekort-3, td.tekort-4, td.tekort-5 { color: var(--tekort); font-
   font-size: .9rem;
   white-space: pre-wrap;
 }
+.result.ok {
+  background: color-mix(in srgb, var(--voldoende) 10%, var(--card));
+  border-color: color-mix(in srgb, var(--voldoende) 45%, var(--border));
+  color: var(--text);
+}
+.result.err {
+  background: color-mix(in srgb, var(--tekort) 10%, var(--card));
+  border-color: color-mix(in srgb, var(--tekort) 45%, var(--border));
+  color: var(--text);
+}
 
 .hidden { display: none !important; }
 
