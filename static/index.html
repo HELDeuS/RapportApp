@@ -147,7 +147,32 @@
 <section id="tab-klassen" class="panel">
   <p class="hint">Beheer de bouwstenen van boven naar beneden: crebos en startcohorten, daaronder leertrajecten (met crebo en startcohort) en tot slot klassen. Een klas erft de crebo en het startcohort van zijn leertraject.</p>
 
-  <h3 class="block-title">Crebos</h3>
+  <p class="hint">Klassen staan bovenaan (dagelijks gebruik). Een klas erft de crebo en het startcohort van zijn leertraject; die beheer je via de snelkoppelingen hieronder.</p>
+
+  <nav class="quicknav">
+    <a href="#blok-klassen">Klassen</a>
+    <a href="#blok-crebos">Crebos</a>
+    <a href="#blok-cohorten">Startcohorten</a>
+    <a href="#blok-leertrajecten">Leertrajecten</a>
+  </nav>
+
+  <h3 class="block-title" id="blok-klassen">Klassen</h3>
+  <div class="toolbar addbar admin-only">
+    <label>Nieuwe klas
+      <input id="class-name" placeholder="Bijv. IAO4A">
+    </label>
+    <label>Leertraject
+      <select id="class-leertraject"><option value="">Geen leertraject</option></select>
+    </label>
+    <button id="btn-add-class">Klas toevoegen</button>
+    <input id="class-search" class="push-right" placeholder="&#9906; Zoek klas...">
+  </div>
+  <table class="list sortable" id="classes-table">
+    <thead><tr><th data-key="name">Klas</th><th data-key="crebo">Crebo</th><th data-key="cohort">Startcohort</th><th data-key="leertraject">Leertraject</th><th data-key="mentor">Mentor</th><th></th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <div class="pager" data-table="classes-table"></div>
+  <h3 class="block-title" id="blok-crebos">Crebos</h3>
   <div class="toolbar addbar admin-only">
     <label>Nieuw crebo
       <input id="crebo-name" placeholder="Bijv. niveau 4">
@@ -161,7 +186,7 @@
   </table>
   <div class="pager" data-table="crebos-table"></div>
 
-  <h3 class="block-title">Startcohorten</h3>
+  <h3 class="block-title" id="blok-cohorten">Startcohorten</h3>
   <div class="toolbar addbar admin-only">
     <label>Nieuw cohort
       <input id="cohort-name" placeholder="Bijv. 25-26">
@@ -175,7 +200,7 @@
   </table>
   <div class="pager" data-table="cohorts-table"></div>
 
-  <h3 class="block-title">Leertrajecten</h3>
+  <h3 class="block-title" id="blok-leertrajecten">Leertrajecten</h3>
   <div class="toolbar addbar admin-only">
     <label>Naam
       <input id="lt-name" placeholder="Bijv. ICT 2-jarig 25-26">
@@ -195,22 +220,6 @@
   </table>
   <div class="pager" data-table="leertrajecten-table"></div>
 
-  <h3 class="block-title">Klassen</h3>
-  <div class="toolbar addbar admin-only">
-    <label>Nieuwe klas
-      <input id="class-name" placeholder="Bijv. IAO4A">
-    </label>
-    <label>Leertraject
-      <select id="class-leertraject"><option value="">Geen leertraject</option></select>
-    </label>
-    <button id="btn-add-class">Klas toevoegen</button>
-    <input id="class-search" class="push-right" placeholder="&#9906; Zoek klas...">
-  </div>
-  <table class="list sortable" id="classes-table">
-    <thead><tr><th data-key="name">Klas</th><th data-key="crebo">Crebo</th><th data-key="cohort">Startcohort</th><th data-key="leertraject">Leertraject</th><th data-key="mentor">Mentor</th><th></th><th></th></tr></thead>
-    <tbody></tbody>
-  </table>
-  <div class="pager" data-table="classes-table"></div>
 </section>
 
 <!-- Vakken -->

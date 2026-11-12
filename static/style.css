@@ -437,8 +437,22 @@ td.tekort-2, td.tekort-3, td.tekort-4, td.tekort-5 { color: var(--tekort); font-
 .block-title {
   margin: 22px 0 8px;
   font-size: 1.05rem;
+  scroll-margin-top: 12px;
 }
 #tab-klassen .block-title:first-of-type { margin-top: 0; }
+
+.quicknav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.quicknav a {
+  padding: 4px 12px;
+  border-radius: 14px;
+  background: var(--th-bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  text-decoration: none;
+  font-size: .85rem;
+}
+.quicknav a:hover { background: var(--accent); color: #fff; }
+html { scroll-behavior: smooth; }
 
 .muted { color: var(--subtext); }
 
