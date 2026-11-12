@@ -3110,7 +3110,8 @@ function renderMeetingDetail() {
       <thead><tr>
         <th data-key="student">Student</th><th data-key="student_number">Nr.</th>
         <th data-key="reason">Reden</th><th data-key="tekorten">Tekorten</th>
-        <th data-key="present">Aanwezigheid</th><th data-key="sbu">SBU</th>
+        <th data-key="present">Aanwezigheid</th><th data-key="absent_allowed">Geoorl. afw.</th>
+        <th data-key="absent_unallowed">Ongeoorl. afw.</th><th data-key="sbu">SBU</th>
         <th data-key="conclusion">Conclusie</th><th data-key="followup">Vervolgactie</th><th></th>
       </tr></thead>
       <tbody>${d.items.map((i) => meetingItemRow(i, mayManage)).join("")}</tbody>
@@ -3145,6 +3146,8 @@ function meetingItemRow(i, mayManage) {
     <td><input data-field="reason" value="${esc(i.reason)}" style="width:180px"${dis}></td>
     <td class="${i.tekorten >= 3 ? "val-onv" : ""}">${i.tekorten}</td>
     <td class="${i.present !== null && i.present < 85 ? "val-onv" : ""}">${i.present !== null ? i.present + "%" : ""}</td>
+    <td class="${i.absent_allowed !== null && i.absent_allowed > 0 ? "val-geel" : ""}">${i.absent_allowed !== null ? i.absent_allowed + "%" : ""}</td>
+    <td class="${i.absent_unallowed !== null && i.absent_unallowed > 0 ? "val-onv" : ""}">${i.absent_unallowed !== null ? i.absent_unallowed + "%" : ""}</td>
     <td class="${i.sbu < i.sbu_doel ? "val-onv" : "val-vol"}">${i.sbu} / ${i.sbu_doel}</td>
     <td><textarea data-field="conclusion" rows="2" style="width:220px"${dis}>${esc(i.conclusion)}</textarea></td>
     <td><textarea data-field="followup" rows="2" style="width:220px"${dis}>${esc(i.followup)}</textarea></td>
@@ -3257,6 +3260,8 @@ function renderBeamer() {
           <div class="beamer-stats">
             <div class="${i.tekorten >= 3 ? "beamer-stat val-onv" : "beamer-stat"}"><small>Tekorten</small><strong>${i.tekorten}</strong></div>
             <div class="${i.present !== null && i.present < 85 ? "beamer-stat val-onv" : "beamer-stat"}"><small>Aanwezigheid</small><strong>${i.present !== null ? i.present + "%" : "&mdash;"}</strong></div>
+            <div class="${i.absent_allowed !== null && i.absent_allowed > 0 ? "beamer-stat val-geel" : "beamer-stat"}"><small>Geoorloofd afwezig</small><strong>${i.absent_allowed !== null ? i.absent_allowed + "%" : "&mdash;"}</strong></div>
+            <div class="${i.absent_unallowed !== null && i.absent_unallowed > 0 ? "beamer-stat val-onv" : "beamer-stat"}"><small>Ongeoorloofd afwezig</small><strong>${i.absent_unallowed !== null ? i.absent_unallowed + "%" : "&mdash;"}</strong></div>
             <div class="${i.sbu < i.sbu_doel ? "beamer-stat val-onv" : "beamer-stat val-vol"}"><small>SBU keuzedelen</small><strong>${i.sbu} / ${i.sbu_doel}</strong></div>
           </div>
         </div>
@@ -3360,7 +3365,7 @@ function printMeetingReport() {
                 <td class="${g.tekorten > 0 ? "val-onv" : ""}">${g.tekorten}</td></tr>`).join("")}</tbody>
           </table>
         </div>
-        <div class="report-section"><p><strong>Aanwezigheid:</strong> ${i.present !== null ? i.present + "%" : "&mdash;"} &nbsp; <strong>SBU keuzedelen:</strong> ${i.sbu} / ${i.sbu_doel}</p></div>
+        <div class="report-section"><p><strong>Aanwezigheid:</strong> ${i.present !== null ? i.present + "%" : "&mdash;"} &nbsp; <strong>Geoorloofd afwezig:</strong> ${i.absent_allowed !== null ? i.absent_allowed + "%" : "&mdash;"} &nbsp; <strong>Ongeoorloofd afwezig:</strong> ${i.absent_unallowed !== null ? i.absent_unallowed + "%" : "&mdash;"} &nbsp; <strong>SBU keuzedelen:</strong> ${i.sbu} / ${i.sbu_doel}</p></div>
         ${i.conclusion ? `<div class="report-section"><p><strong>Conclusie:</strong> ${esc(i.conclusion)}</p></div>` : ""}
         ${i.followup ? `<div class="report-section"><p><strong>Vervolgactie:</strong> ${esc(i.followup)}</p></div>` : ""}
       </div>`).join("") : `<p>Geen studenten besproken.</p>`}

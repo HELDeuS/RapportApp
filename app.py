@@ -3003,10 +3003,10 @@ def meeting_student_signals(db, class_id, period_id, include_sbu=True):
         tekorten[r["student_id"]] = r["t"] or 0
     att = {}
     for r in db.execute(
-        f"SELECT student_id, present FROM attendance "
-        f"WHERE period_id = ? AND student_id IN ({ph})",
+        f"SELECT student_id, present, absent_allowed, absent_unallowed "
+        f"FROM attendance WHERE period_id = ? AND student_id IN ({ph})",
         [period_id, *ids]).fetchall():
-        att[r["student_id"]] = r["present"]
+        att[r["student_id"]] = r
     sbu = {}
     for r in db.execute(
         f"""SELECT k.student_id, SUM(s.sbu) AS t FROM student_keuzedelen k
@@ -3017,7 +3017,8 @@ def meeting_student_signals(db, class_id, period_id, include_sbu=True):
     result = {}
     for sid in ids:
         doel = sbu_doel_for_student(db, sid)
-        present = att.get(sid)
+        att_row = att.get(sid)
+        present = att_row["present"] if att_row else None
         t = tekorten.get(sid, 0)
         reasons = []
         if t >= 3:
@@ -3029,6 +3030,10 @@ def meeting_student_signals(db, class_id, period_id, include_sbu=True):
         result[sid] = {
             "tekorten": t,
             "present": round(present, 1) if present is not None else None,
+            "absent_allowed": round(att_row["absent_allowed"], 1)
+            if att_row and att_row["absent_allowed"] is not None else None,
+            "absent_unallowed": round(att_row["absent_unallowed"], 1)
+            if att_row and att_row["absent_unallowed"] is not None else None,
             "sbu": int(sbu.get(sid, 0)),
             "sbu_doel": doel,
             "reasons": reasons,
@@ -3217,6 +3222,8 @@ def meetings_detail(meeting_id):
             "followup": it["followup"],
             "tekorten": sig["tekorten"],
             "present": sig["present"],
+            "absent_allowed": sig["absent_allowed"],
+            "absent_unallowed": sig["absent_unallowed"],
             "sbu": sig["sbu"],
             "sbu_doel": sig["sbu_doel"],
             "signals": sig["reasons"],
