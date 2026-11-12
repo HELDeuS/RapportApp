@@ -468,13 +468,13 @@ html { scroll-behavior: smooth; }
   font-size: .85rem;
   color: var(--subtext);
 }
-.addbar > input,
-.addbar label > input,
-.addbar label > select {
+.addbar > input {
   width: 220px;
   flex: 0 1 220px;
   max-width: 220px;
 }
+.addbar label > input,
+.addbar label > select { width: 220px; }
 .addbar > input.push-right { margin-left: auto; }
 
 /* Keuzedelen */
