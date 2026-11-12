@@ -460,7 +460,7 @@
       <input type="date" id="meeting-date">
     </label>
     <label class="checkbox-label" title="SBU-tekort bij keuzedelen is vooral aan het einde van de opleiding relevant; vink uit voor eerstejaars">
-      <input type="checkbox" id="meeting-include-sbu" checked>
+      <input type="checkbox" id="meeting-include-sbu">
       SBU-tekort meetellen
     </label>
     <button id="btn-meeting-new" class="primary">Nieuwe vergadering</button>
@@ -542,6 +542,14 @@
     </label>
     <img id="settings-logo-preview" class="settings-logo-preview hidden" alt="Logo preview">
     <button id="btn-remove-logo" class="secondary hidden">Logo verwijderen</button>
+  </div>
+  <div class="toolbar addbar">
+    <label>Tekortendrempel signaalfunctie
+      <input id="settings-tekortendrempel" type="number" min="1" max="50" step="1" placeholder="3">
+    </label>
+    <label>Aanwezigheidsgrens signaalfunctie (%)
+      <input id="settings-aanwezigheidsgrens" type="number" min="0" max="100" step="0.5" placeholder="85">
+    </label>
   </div>
   <div class="toolbar addbar">
     <button id="btn-save-settings" class="push-right">Instellingen opslaan</button>

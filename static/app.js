@@ -2426,8 +2426,8 @@ function renderStatReport(report, data) {
         <tbody>${data.report_rows.map((r) => `
           <tr>
             <td>${esc(r.student)}</td><td>${esc(r.student_number || "")}</td><td>${esc(r.class)}</td>
-            <td class="${r.tekorten >= 3 ? "val-onv" : ""}">${r.tekorten}</td>
-            <td class="${r.present !== null && r.present < 85 ? "val-onv" : ""}">${pct(r.present)}</td>
+            <td class="${r.tekorten >= (data.thresholds ? data.thresholds.tekortendrempel : 3) ? "val-onv" : ""}">${r.tekorten}</td>
+            <td class="${r.present !== null && r.present < (data.thresholds ? data.thresholds.aanwezigheidsgrens : 85) ? "val-onv" : ""}">${pct(r.present)}</td>
             <td class="${r.sbu < (r.sbu_doel || 720) ? "val-onv" : "val-vol"}">${r.sbu} / ${r.sbu_doel || 720}</td>
             <td>${r.reasons.map((x) => esc(x)).join(", ")}</td>
           </tr>`).join("")}</tbody>
@@ -2841,6 +2841,7 @@ function renderStatOverview() {
   if (!data) return;
   const pct = (n) => n === null || n === undefined ? "" : `${n}%`;
   const avg = (n) => n === null || n === undefined ? "" : String(n).replace(".", ",");
+  const th = data.thresholds || { tekortendrempel: 3, aanwezigheidsgrens: 85 };
   const subjects = pageSlice("#stat-subjects-table", statSortRows("stat-subjects-table", data.subjects));
   const signals = pageSlice("#stat-signals-table", statSortRows("stat-signals-table", data.signals));
   const classes = pageSlice("#stat-classes-table", statSortRows("stat-classes-table", data.classes));
@@ -2874,7 +2875,7 @@ function renderStatOverview() {
           <td class="${c.tekorten > 0 ? "val-onv" : ""}">${c.tekorten > 0 ? `<a href="#" class="stat-drill" data-drill="onvoldoendes" data-class="${c.class_id}" title="Toon de tekorten en onvoldoendes in deze klas">${c.tekorten}</a>` : c.tekorten}</td>
           <td>${String(c.tekort_per_student).replace(".", ",")}</td>
           <td>${c.vol_pct === null ? "" : c.vol_pct + "%"}</td>
-          <td class="${c.attendance_avg !== null && c.attendance_avg < 85 ? "val-onv" : "val-vol"}">${pct(c.attendance_avg)}</td>
+          <td class="${c.attendance_avg !== null && c.attendance_avg < th.aanwezigheidsgrens ? "val-onv" : "val-vol"}">${pct(c.attendance_avg)}</td>
           <td class="${c.attendance_low > 0 ? "val-onv" : ""}">${c.attendance_low > 0 ? `<a href="#" class="stat-drill" data-drill="aanwezigheid" data-class="${c.class_id}" title="Toon deze studenten">${c.attendance_low}</a>` : c.attendance_low}</td>
         </tr>`).join("")}</tbody>
     </table><div class="pager" data-table="stat-classes-table"></div>${classChart}`;
@@ -2886,8 +2887,8 @@ function renderStatOverview() {
       <tbody>${signals.map((s) => `
         <tr>
           <td>${esc(s.student)}</td><td>${esc(s.student_number || "")}</td><td>${esc(s.class)}</td>
-          <td class="${s.tekorten >= 3 ? "val-onv" : ""}">${s.tekorten}</td>
-          <td class="${s.present !== null && s.present < 85 ? "val-onv" : ""}">${pct(s.present)}</td>
+          <td class="${s.tekorten >= th.tekortendrempel ? "val-onv" : ""}">${s.tekorten}</td>
+          <td class="${s.present !== null && s.present < th.aanwezigheidsgrens ? "val-onv" : ""}">${pct(s.present)}</td>
           <td class="${s.sbu < (s.sbu_doel || 720) ? "val-onv" : "val-vol"}">${s.sbu} / ${s.sbu_doel || 720}</td>
           <td>${s.reasons.map((r) => esc(r)).join(", ")}</td>
         </tr>`).join("")}</tbody>
@@ -3141,11 +3142,12 @@ function renderMeetingDetail() {
 
 function meetingItemRow(i, mayManage) {
   const dis = mayManage ? "" : " disabled";
+  const th = (meetingDetail && meetingDetail.thresholds) || { tekortendrempel: 3, aanwezigheidsgrens: 85 };
   return `<tr data-sid="${i.student_id}">
     <td>${esc(i.student)}</td><td>${esc(i.student_number || "")}</td>
     <td><input data-field="reason" value="${esc(i.reason)}" style="width:180px"${dis}></td>
-    <td class="${i.tekorten >= 3 ? "val-onv" : ""}">${i.tekorten}</td>
-    <td class="${i.present !== null && i.present < 85 ? "val-onv" : ""}">${i.present !== null ? i.present + "%" : ""}</td>
+    <td class="${i.tekorten >= th.tekortendrempel ? "val-onv" : ""}">${i.tekorten}</td>
+    <td class="${i.present !== null && i.present < th.aanwezigheidsgrens ? "val-onv" : ""}">${i.present !== null ? i.present + "%" : ""}</td>
     <td class="${i.absent_allowed !== null && i.absent_allowed > 0 ? "val-geel" : ""}">${i.absent_allowed !== null ? i.absent_allowed + "%" : ""}</td>
     <td class="${i.absent_unallowed !== null && i.absent_unallowed > 0 ? "val-onv" : ""}">${i.absent_unallowed !== null ? i.absent_unallowed + "%" : ""}</td>
     <td class="${i.sbu < i.sbu_doel ? "val-onv" : "val-vol"}">${i.sbu} / ${i.sbu_doel}</td>
@@ -3232,6 +3234,7 @@ function renderBeamer() {
   const i = beamerItem();
   const m = d.meeting;
   const prev = i.previous;
+  const th = d.thresholds || { tekortendrempel: 3, aanwezigheidsgrens: 85 };
   $("#beamer-overlay").innerHTML = `
     <div class="beamer-box">
       <div class="beamer-head">
@@ -3258,8 +3261,8 @@ function renderBeamer() {
               </tr>`).join("")}</tbody>
           </table>
           <div class="beamer-stats">
-            <div class="${i.tekorten >= 3 ? "beamer-stat val-onv" : "beamer-stat"}"><small>Tekorten</small><strong>${i.tekorten}</strong></div>
-            <div class="${i.present !== null && i.present < 85 ? "beamer-stat val-onv" : "beamer-stat"}"><small>Aanwezigheid</small><strong>${i.present !== null ? i.present + "%" : "&mdash;"}</strong></div>
+            <div class="${i.tekorten >= th.tekortendrempel ? "beamer-stat val-onv" : "beamer-stat"}"><small>Tekorten</small><strong>${i.tekorten}</strong></div>
+            <div class="${i.present !== null && i.present < th.aanwezigheidsgrens ? "beamer-stat val-onv" : "beamer-stat"}"><small>Aanwezigheid</small><strong>${i.present !== null ? i.present + "%" : "&mdash;"}</strong></div>
             <div class="${i.absent_allowed !== null && i.absent_allowed > 0 ? "beamer-stat val-geel" : "beamer-stat"}"><small>Geoorloofd afwezig</small><strong>${i.absent_allowed !== null ? i.absent_allowed + "%" : "&mdash;"}</strong></div>
             <div class="${i.absent_unallowed !== null && i.absent_unallowed > 0 ? "beamer-stat val-onv" : "beamer-stat"}"><small>Ongeoorloofd afwezig</small><strong>${i.absent_unallowed !== null ? i.absent_unallowed + "%" : "&mdash;"}</strong></div>
             <div class="${i.sbu < i.sbu_doel ? "beamer-stat val-onv" : "beamer-stat val-vol"}"><small>SBU keuzedelen</small><strong>${i.sbu} / ${i.sbu_doel}</strong></div>
@@ -3733,6 +3736,10 @@ function fmtPct(v) {
 function renderSettingsUi() {
   const nameInput = $("#settings-school-name");
   if (nameInput) nameInput.value = settings.school_name || "";
+  const tInput = $("#settings-tekortendrempel");
+  if (tInput) tInput.value = settings.signal_tekortendrempel ?? 3;
+  const aInput = $("#settings-aanwezigheidsgrens");
+  if (aInput) aInput.value = settings.signal_aanwezigheidsgrens ?? 85;
   const preview = $("#settings-logo-preview");
   if (preview) {
     preview.src = settings.logo || "";
@@ -3750,6 +3757,8 @@ function markSettingsUnsaved() {
 }
 
 $("#settings-school-name").addEventListener("input", markSettingsUnsaved);
+$("#settings-tekortendrempel").addEventListener("input", markSettingsUnsaved);
+$("#settings-aanwezigheidsgrens").addEventListener("input", markSettingsUnsaved);
 
 $("#settings-logo-file").addEventListener("change", (e) => {
   const file = e.target.files[0];
@@ -3784,7 +3793,11 @@ $("#btn-remove-logo").addEventListener("click", () => {
 });
 
 $("#btn-save-settings").addEventListener("click", async () => {
-  const body = { school_name: $("#settings-school-name").value };
+  const body = {
+    school_name: $("#settings-school-name").value,
+    signal_tekortendrempel: +$("#settings-tekortendrempel").value || 3,
+    signal_aanwezigheidsgrens: +$("#settings-aanwezigheidsgrens").value || 85,
+  };
   let logoMeegestuurd = false;
   if (pendingLogo !== null) {
     try {

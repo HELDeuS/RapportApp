@@ -773,15 +773,37 @@ def get_setting(db, key, default=""):
     return row["value"] if row else default
 
 
+DEFAULT_TEKORTENDREMPEL = 3
+DEFAULT_AANWEZIGHEIDSGRENS = 85.0
+
+
+def signal_thresholds(db):
+    """Signaaldrempels uit Instellingen: (tekortendrempel, aanwezigheidsgrens)."""
+    try:
+        t = int(get_setting(db, "signal_tekortendrempel",
+                            DEFAULT_TEKORTENDREMPEL))
+    except (TypeError, ValueError):
+        t = DEFAULT_TEKORTENDREMPEL
+    try:
+        a = float(get_setting(db, "signal_aanwezigheidsgrens",
+                              DEFAULT_AANWEZIGHEIDSGRENS))
+    except (TypeError, ValueError):
+        a = DEFAULT_AANWEZIGHEIDSGRENS
+    return t, a
+
+
 @app.route("/api/settings")
 def settings_get():
     user, err = auth_error()
     db = get_db()
     if err:
         return jsonify({"school_name": get_setting(db, "school_name")})
+    t, a = signal_thresholds(db)
     return jsonify({
         "school_name": get_setting(db, "school_name"),
         "logo": get_setting(db, "logo"),
+        "signal_tekortendrempel": t,
+        "signal_aanwezigheidsgrens": a,
     })
 
 
@@ -793,6 +815,22 @@ def settings_put():
     data = request.get_json(silent=True) or {}
     db = get_db()
     updates = {}
+    if "signal_tekortendrempel" in data:
+        try:
+            t = int(data["signal_tekortendrempel"])
+        except (TypeError, ValueError):
+            return jsonify({"error": "Tekortendrempel moet een geheel getal zijn"}), 400
+        if not (1 <= t <= 50):
+            return jsonify({"error": "Tekortendrempel moet tussen 1 en 50 liggen"}), 400
+        updates["signal_tekortendrempel"] = str(t)
+    if "signal_aanwezigheidsgrens" in data:
+        try:
+            a = float(data["signal_aanwezigheidsgrens"])
+        except (TypeError, ValueError):
+            return jsonify({"error": "Aanwezigheidsgrens moet een getal zijn"}), 400
+        if not (0 <= a <= 100):
+            return jsonify({"error": "Aanwezigheidsgrens moet tussen 0 en 100 liggen"}), 400
+        updates["signal_aanwezigheidsgrens"] = str(a)
     if "school_name" in data:
         name = str(data["school_name"] or "").strip()
         if len(name) > 120:
@@ -814,9 +852,12 @@ def settings_put():
     db.commit()
     audit(db, user, "wijzigen", "instellingen", None,
           ", ".join(sorted(updates)))
+    t, a = signal_thresholds(db)
     return jsonify({
         "school_name": get_setting(db, "school_name"),
         "logo": get_setting(db, "logo"),
+        "signal_tekortendrempel": t,
+        "signal_aanwezigheidsgrens": a,
     })
 
 
@@ -2496,6 +2537,7 @@ def statistics():
     class_id = request.args.get("class_id", type=int)
     cohort_id = request.args.get("cohort_id", type=int)
     db = get_db()
+    drempel_tekorten, drempel_aanwezig = signal_thresholds(db)
     year_period_ids = None
     if all_periods and year:
         year_period_ids = [r["id"] for r in db.execute(
@@ -2694,10 +2736,10 @@ def statistics():
             "attendance_avg": round(sum(atts) / len(atts), 1) if atts else None,
             "attendance_low": sum(1 for g in gids if g in attendance
                                   and attendance[g]["present"] is not None
-                                  and attendance[g]["present"] < 85),
+                                  and attendance[g]["present"] < drempel_aanwezig),
         })
 
-    # Signalering: >=3 tekorten in de module, aanwezigheid < 85%, SBU-tekort.
+    # Signalering: tekortendrempel en aanwezigheidsgrens uit Instellingen.
     signals = []
     for s in students:
         st_tekorten = sum(tekorten_for_value(v)
@@ -2708,9 +2750,9 @@ def statistics():
         sbu_total = sbu.get(s["id"], 0)
         doel = sbu_doel_for_student(db, s["id"])
         reasons = []
-        if st_tekorten >= 3:
+        if st_tekorten >= drempel_tekorten:
             reasons.append(f"{st_tekorten} tekorten")
-        if present is not None and present < 85:
+        if present is not None and present < drempel_aanwezig:
             reasons.append(f"aanwezigheid {present}%")
         if sbu_total < doel:
             reasons.append(f"SBU {int(sbu_total)}/{doel}")
@@ -2778,7 +2820,9 @@ def statistics():
                         "report_rows": rows})
     if report == "signalering":
         return jsonify({"period": period_dict(),
-                        "report_rows": signals})
+                        "report_rows": signals,
+                        "thresholds": {"tekortendrempel": drempel_tekorten,
+                                       "aanwezigheidsgrens": drempel_aanwezig}})
     if report == "resultaten":
         period_lts_map = {}
         for r in db.execute(
@@ -2851,7 +2895,7 @@ def statistics():
         rows = []
         for s in students:
             att = attendance.get(s["id"])
-            if att is None or att["present"] is None or att["present"] >= 85:
+            if att is None or att["present"] is None or att["present"] >= drempel_aanwezig:
                 continue
             rows.append({
                 "student": s["name"], "student_number": s["student_number"],
@@ -2915,6 +2959,8 @@ def statistics():
         "subjects": subject_stats,
         "classes": class_stats,
         "signals": signals,
+        "thresholds": {"tekortendrempel": drempel_tekorten,
+                       "aanwezigheidsgrens": drempel_aanwezig},
     })
 
 
@@ -3014,6 +3060,7 @@ def meeting_student_signals(db, class_id, period_id, include_sbu=True):
             WHERE k.student_id IN ({ph}) GROUP BY k.student_id""",
         ids).fetchall():
         sbu[r["student_id"]] = r["t"] or 0
+    drempel_tekorten, drempel_aanwezig = signal_thresholds(db)
     result = {}
     for sid in ids:
         doel = sbu_doel_for_student(db, sid)
@@ -3021,9 +3068,9 @@ def meeting_student_signals(db, class_id, period_id, include_sbu=True):
         present = att_row["present"] if att_row else None
         t = tekorten.get(sid, 0)
         reasons = []
-        if t >= 3:
+        if t >= drempel_tekorten:
             reasons.append(f"{t} tekorten")
-        if present is not None and present < 85:
+        if present is not None and present < drempel_aanwezig:
             reasons.append(f"aanwezigheid {round(present, 1)}%")
         if include_sbu and sbu.get(sid, 0) < doel:
             reasons.append(f"SBU {int(sbu.get(sid, 0))}/{doel}")
@@ -3131,7 +3178,7 @@ def meetings_create():
     if user["role"] == "mentor" and (not mentor_ids or class_id not in mentor_ids):
         return jsonify({"error": "Deze klas is niet van jou"}), 403
     meeting_date = (data.get("meeting_date") or "").strip()
-    include_sbu = 1 if data.get("include_sbu", True) else 0
+    include_sbu = 1 if data.get("include_sbu", False) else 0
     if meeting_date:
         db.execute(
             "INSERT INTO meetings (class_id, period_id, meeting_date, include_sbu, created_by) "
@@ -3240,8 +3287,11 @@ def meetings_detail(meeting_id):
         })
     meeting_dict = dict(meeting)
     meeting_dict.pop("created_by", None)
+    t, a = signal_thresholds(db)
     return jsonify({"meeting": meeting_dict, "items": result_items,
-                    "signals": signals})
+                    "signals": signals,
+                    "thresholds": {"tekortendrempel": t,
+                                   "aanwezigheidsgrens": a}})
 
 
 @app.route("/api/meetings/<int:meeting_id>", methods=["PUT"])
