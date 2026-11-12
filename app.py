@@ -195,6 +195,24 @@ CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS meetings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    class_id INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+    period_id INTEGER NOT NULL REFERENCES periods(id) ON DELETE CASCADE,
+    meeting_date TEXT NOT NULL DEFAULT (date('now', 'localtime')),
+    status TEXT NOT NULL DEFAULT 'open',
+    created_by INTEGER,
+    created_at TEXT DEFAULT (datetime('now', 'localtime'))
+);
+CREATE TABLE IF NOT EXISTS meeting_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    meeting_id INTEGER NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+    student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    reason TEXT DEFAULT '',
+    conclusion TEXT DEFAULT '',
+    followup TEXT DEFAULT '',
+    UNIQUE (meeting_id, student_id)
+);
 """
 
 
@@ -2956,6 +2974,392 @@ def statistics_export():
         as_attachment=True,
         download_name=f"{filename}.xlsx",
     )
+
+
+# ---------------------------------------------------------------------------
+# Rapportvergaderingen (bespreeklijst per klas + module)
+# ---------------------------------------------------------------------------
+
+def meeting_student_signals(db, class_id, period_id):
+    """Per student van een klas de signaleringscijfers voor een module:
+    tekorten, aanwezigheid en SBU-voortgang (zelfde regels als de signalering)."""
+    students = db.execute(
+        "SELECT id FROM students WHERE class_id = ? AND archived = 0",
+        (class_id,)).fetchall()
+    ids = [s["id"] for s in students]
+    if not ids:
+        return {}
+    ph = ",".join("?" for _ in ids)
+    tekorten = {}
+    for r in db.execute(
+        f"SELECT student_id, SUM({_tekorten_sql()}) AS t FROM grades "
+        f"WHERE period_id = ? AND student_id IN ({ph}) GROUP BY student_id",
+        [period_id, *ids]).fetchall():
+        tekorten[r["student_id"]] = r["t"] or 0
+    att = {}
+    for r in db.execute(
+        f"SELECT student_id, present FROM attendance "
+        f"WHERE period_id = ? AND student_id IN ({ph})",
+        [period_id, *ids]).fetchall():
+        att[r["student_id"]] = r["present"]
+    sbu = {}
+    for r in db.execute(
+        f"""SELECT k.student_id, SUM(s.sbu) AS t FROM student_keuzedelen k
+            JOIN subjects s ON s.id = k.subject_id
+            WHERE k.student_id IN ({ph}) GROUP BY k.student_id""",
+        ids).fetchall():
+        sbu[r["student_id"]] = r["t"] or 0
+    result = {}
+    for sid in ids:
+        doel = sbu_doel_for_student(db, sid)
+        present = att.get(sid)
+        t = tekorten.get(sid, 0)
+        reasons = []
+        if t >= 3:
+            reasons.append(f"{t} tekorten")
+        if present is not None and present < 85:
+            reasons.append(f"aanwezigheid {round(present, 1)}%")
+        if sbu.get(sid, 0) < doel:
+            reasons.append(f"SBU {int(sbu.get(sid, 0))}/{doel}")
+        result[sid] = {
+            "tekorten": t,
+            "present": round(present, 1) if present is not None else None,
+            "sbu": int(sbu.get(sid, 0)),
+            "sbu_doel": doel,
+            "reasons": reasons,
+        }
+    return result
+
+
+def _tekorten_sql():
+    """SQL-expressie voor het aantal tekorten van een beoordelingswaarde.
+    Spiegel van tekorten_for_value() voor gebruik in SUM()."""
+    return ("CASE value WHEN 'VS' THEN 0 WHEN 'V' THEN 0 WHEN 'G' THEN 0 "
+            "WHEN 'NV' THEN 1 WHEN 'O' THEN 1 "
+            "WHEN value NOT GLOB '*[0-9]*' THEN 0 "
+            "ELSE MAX(0, 6 - MAX(1, CAST(ROUND(CAST(value AS REAL), 0) AS INTEGER))) "
+            "END")
+
+
+def meeting_row(db, meeting_id):
+    return db.execute(
+        """SELECT m.*, c.name AS class_name, p.name AS period_name,
+                  p.year AS period_year
+           FROM meetings m
+           JOIN classes c ON c.id = m.class_id
+           JOIN periods p ON p.id = m.period_id
+           WHERE m.id = ?""",
+        (meeting_id,)).fetchone()
+
+
+def meeting_access(user, meeting):
+    """True als deze gebruiker de vergadering mag gebruiken (niet alleen lezen)."""
+    if user["role"] in ("beheerder", "docent"):
+        return True
+    if user["role"] == "mentor":
+        ids = mentor_class_ids(user)
+        return meeting["class_id"] in ids if ids else False
+    return False
+
+
+@app.route("/api/meetings")
+def meetings_collection():
+    user, err = auth_error("beheerder", "mentor", "docent", "administratie")
+    if err:
+        return err
+    db = get_db()
+    where, args = "1=1", []
+    if user["role"] == "mentor":
+        ids = mentor_class_ids(user)
+        if not ids:
+            return jsonify([])
+        where = f"m.class_id IN ({','.join('?' for _ in ids)})"
+        args = list(ids)
+    class_id = request.args.get("class_id", type=int)
+    if class_id:
+        where += " AND m.class_id = ?"
+        args.append(class_id)
+    period_id = request.args.get("period_id", type=int)
+    if period_id:
+        where += " AND m.period_id = ?"
+        args.append(period_id)
+    rows = db.execute(
+        f"""SELECT m.id, m.class_id, m.period_id, m.meeting_date, m.status,
+                  m.created_at, c.name AS class_name, p.name AS period_name,
+                  p.year AS period_year,
+                  (SELECT COUNT(*) FROM meeting_items i
+                    WHERE i.meeting_id = m.id) AS items,
+                  (SELECT COUNT(*) FROM meeting_items i
+                    WHERE i.meeting_id = m.id AND i.followup != '') AS followups
+           FROM meetings m
+           JOIN classes c ON c.id = m.class_id
+           JOIN periods p ON p.id = m.period_id
+           WHERE {where}
+           ORDER BY m.meeting_date DESC, m.id DESC""",
+        args).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/meetings", methods=["POST"])
+def meetings_create():
+    user, err = auth_error("beheerder", "mentor", "docent")
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    class_id = data.get("class_id")
+    period_id = data.get("period_id")
+    if not class_id or not period_id:
+        return jsonify({"error": "class_id en period_id zijn verplicht"}), 400
+    db = get_db()
+    cls = db.execute("SELECT * FROM classes WHERE id = ?", (class_id,)).fetchone()
+    if cls is None:
+        return jsonify({"error": "Klas bestaat niet"}), 404
+    period = db.execute("SELECT * FROM periods WHERE id = ?", (period_id,)).fetchone()
+    if period is None:
+        return jsonify({"error": "Module bestaat niet"}), 404
+    mentor_ids = mentor_class_ids(user)
+    if user["role"] == "mentor" and (not mentor_ids or class_id not in mentor_ids):
+        return jsonify({"error": "Deze klas is niet van jou"}), 403
+    meeting_date = (data.get("meeting_date") or "").strip()
+    if meeting_date:
+        db.execute(
+            "INSERT INTO meetings (class_id, period_id, meeting_date, created_by) "
+            "VALUES (?, ?, ?, ?)",
+            (class_id, period_id, meeting_date, user["id"]))
+    else:
+        db.execute(
+            "INSERT INTO meetings (class_id, period_id, created_by) "
+            "VALUES (?, ?, ?)",
+            (class_id, period_id, user["id"]))
+    db.commit()
+    meeting_id = db.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+    signals = meeting_student_signals(db, class_id, period_id)
+    added = 0
+    for sid, sig in signals.items():
+        if sig["reasons"]:
+            db.execute(
+                "INSERT OR IGNORE INTO meeting_items (meeting_id, student_id, reason) "
+                "VALUES (?, ?, ?)",
+                (meeting_id, sid, ", ".join(sig["reasons"])))
+            added += 1
+    db.commit()
+    audit(db, user, "aanmaak", "vergadering", meeting_id,
+          f"{cls['name']} / {period['name']} \u2014 {added} student(en) auto-geselecteerd")
+    return jsonify({"id": meeting_id, "auto_added": added}), 201
+
+
+@app.route("/api/meetings/<int:meeting_id>")
+def meetings_detail(meeting_id):
+    user, err = auth_error("beheerder", "mentor", "docent", "administratie")
+    if err:
+        return err
+    db = get_db()
+    meeting = meeting_row(db, meeting_id)
+    if meeting is None:
+        return jsonify({"error": "Vergadering bestaat niet"}), 404
+    if user["role"] == "mentor":
+        ids = mentor_class_ids(user)
+        if not ids or meeting["class_id"] not in ids:
+            return jsonify({"error": "Deze klas is niet van jou"}), 403
+    signals = meeting_student_signals(db, meeting["class_id"], meeting["period_id"])
+    items = db.execute(
+        """SELECT i.student_id, i.reason, i.conclusion, i.followup,
+                  st.first_name, st.prefix, st.last_name, st.student_number
+           FROM meeting_items i
+           JOIN students st ON st.id = i.student_id
+           WHERE i.meeting_id = ? ORDER BY st.last_name, st.first_name""",
+        (meeting_id,)).fetchall()
+    subj_names = {r["id"]: r["name"] for r in db.execute(
+        "SELECT id, name FROM subjects").fetchall()}
+    notes = {r["student_id"]: r for r in db.execute(
+        "SELECT student_id, comment, teacher_comment FROM notes WHERE period_id = ?",
+        (meeting["period_id"],)).fetchall()}
+    prev = {}
+    for r in db.execute(
+        """SELECT i.student_id, i.conclusion, i.followup, m.meeting_date
+           FROM meeting_items i JOIN meetings m ON m.id = i.meeting_id
+           WHERE m.class_id = ? AND m.id != ? AND m.id < ?
+             AND (i.conclusion != '' OR i.followup != '')
+           ORDER BY m.id""",
+        (meeting["class_id"], meeting_id, meeting_id)).fetchall():
+        prev[r["student_id"]] = dict(r)
+    result_items = []
+    for it in items:
+        sid = it["student_id"]
+        grades = db.execute(
+            """SELECT subject_id, value FROM grades
+               WHERE student_id = ? AND period_id = ? ORDER BY subject_id""",
+            (sid, meeting["period_id"])).fetchall()
+        keuzedelen = db.execute(
+            """SELECT s.name, s.sbu, k.grade FROM student_keuzedelen k
+               JOIN subjects s ON s.id = k.subject_id
+               WHERE k.student_id = ? ORDER BY s.name""",
+            (sid,)).fetchall()
+        note = notes.get(sid)
+        sig = signals.get(sid, {"tekorten": 0, "present": None,
+                                "sbu": 0, "sbu_doel": 720, "reasons": []})
+        result_items.append({
+            "student_id": sid,
+            "student": " ".join(x for x in [it["first_name"], it["prefix"],
+                                     it["last_name"]] if x),
+            "student_number": it["student_number"],
+            "reason": it["reason"],
+            "conclusion": it["conclusion"],
+            "followup": it["followup"],
+            "tekorten": sig["tekorten"],
+            "present": sig["present"],
+            "sbu": sig["sbu"],
+            "sbu_doel": sig["sbu_doel"],
+            "signals": sig["reasons"],
+            "grades": [{"subject": subj_names.get(g["subject_id"], "?"),
+                        "value": display_value(g["value"]),
+                        "tekorten": tekorten_for_value(g["value"])}
+                       for g in grades],
+            "keuzedelen": [{"name": k["name"], "sbu": k["sbu"] or 0,
+                            "value": display_value(k["grade"]) if k["grade"] else ""}
+                           for k in keuzedelen],
+            "note": note["comment"] if note else "",
+            "teacher_note": note["teacher_comment"] if note else "",
+            "previous": prev.get(sid),
+        })
+    meeting_dict = dict(meeting)
+    meeting_dict.pop("created_by", None)
+    return jsonify({"meeting": meeting_dict, "items": result_items,
+                    "signals": signals})
+
+
+@app.route("/api/meetings/<int:meeting_id>", methods=["PUT"])
+def meetings_update(meeting_id):
+    user, err = auth_error("beheerder", "mentor", "docent")
+    if err:
+        return err
+    db = get_db()
+    meeting = meeting_row(db, meeting_id)
+    if meeting is None:
+        return jsonify({"error": "Vergadering bestaat niet"}), 404
+    if not meeting_access(user, meeting):
+        return jsonify({"error": "Deze vergadering is niet van jou"}), 403
+    data = request.get_json(silent=True) or {}
+    fields, args = [], []
+    if "status" in data:
+        if data["status"] not in ("open", "afgerond"):
+            return jsonify({"error": "Ongeldige status"}), 400
+        fields.append("status = ?")
+        args.append(data["status"])
+    if "meeting_date" in data:
+        fields.append("meeting_date = ?")
+        args.append((data["meeting_date"] or "").strip() or None)
+    if not fields:
+        return jsonify({"error": "Niets te wijzigen"}), 400
+    args.append(meeting_id)
+    db.execute(f"UPDATE meetings SET {', '.join(fields)} WHERE id = ?", args)
+    db.commit()
+    audit(db, user, "wijziging", "vergadering", meeting_id,
+          f"{meeting['class_name']} / {meeting['period_name']} \u2014 "
+          f"Velden: {', '.join(f.split(' = ')[0] for f in fields)}")
+    return jsonify({"ok": True})
+
+
+@app.route("/api/meetings/<int:meeting_id>", methods=["DELETE"])
+def meetings_delete(meeting_id):
+    user, err = auth_error("beheerder", "mentor", "docent")
+    if err:
+        return err
+    db = get_db()
+    meeting = meeting_row(db, meeting_id)
+    if meeting is None:
+        return jsonify({"error": "Vergadering bestaat niet"}), 404
+    if not meeting_access(user, meeting):
+        return jsonify({"error": "Deze vergadering is niet van jou"}), 403
+    db.execute("DELETE FROM meetings WHERE id = ?", (meeting_id,))
+    db.commit()
+    audit(db, user, "verwijdering", "vergadering", meeting_id,
+          f"{meeting['class_name']} / {meeting['period_name']}")
+    return jsonify({"ok": True})
+
+
+@app.route("/api/meetings/<int:meeting_id>/items", methods=["POST"])
+def meeting_items_add(meeting_id):
+    user, err = auth_error("beheerder", "mentor", "docent")
+    if err:
+        return err
+    db = get_db()
+    meeting = meeting_row(db, meeting_id)
+    if meeting is None:
+        return jsonify({"error": "Vergadering bestaat niet"}), 404
+    if not meeting_access(user, meeting):
+        return jsonify({"error": "Deze vergadering is niet van jou"}), 403
+    data = request.get_json(silent=True) or {}
+    student_id = data.get("student_id")
+    if not student_id:
+        return jsonify({"error": "student_id is verplicht"}), 400
+    student = db.execute(
+        "SELECT * FROM students WHERE id = ? AND archived = 0",
+        (student_id,)).fetchone()
+    if student is None or student["class_id"] != meeting["class_id"]:
+        return jsonify({"error": "Student zit niet in de klas van deze vergadering"}), 400
+    reason = (data.get("reason") or "").strip()
+    db.execute(
+        "INSERT OR IGNORE INTO meeting_items (meeting_id, student_id, reason) "
+        "VALUES (?, ?, ?)", (meeting_id, student_id, reason))
+    db.commit()
+    audit(db, user, "toevoeging", "vergadering", meeting_id,
+          f"student {student['student_number'] or student_id} toegevoegd aan "
+          f"{meeting['class_name']} / {meeting['period_name']}")
+    return jsonify({"ok": True}), 201
+
+
+@app.route("/api/meetings/<int:meeting_id>/items/<int:student_id>", methods=["PUT"])
+def meeting_items_update(meeting_id, student_id):
+    user, err = auth_error("beheerder", "mentor", "docent")
+    if err:
+        return err
+    db = get_db()
+    meeting = meeting_row(db, meeting_id)
+    if meeting is None:
+        return jsonify({"error": "Vergadering bestaat niet"}), 404
+    if not meeting_access(user, meeting):
+        return jsonify({"error": "Deze vergadering is niet van jou"}), 403
+    data = request.get_json(silent=True) or {}
+    fields, args, names = [], [], []
+    for key in ("reason", "conclusion", "followup"):
+        if key in data:
+            fields.append(f"{key} = ?")
+            args.append((data[key] or "").strip())
+            names.append(key)
+    if not fields:
+        return jsonify({"error": "Niets te wijzigen"}), 400
+    args += [meeting_id, student_id]
+    db.execute(
+        f"UPDATE meeting_items SET {', '.join(fields)} "
+        "WHERE meeting_id = ? AND student_id = ?", args)
+    db.commit()
+    audit(db, user, "wijziging", "vergadering", meeting_id,
+          f"bespreking van student {student_id} bijgewerkt "
+          f"({meeting['class_name']} / {meeting['period_name']}) \u2014 "
+          f"Velden: {', '.join(names)}")
+    return jsonify({"ok": True})
+
+
+@app.route("/api/meetings/<int:meeting_id>/items/<int:student_id>", methods=["DELETE"])
+def meeting_items_delete(meeting_id, student_id):
+    user, err = auth_error("beheerder", "mentor", "docent")
+    if err:
+        return err
+    db = get_db()
+    meeting = meeting_row(db, meeting_id)
+    if meeting is None:
+        return jsonify({"error": "Vergadering bestaat niet"}), 404
+    if not meeting_access(user, meeting):
+        return jsonify({"error": "Deze vergadering is niet van jou"}), 403
+    db.execute(
+        "DELETE FROM meeting_items WHERE meeting_id = ? AND student_id = ?",
+        (meeting_id, student_id))
+    db.commit()
+    audit(db, user, "verwijdering", "vergadering", meeting_id,
+          f"student {student_id} verwijderd uit "
+          f"{meeting['class_name']} / {meeting['period_name']}")
+    return jsonify({"ok": True})
 
 
 @app.route("/api/report")
