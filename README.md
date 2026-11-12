@@ -6,7 +6,7 @@ Webapp voor het bijhouden van rapportcijfers van de opleiding MBO ICT.
 
 ## Functies
 
-- **Studenten, vakken, modules en klassen** beheren (CRUD). Klassen hebben een naam en een leertraject; de **crebo** en het **startcohort** (bijv. 25-26) komen van het leertraject. Crebos en cohorten zijn vaste, beheerde lijsten (dropdowns) die je op het tabblad Klassen onderhoudt. Modules (voorheen periodes) hebben een naam en een studiejaar (bijv. M1, 2025-2026). Niet elk vak hoeft in elke module cijfers te hebben.
+- **Studenten, vakken, modules en klassen** beheren (CRUD). Klassen hebben een naam en een leertraject; de **crebo** en het **startcohort** (bijv. 25-26) komen van het leertraject. Crebos en cohorten zijn vaste, beheerde lijsten (dropdowns) die je op het tabblad Structuur onderhoudt. Modules (voorheen periodes) hebben een naam en een studiejaar (bijv. M1, 2025-2026). Niet elk vak hoeft in elke module cijfers te hebben.
 - **Leertrajecten**: onder een crebo vallen leertrajecten (bijv. een 2-jarig en een 3-jarig traject), met een eigen startcohort. De opbouw is: **traject → module → vak**. Op het tabblad Modules vink je per module aan in welke leertraject(en) hij zit; op het tabblad Vakken koppel je vakken aan modules. Een klas krijgt een leertraject toegewezen en erft daarmee de crebo, het startcohort, de modules en (via de modules) de vakken. Het cijferoverzicht en het rapport tonen dan alleen de modules van het leertraject van de geselecteerde klas, zodat niet elke klas dezelfde modules op hetzelfde moment hoeft te volgen. Leertrajecten kunnen ook gearchiveerd worden.
 - **Gemaakt voor meerdere jaren**: met ~120 studenten per startcohort groeit het aantal studenten snel. Daarom heeft het studenten-tabblad een zoekveld en filters op cohort en klas, zijn de klas-dropdowns gegroepeerd per cohort, en kun je in de cijfermatrix en rapporten vooraf op cohort filteren. Modules zijn gekoppeld aan studiejaren, zodat gegevens van oudere cohorten gescheiden blijven.
 - **Overzicht per klas**: filter de cijfermatrix en het rapport op klas; het rapport toont klas en crebo per student. De vakkolommen in het cijferoverzicht kun je slepen om ze te herschikken (de volgorde wordt per browser bewaard).
@@ -41,7 +41,7 @@ De app vereist inloggen. Bij de eerste start wordt automatisch het account **`be
 | **Administratie** | Alle overzichten en rapporten raadplegen (straks statistieken), geen mutaties |
 | **Student** | Alleen het eigen rapport (studentvariant, zonder opmerking docenten) |
 
-- Elke klas kan een **mentor** gekoppeld krijgen (beheerder, op het tabblad Klassen).
+- Elke klas kan een **mentor** gekoppeld krijgen (beheerder, op het tabblad Structuur).
 - **Studentaccounts** worden beheerd via het vinkje **"Inlog"** op het tabblad Studenten: aanvinken maakt automatisch een account aan (gebruikersnaam = studentnummer, anders `student<id>`; standaardwachtwoord `welkom`), afvinken blokkeert het account. In de gebruikerslijst op het tabblad Gebruikers kun je studentwachtwoorden resetten.
 - Rollen worden server-side afgedwongen op elk API-endpoint; de UI verbergt alleen wat niet mag.
 - **Gebruikers importeren** (beheerder, tabblad Gebruikers): CSV met kolommen `Gebruikersnaam,Wachtwoord,Rol,Voornaam,Achternaam,Email` (kopregel wordt herkend; zonder kopregel: die volgorde). Bestaande gebruikersnamen worden overgeslagen.

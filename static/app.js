@@ -223,7 +223,7 @@ const ROLE_LABELS = {
 };
 
 const ROLE_TABS = {
-  beheerder: ["cijfers", "studenten", "klassen", "vakken", "periodes", "keuzedelen", "statistieken", "rapport", "archief", "gebruikers", "instellingen", "logboek"],
+  beheerder: ["cijfers", "studenten", "structuur", "vakken", "periodes", "keuzedelen", "statistieken", "rapport", "archief", "gebruikers", "instellingen", "logboek"],
   mentor: ["cijfers", "studenten", "keuzedelen", "statistieken", "rapport", "archief", "logboek"],
   docent: ["cijfers", "keuzedelen", "statistieken", "rapport", "logboek"],
   administratie: ["keuzedelen", "statistieken", "rapport", "logboek"],
@@ -259,7 +259,7 @@ function applyRoleUi() {
   if (gradeImport) gradeImport.style.display = maySetGrades() ? "" : "none";
   const studentImport = $("#student-import-ui");
   if (studentImport) studentImport.style.display = isAdmin() ? "" : "none";
-  $$("#tab-klassen .admin-only").forEach((el) => {
+  $$("#tab-structuur .admin-only").forEach((el) => {
     el.style.display = isAdmin() ? "" : "none";
   });
   const kdAddBar = $("#kd-add-bar");
