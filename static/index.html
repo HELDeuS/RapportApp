@@ -490,7 +490,14 @@
 <section id="tab-logboek" class="panel">
   <p class="hint">Overzicht van alle mutaties: wie heeft wat wanneer gewijzigd. Getoond worden de laatste 500 gebeurtenissen. Niet zichtbaar voor studenten.</p>
   <div class="toolbar">
+    <label>Soort:
+      <select id="log-entity-filter"><option value="">Alle soorten</option></select>
+    </label>
+    <label>Gebruiker:
+      <select id="log-user-filter"><option value="">Alle gebruikers</option></select>
+    </label>
     <input id="log-search" placeholder="&#9906; Zoek in logboek..." style="margin-left:auto;">
+    <button id="btn-log-export">Export CSV</button>
   </div>
   <table class="list sortable" id="audit-table">
     <thead><tr><th data-key="ts">Tijd</th><th data-key="username">Gebruiker</th><th data-key="action">Actie</th><th data-key="entity">Soort</th><th data-key="detail">Details</th></tr></thead>

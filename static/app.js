@@ -2739,12 +2739,30 @@ async function renderAuditLog() {
   } catch (err) {
     auditEntries = [];
   }
+  fillLogFilterOptions();
   renderAuditTable();
 }
 
-function renderAuditTable() {
+function fillLogFilterOptions() {
+  const entitySel = $("#log-entity-filter");
+  const userSel = $("#log-user-filter");
+  const entities = [...new Set(auditEntries.map((r) => r.entity).filter(Boolean))].sort();
+  const usernames = [...new Set(auditEntries.map((r) => r.username).filter(Boolean))].sort();
+  const prevEntity = entitySel.value;
+  const prevUser = userSel.value;
+  entitySel.innerHTML = `<option value="">Alle soorten</option>` +
+    entities.map((e) => `<option value="${esc(e)}"${e === prevEntity ? " selected" : ""}>${esc(e)}</option>`).join("");
+  userSel.innerHTML = `<option value="">Alle gebruikers</option>` +
+    usernames.map((u) => `<option value="${esc(u)}"${u === prevUser ? " selected" : ""}>${esc(u)}</option>`).join("");
+}
+
+function auditFilteredRows() {
   const q = ($("#log-search").value || "").trim().toLowerCase();
+  const entity = $("#log-entity-filter").value;
+  const username = $("#log-user-filter").value;
   let rows = auditEntries;
+  if (entity) rows = rows.filter((r) => r.entity === entity);
+  if (username) rows = rows.filter((r) => r.username === username);
   if (q) {
     rows = rows.filter((r) =>
       (r.username || "").toLowerCase().includes(q) ||
@@ -2752,7 +2770,11 @@ function renderAuditTable() {
       (r.entity || "").toLowerCase().includes(q) ||
       (r.detail || "").toLowerCase().includes(q));
   }
-  rows = sortRows(rows, auditSort, (r, key) => key === "ts" ? r[key] : (r[key] || ""));
+  return sortRows(rows, auditSort, (r, key) => key === "ts" ? r[key] : (r[key] || ""));
+}
+
+function renderAuditTable() {
+  const rows = auditFilteredRows();
   updateSortArrows("#audit-table", auditSort);
   $("#audit-table tbody").innerHTML = pageSlice("#audit-table", rows).map((r) => `
     <tr>
@@ -2765,6 +2787,28 @@ function renderAuditTable() {
 }
 
 $("#log-search").addEventListener("input", () => { resetPage("#audit-table"); renderAuditTable(); });
+$("#log-entity-filter").addEventListener("change", () => { resetPage("#audit-table"); renderAuditTable(); });
+$("#log-user-filter").addEventListener("change", () => { resetPage("#audit-table"); renderAuditTable(); });
+
+$("#btn-log-export").addEventListener("click", () => {
+  const rows = auditFilteredRows();
+  if (!rows.length) return alert("Er zijn geen logregels om te exporteren.");
+  const escCsv = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const lines = [
+    ["Tijd", "Gebruiker", "Actie", "Soort", "Details"].map(escCsv).join(";"),
+    ...rows.map((r) => [r.ts, r.username, r.action, r.entity, r.detail].map(escCsv).join(";")),
+  ];
+  const blob = new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  a.download = `logboek-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(a.href);
+});
 $("#audit-table thead").addEventListener("click", (e) => {
   const key = e.target.dataset.key;
   if (key === undefined) return;
