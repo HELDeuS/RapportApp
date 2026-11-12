@@ -467,20 +467,21 @@
 
 <!-- Instellingen -->
 <section id="tab-instellingen" class="panel">
-  <p class="hint">Schoolnaam en schoollogo worden in de kop van elk rapport getoond. Alleen beheerders kunnen deze instellingen wijzigen.</p>
-  <div class="toolbar">
-    <label>Schoolnaam:
+  <p class="hint">Schoolnaam en schoollogo worden in de kop van elk rapport en in de app-titel getoond. Alleen beheerders kunnen deze instellingen wijzigen. Wijzigingen worden pas bewaard nadat je op 'Instellingen opslaan' klikt.</p>
+  <div class="toolbar addbar">
+    <label>Schoolnaam
       <input id="settings-school-name" placeholder="Bijv. MBO ICT-opleiding">
     </label>
-    <button id="btn-save-settings">Opslaan</button>
   </div>
-  <div class="toolbar subtoolbar">
-    <strong>Schoollogo:</strong>
-    <label class="file-label">Kies afbeelding (max. 700 kB)
+  <div class="toolbar addbar">
+    <label>Schoollogo (max. 700 kB)
       <input type="file" id="settings-logo-file" accept="image/*">
     </label>
     <img id="settings-logo-preview" class="settings-logo-preview hidden" alt="Logo preview">
     <button id="btn-remove-logo" class="secondary hidden">Logo verwijderen</button>
+  </div>
+  <div class="toolbar addbar">
+    <button id="btn-save-settings" class="push-right">Instellingen opslaan</button>
   </div>
   <div id="settings-result" class="result hidden"></div>
 </section>

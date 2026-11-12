@@ -2942,6 +2942,14 @@ function renderSettingsUi() {
   pendingLogo = null;
 }
 
+function markSettingsUnsaved() {
+  const result = $("#settings-result");
+  result.textContent = "Wijzigingen nog niet opgeslagen \u2014 klik op 'Instellingen opslaan'.";
+  result.classList.remove("hidden");
+}
+
+$("#settings-school-name").addEventListener("input", markSettingsUnsaved);
+
 $("#settings-logo-file").addEventListener("change", (e) => {
   const file = e.target.files[0];
   e.target.value = "";
@@ -2955,6 +2963,7 @@ $("#settings-logo-file").addEventListener("change", (e) => {
       preview.src = reader.result;
       preview.classList.remove("hidden");
       $("#btn-remove-logo").classList.remove("hidden");
+      markSettingsUnsaved();
     };
     reader.onerror = () => {
       reject(new Error("Logo kon niet worden ingelezen door de browser."));
@@ -2970,6 +2979,7 @@ $("#btn-remove-logo").addEventListener("click", () => {
   preview.src = "";
   preview.classList.add("hidden");
   $("#btn-remove-logo").classList.add("hidden");
+  markSettingsUnsaved();
 });
 
 $("#btn-save-settings").addEventListener("click", async () => {

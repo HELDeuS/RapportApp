@@ -474,7 +474,7 @@ html { scroll-behavior: smooth; }
 }
 .addbar label > input,
 .addbar label > select { width: 220px; }
-.addbar > input.push-right { margin-left: auto; }
+.addbar > .push-right { margin-left: auto; }
 
 .filterbar { padding: 8px 12px; margin-bottom: 10px; }
 .filterbar > input {
