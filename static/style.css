@@ -607,3 +607,15 @@ input.note-open { cursor: pointer; }
 .legend-vol { background: var(--vol); }
 .legend-onv { background: var(--onv); }
 .legend-vs { background: var(--vs); }
+
+/* ---------- Sorteerbare rapporttabellen (statistieken) ---------- */
+.stat-report-sortable thead th { cursor: pointer; user-select: none; }
+.stat-report-sortable thead th:hover { text-decoration: underline; }
+.stat-report-sortable thead th.stat-sorted-asc::after,
+.stat-report-sortable thead th.stat-sorted-desc::after {
+  content: "\25B4";
+  color: var(--accent);
+  font-size: .8em;
+  margin-left: 3px;
+}
+.stat-report-sortable thead th.stat-sorted-asc::after { content: "\25BE"; }

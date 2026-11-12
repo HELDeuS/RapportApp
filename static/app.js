@@ -32,6 +32,7 @@ const listSort = {
   leertrajecten: { key: "name", dir: 1 },
   kdmatrix: { key: "last_name", dir: 1 },
   kdbulk: { key: "last_name", dir: 1 },
+  kdtable: { key: "name", dir: 1 },
   classes: { key: "name", dir: 1 },
   subjects: { key: "name", dir: 1 },
   periods: { key: "year", dir: 1 },
@@ -503,13 +504,20 @@ function classLabel(c) {
 
 function visibleStudents() {
   const classId = $("#grade-class").value;
-  if (classId) return students.filter((s) => String(s.class_id) === classId);
-  const cohortId = $("#grade-cohort").value;
-  if (cohortId) return students.filter((s) => {
-    const c = classes.find((x) => x.id === s.class_id);
-    return c && String(c.cohort_id) === cohortId;
-  });
-  return students;
+  let list = classId ? students.filter((s) => String(s.class_id) === classId) : students;
+  if (!classId) {
+    const cohortId = $("#grade-cohort").value;
+    if (cohortId) list = students.filter((s) => {
+      const c = classes.find((x) => x.id === s.class_id);
+      return c && String(c.cohort_id) === cohortId;
+    });
+  }
+  const q = $("#grade-search") ? $("#grade-search").value.trim().toLowerCase() : "";
+  if (q) {
+    list = list.filter((s) => studentName(s).toLowerCase().includes(q) ||
+      (s.student_number || "").toLowerCase().includes(q));
+  }
+  return list;
 }
 
 function subjectsForPeriod() {
@@ -806,6 +814,7 @@ $("#grade-period").addEventListener("change", async (e) => {
 });
 
 $("#grade-class").addEventListener("change", () => { renderPeriodSelects(); renderGradeTable(); });
+$("#grade-search").addEventListener("input", () => { resetPage("#grade-table"); renderGradeTable(); });
 
 $("#grade-cohort").addEventListener("change", () => {
   renderClassSelects();
@@ -1891,6 +1900,8 @@ $("#kd-matrix-search").addEventListener("input", () => { resetPage("#kd-matrix-t
 
 bindTableSort("#kd-matrix-table", "kdmatrix", renderKdMatrix);
 bindTableSort("#kd-bulk-table", "kdbulk", renderKdBulk);
+bindTableSort("#kd-table", "kdtable", renderKdTable);
+$("#kd-search").addEventListener("input", () => { resetPage("#kd-table"); renderKdTable(); });
 
 // ---------- Keuzedelen bulk-koppeling ----------
 let kdBulkData = null;
@@ -2055,8 +2066,14 @@ function renderKdTable() {
   const typeShort = { cijfer: "1-10", letter: "V/G/O/VS", vnv: "V/NV" };
   const mayManage = isAdmin();
   const kdDis = mayManage ? "" : " disabled";
+  const q = $("#kd-search") ? $("#kd-search").value.trim().toLowerCase() : "";
+  let kdRows = keuzedelenList;
+  if (q) kdRows = kdRows.filter((k) => (k.name || "").toLowerCase().includes(q));
+  kdRows = sortRows(kdRows, listSort.kdtable, (k, key) =>
+    key === "linked" ? (linked.has(k.id) ? "1" : "0") : (k[key] ?? ""));
+  updateSortArrows("#kd-table", listSort.kdtable);
   $("#kd-table tbody").innerHTML = keuzedelenList.length
-    ? keuzedelenList.map((k) => `
+    ? pageSlice("#kd-table", kdRows).map((k) => `
       <tr data-id="${k.id}">
         <td><input data-field="name" value="${esc(k.name)}"${kdDis}></td>
         <td><input data-field="sbu" type="number" min="0" value="${k.sbu || 0}" style="width:80px"${kdDis}></td>
@@ -2071,7 +2088,7 @@ function renderKdTable() {
           : ""}</td>
         <td>${mayManage ? `<button class="secondary" data-archive>Archiveren</button> <button class="danger" data-del>Verwijderen</button>` : ""}</td>
       </tr>`).join("")
-    : `<tr><td colspan="6" class="hint">Nog geen keuzedelen. Voeg ze hierboven toe.</td></tr>`;
+    : `<tr><td colspan="6" class="hint">${q ? "Geen keuzedelen gevonden voor deze zoekopdracht." : "Nog geen keuzedelen. Voeg ze hierboven toe."}</td></tr>`;
   const total = kdStudentData ? kdStudentData.sbu_total : 0;
   const doel = kdStudentData ? kdStudentData.sbu_doel : 720;
   const pct = Math.min(100, Math.round(total / doel * 100));
@@ -2417,6 +2434,7 @@ function renderStatReport(report, data) {
   } else if (report === "resultaten") {
     title = "Alle bewaarde resultaten per student";
     table = data.report_rows.length ? data.report_rows.map((r) => `
+      <div class="stat-result-student" data-search="${esc((r.student + " " + (r.student_number || "") + " " + (r.class || "")).toLowerCase())}">
       <h3>${esc(r.student)}${r.student_number ? ` (nr. ${esc(r.student_number)})` : ""}${r.class ? ` &mdash; ${esc(r.class)}` : ""}</h3>
       ${r.modules.map((m) => `
         <p class="stat-module-head">${esc(m.period_name)}${m.period_year ? ` (${esc(m.period_year)})` : ""}
@@ -2431,7 +2449,7 @@ function renderStatReport(report, data) {
               <td class="${e.tekorten > 0 ? "val-onv" : (e.value === "VS" ? "val-vs" : "val-vol")}">${esc(e.value)}</td>
               <td class="${e.tekorten > 0 ? "val-onv" : ""}">${e.tekorten}</td>
             </tr>`).join("")}</tbody>
-        </table>`).join("")}`).join("")
+        </table>`).join("")}</div>`).join("")
       : `<p class="hint">Geen bewaarde resultaten in deze selectie.</p>`;
   } else if (report === "keuzedelen") {
     title = "Missende keuzedelen (minder SBU gekoppeld dan de Keuzedeel-SBU van het crebo)";
@@ -2486,6 +2504,113 @@ function renderStatReport(report, data) {
     $("#stat-report").value = "";
     showStatistics();
   });
+  if (report !== "resultaten") enhanceStatReportTable();
+  else enhanceStatResultaten();
+}
+
+function enhanceStatResultaten() {
+  const blocks = $$("#stat-output .stat-result-student");
+  if (!blocks.length) return;
+  const bar = document.createElement("div");
+  bar.className = "toolbar filterbar";
+  bar.innerHTML = `<input id="stat-result-search" placeholder="\u2315 Zoek student..." style="margin-left:auto">`;
+  const h2 = $("#stat-output h2");
+  if (h2) h2.after(bar);
+  bar.querySelector("input").addEventListener("input", (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    let visible = 0;
+    for (const b of blocks) {
+      const show = !q || (b.dataset.search || "").includes(q);
+      b.style.display = show ? "" : "none";
+      if (show) visible++;
+    }
+    let empty = $("#stat-output .stat-report-empty");
+    if (!visible) {
+      if (!empty) {
+        empty = document.createElement("p");
+        empty.className = "hint stat-report-empty";
+        empty.textContent = "Geen studenten gevonden voor deze zoekopdracht.";
+        bar.after(empty);
+      }
+    } else if (empty) empty.remove();
+  });
+}
+
+// Generieke sortering, filtering en paginering voor de rapporttabellen:
+// de tabel die net is gerenderd wordt na afloop verbeterd (klikbare
+// kolomkoppen, zoekveld, pager) zonder de rapportinhoud aan te passen.
+const statReportTable = { rows: [], q: "", sortIdx: null, dir: 1 };
+
+function enhanceStatReportTable() {
+  const table = document.querySelector("#stat-output table.list");
+  if (!table || !table.tBodies.length) return;
+  table.id = "stat-report-table";
+  table.classList.add("stat-report-sortable");
+  statReportTable.rows = [...table.tBodies[0].rows];
+  if (!statReportTable.rows.length) return;
+  statReportTable.q = "";
+  statReportTable.sortIdx = null;
+  statReportTable.dir = 1;
+  const bar = document.createElement("div");
+  bar.className = "toolbar filterbar";
+  bar.innerHTML = `<input id="stat-report-search" placeholder="\u2315 Zoeken in dit rapport..." style="margin-left:auto">`;
+  table.before(bar);
+  const pager = document.createElement("div");
+  pager.className = "pager";
+  pager.dataset.table = "stat-report-table";
+  table.after(pager);
+  bar.querySelector("input").addEventListener("input", (e) => {
+    statReportTable.q = e.target.value.trim().toLowerCase();
+    resetPage("#stat-report-table");
+    applyStatReportTable();
+  });
+  table.tHead.addEventListener("click", (e) => {
+    const th = e.target.closest("th");
+    if (!th) return;
+    const idx = [...table.tHead.rows[0].cells].indexOf(th);
+    if (idx < 0) return;
+    if (statReportTable.sortIdx === idx) statReportTable.dir *= -1;
+    else { statReportTable.sortIdx = idx; statReportTable.dir = 1; }
+    applyStatReportTable();
+  });
+  applyStatReportTable();
+}
+
+function applyStatReportTable() {
+  const state = statReportTable;
+  const table = $("#stat-report-table");
+  if (!table) return;
+  let list = state.rows;
+  if (state.q) list = list.filter((r) => r.textContent.toLowerCase().includes(state.q));
+  if (state.sortIdx !== null) {
+    const idx = state.sortIdx, dir = state.dir;
+    const cellVal = (r) => (r.cells[idx] ? r.cells[idx].textContent.trim() : "");
+    const asNum = (t) => { const n = parseFloat(t.replace(",", ".")); return t !== "" && !isNaN(n) ? n : null; };
+    list = [...list].sort((a, b) => {
+      const ta = cellVal(a), tb = cellVal(b);
+      const na = asNum(ta), nb = asNum(tb);
+      if (na !== null && nb !== null) return (na - nb) * dir;
+      return (ta.toLowerCase() < tb.toLowerCase() ? -1 : ta.toLowerCase() > tb.toLowerCase() ? 1 : 0) * dir;
+    });
+  }
+  [...table.tHead.rows[0].cells].forEach((th, i) => {
+    const active = i === state.sortIdx;
+    th.classList.toggle("stat-sorted-asc", active && state.dir === 1);
+    th.classList.toggle("stat-sorted-desc", active && state.dir === -1);
+    th.title = active
+      ? `Gesorteerd op deze kolom (${state.dir === 1 ? "oplopend" : "aflopend"})`
+      : "Sorteren op deze kolom";
+  });
+  const empty = table.parentElement.querySelector(".stat-report-empty");
+  if (empty) empty.remove();
+  const page = pageSlice("#stat-report-table", list);
+  table.tBodies[0].replaceChildren(...page);
+  if (!list.length && state.rows.length) {
+    const p = document.createElement("p");
+    p.className = "hint stat-report-empty";
+    p.textContent = "Geen rijen gevonden voor deze zoekopdracht.";
+    table.parentElement.insertBefore(p, table.nextSibling);
+  }
 }
 
 document.addEventListener("click", async (e) => {
@@ -2717,7 +2842,7 @@ function renderStatOverview() {
   const avg = (n) => n === null || n === undefined ? "" : String(n).replace(".", ",");
   const subjects = pageSlice("#stat-subjects-table", statSortRows("stat-subjects-table", data.subjects));
   const signals = pageSlice("#stat-signals-table", statSortRows("stat-signals-table", data.signals));
-  const classes = statSortRows("stat-classes-table", data.classes);
+  const classes = pageSlice("#stat-classes-table", statSortRows("stat-classes-table", data.classes));
   const vakChart = statVakChart(data.subjects);
   const classChart = statClassChart(data.classes);
   statExportCtx = { filename: "statistiek-overzicht", sheets: statOverviewSheets(data) };
@@ -2751,7 +2876,7 @@ function renderStatOverview() {
           <td class="${c.attendance_avg !== null && c.attendance_avg < 85 ? "val-onv" : "val-vol"}">${pct(c.attendance_avg)}</td>
           <td class="${c.attendance_low > 0 ? "val-onv" : ""}">${c.attendance_low > 0 ? `<a href="#" class="stat-drill" data-drill="aanwezigheid" data-class="${c.class_id}" title="Toon deze studenten">${c.attendance_low}</a>` : c.attendance_low}</td>
         </tr>`).join("")}</tbody>
-    </table>${classChart}`;
+    </table><div class="pager" data-table="stat-classes-table"></div>${classChart}`;
   }
   // Signalering
   html += `<h3>Signalering</h3>` + (data.signals.length ? `

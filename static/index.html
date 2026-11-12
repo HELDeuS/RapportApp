@@ -51,6 +51,7 @@
     <label>Klas:
       <select id="grade-class"><option value="">Alle klassen</option></select>
     </label>
+    <input id="grade-search" placeholder="&#9906; Zoek student...">
     <span id="grade-import-ui">
       <button id="btn-paste-open">Plakken uit Excel</button>
       <label class="file-label">Import (CSV/Excel)
@@ -363,10 +364,14 @@
     <button id="btn-add-kd">Toevoegen</button>
   </div>
   <div id="kd-progress" class="kd-progress"></div>
-  <table class="list" id="kd-table">
-    <thead><tr><th>Keuzedeel</th><th>SBU</th><th>Beoordelingstype</th><th>Gekoppeld</th><th>Beoordeling</th><th></th></tr></thead>
+  <div class="toolbar filterbar">
+    <input id="kd-search" class="push-right" placeholder="&#9906; Zoek keuzedeel...">
+  </div>
+  <table class="list sortable" id="kd-table">
+    <thead><tr><th data-key="name">Keuzedeel</th><th data-key="sbu">SBU</th><th data-key="assessment_type">Beoordelingstype</th><th data-key="linked">Gekoppeld</th><th>Beoordeling</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
+  <div class="pager" data-table="kd-table"></div>
 </section>
 
 <!-- Statistieken -->
