@@ -2474,6 +2474,10 @@ function renderStatReport(report, data) {
   const header = report === "resultaten"
     ? `<h2>${esc(title)}</h2>`
     : `<h2>${esc(title)} — ${esc(periodLabel(data.period))}</h2>`;
+  statExportCtx = {
+    filename: `statistiek-${report === "detail" ? "beoordelingen" : report || "overzicht"}`,
+    sheets: statReportSheets(report, data),
+  };
   $("#stat-output").innerHTML = header + table +
     `<p><a href="#" id="stat-back">&larr; Terug naar het overzicht</a></p>`;
   const back = $("#stat-back");
@@ -2507,7 +2511,161 @@ document.addEventListener("click", async (e) => {
 });
 
 let statData = null;
+let statExportCtx = null;
 const statSort = {};
+
+// ---------- Grafieken (inline SVG) ----------
+function statVakChart(subjects) {
+  const rows = subjects.filter((s) => s.count > 0);
+  if (!rows.length) return "";
+  const max = Math.max(...rows.map((s) => s.vol + s.onv + s.vs), 1);
+  const labelW = 170, barW = 230, rowH = 22;
+  const w = labelW + barW + 48;
+  let bars = "";
+  rows.forEach((s, i) => {
+    const y = i * rowH;
+    let x = labelW;
+    let segs = "";
+    for (const [cls, v] of [["vol", s.vol], ["onv", s.onv], ["vs", s.vs]]) {
+      if (!v) continue;
+      const sw = Math.max((v / max) * barW, v > 0 ? 1 : 0);
+      segs += `<rect x="${x.toFixed(1)}" y="${y + 5}" width="${sw.toFixed(1)}" height="11" class="chart-seg ${cls}"/>`;
+      x += sw;
+    }
+    bars += `<text x="${labelW - 6}" y="${y + 14}" class="chart-label" text-anchor="end">${esc(s.name.length > 24 ? s.name.slice(0, 23) + "\u2026" : s.name)}</text>${segs}<text x="${x + 6}" y="${y + 14}" class="chart-value">${s.count}</text>`;
+  });
+  const h = rows.length * rowH;
+  return `<div class="chart-block"><h3>Beoordelingen per vak</h3>
+    <svg class="stat-chart" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="Gestapelde balken per vak: voldoendes, onvoldoendes en vrijstellingen">${bars}</svg>
+    <p class="chart-legend"><span class="legend-swatch legend-vol"></span> voldoende <span class="legend-swatch legend-onv"></span> onvoldoende <span class="legend-swatch legend-vs"></span> vrijstelling (VS)</p>
+  </div>`;
+}
+
+function statClassChart(classes) {
+  const rows = classes.filter((c) => c.avg !== null && c.avg !== undefined);
+  if (rows.length < 2) return "";
+  const chartH = 150, barW = 34, gap = 16, axisPad = 28, labelH = 30;
+  const w = axisPad + rows.length * (barW + gap);
+  const h = chartH + labelH;
+  const normY = chartH - (6 / 10) * chartH;
+  let bars = `<line x1="${axisPad - 4}" y1="${normY}" x2="${w}" y2="${normY}" class="chart-norm"/><text x="${axisPad - 6}" y="${normY + 4}" class="chart-axis" text-anchor="end">6</text>`;
+  rows.forEach((c, i) => {
+    const x = axisPad + i * (barW + gap);
+    const bh = Math.max((c.avg / 10) * chartH, 1);
+    const y = chartH - bh;
+    bars += `<rect x="${x}" y="${y}" width="${barW}" height="${bh.toFixed(1)}" class="chart-bar${c.avg < 6 ? " bar-onv" : ""}"/>` +
+      `<text x="${x + barW / 2}" y="${y - 4}" class="chart-value" text-anchor="middle">${String(c.avg).replace(".", ",")}</text>` +
+      `<text x="${x + barW / 2}" y="${chartH + 16}" class="chart-label" text-anchor="middle">${esc(c.class.length > 10 ? c.class.slice(0, 9) + "\u2026" : c.class)}</text>` +
+      `<text x="${x + barW / 2}" y="${chartH + 28}" class="chart-axis" text-anchor="middle">${c.tekorten} tk</text>`;
+  });
+  return `<div class="chart-block"><h3>Gemiddeld cijfer per klas</h3>
+    <svg class="stat-chart" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="Gemiddeld cijfer per klas, stippellijn op 6 is de voldoende-grens">${bars}</svg>
+    <p class="chart-legend">Stippellijn = voldoende-grens (6); onder elke klas staat het aantal tekorten (tk).</p>
+  </div>`;
+}
+
+// ---------- Excel-export van wat in beeld is ----------
+function statOverviewSheets(data) {
+  const sheets = [];
+  if (data.subjects.length) {
+    const allModules = data.period.name === "Alle modules";
+    sheets.push({
+      name: "Vakken",
+      headers: ["Vak", ...(allModules ? ["Module(s)"] : []), "Beoordelingen", "Gemiddeld cijfer", "Voldoendes", "Onvoldoendes", "VS", "Tekorten"],
+      rows: data.subjects.map((s) => [s.name, ...(allModules ? [s.modules || ""] : []), s.count, s.avg, s.vol, s.onv, s.vs, s.tekorten]),
+      widths: [30, ...(allModules ? [24] : []), 14, 16, 12, 14, 8, 10],
+    });
+  }
+  if (data.classes.length) {
+    sheets.push({
+      name: "Klassen",
+      headers: ["Klas", "Studenten", "Gemiddeld cijfer", "Tekorten", "Tekort per student", "% voldoende", "Gem. aanwezigheid", "Aanwezig onder norm"],
+      rows: data.classes.map((c) => [c.class, c.students, c.avg, c.tekorten, c.tekort_per_student, c.vol_pct, c.attendance_avg, c.attendance_low]),
+      widths: [22, 11, 16, 10, 17, 13, 17, 19],
+    });
+  }
+  if (data.signals.length) {
+    sheets.push({
+      name: "Signalering",
+      headers: ["Student", "Nr.", "Klas", "Tekorten (module)", "Aanwezigheid", "SBU keuzedelen", "SBU-doel", "Signalen"],
+      rows: data.signals.map((s) => [s.student, s.student_number, s.class, s.tekorten, s.present, s.sbu, s.sbu_doel, s.reasons.join(", ")]),
+      widths: [28, 10, 14, 16, 14, 15, 10, 40],
+    });
+  }
+  return sheets;
+}
+
+function statReportSheets(report, data) {
+  const rows = data.report_rows || [];
+  if (report === "detail") {
+    return [{ name: "Beoordelingen", headers: ["Student", "Nr.", "Klas", "Beoordeling", "Tekorten"],
+      rows: rows.map((r) => [r.student, r.student_number, r.class, r.value, r.tekorten]), widths: [28, 10, 14, 12, 10] }];
+  }
+  if (report === "keuzedelen_koppelingen") {
+    return [{ name: "Keuzedelen", headers: ["Keuzedeel", "SBU", "Studenten", "Beoordeeld", "Voldoendes", "Onvoldoendes", "VS", "Tekorten"],
+      rows: rows.map((r) => [r.name, r.sbu, r.count, r.graded, r.vol, r.onv, r.vs, r.tekorten]), widths: [34, 8, 11, 12, 12, 14, 6, 10] }];
+  }
+  if (report === "keuzedeel_studenten") {
+    return [{ name: "Studenten", headers: ["Student", "Nr.", "Klas", "Beoordeling", "Tekorten"],
+      rows: rows.map((r) => [r.student, r.student_number, r.class, r.value, r.tekorten]), widths: [28, 10, 14, 12, 10] }];
+  }
+  if (report === "signalering") {
+    return [{ name: "Signalering", headers: ["Student", "Nr.", "Klas", "Tekorten", "Aanwezigheid", "SBU keuzedelen", "SBU-doel", "Signalen"],
+      rows: rows.map((r) => [r.student, r.student_number, r.class, r.tekorten, r.present, r.sbu, r.sbu_doel, r.reasons.join(", ")]), widths: [28, 10, 14, 10, 14, 15, 10, 40] }];
+  }
+  if (report === "resultaten") {
+    const flat = [];
+    for (const r of rows) for (const m of r.modules || []) for (const e of m.entries || []) {
+      flat.push([r.student, r.student_number, r.class, m.period_name, m.period_year, m.in_traject ? "ja" : "nee", m.present, e.subject, e.value, e.tekorten]);
+    }
+    return [{ name: "Resultaten", headers: ["Student", "Nr.", "Klas", "Module", "Leerjaar", "In leertraject", "Aanwezigheid", "Vak", "Beoordeling", "Tekorten"],
+      rows: flat, widths: [28, 10, 14, 16, 10, 13, 14, 26, 12, 10] }];
+  }
+  if (report === "keuzedelen") {
+    return [{ name: "Missende keuzedelen", headers: ["Student", "Nr.", "Klas", "SBU gekoppeld", "SBU-doel", "SBU tekort", "Gekoppelde keuzedelen"],
+      rows: rows.map((r) => [r.student, r.student_number, r.class, r.sbu, r.sbu_doel, r.tekort, r.keuzedelen]), widths: [28, 10, 14, 14, 10, 11, 40] }];
+  }
+  if (report === "aanwezigheid") {
+    return [{ name: "Aanwezigheid", headers: ["Student", "Nr.", "Klas", "Aanwezigheid", "Geoorloofd afwezig", "Ongeoorloofd afwezig"],
+      rows: rows.map((r) => [r.student, r.student_number, r.class, r.present, r.absent_allowed, r.absent_unallowed]), widths: [28, 10, 14, 14, 18, 20] }];
+  }
+  return [{ name: "Onvoldoendes", headers: ["Student", "Nr.", "Klas", "Onvoldoende vakken", "Tekorten"],
+    rows: rows.map((r) => [r.student, r.student_number, r.class, r.fails.map((f) => `${f.subject}: ${f.value}`).join(", "), r.total_tekorten]), widths: [28, 10, 14, 40, 10] }];
+}
+
+async function exportStatExcel() {
+  if (!statExportCtx || !statExportCtx.sheets.length) {
+    alert("Bereken eerst statistieken; er is nog niets om te exporteren.");
+    return;
+  }
+  const btn = $("#btn-stat-export");
+  if (btn) { btn.disabled = true; btn.textContent = "Bezig\u2026"; }
+  try {
+    const res = await fetch("/api/statistics/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filename: statExportCtx.filename, sheets: statExportCtx.sheets }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
+    const blob = await res.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${statExportCtx.filename}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  } catch (err) {
+    alert("Export mislukt: " + err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Export Excel"; }
+  }
+}
+
+$("#btn-stat-export").addEventListener("click", exportStatExcel);
 
 function statTh(tableId, key, label) {
   const st = statSort[tableId];
@@ -2560,6 +2718,9 @@ function renderStatOverview() {
   const subjects = pageSlice("#stat-subjects-table", statSortRows("stat-subjects-table", data.subjects));
   const signals = pageSlice("#stat-signals-table", statSortRows("stat-signals-table", data.signals));
   const classes = statSortRows("stat-classes-table", data.classes);
+  const vakChart = statVakChart(data.subjects);
+  const classChart = statClassChart(data.classes);
+  statExportCtx = { filename: "statistiek-overzicht", sheets: statOverviewSheets(data) };
   let html = `<h2>Statistieken — ${esc(periodLabel(data.period))}</h2>`;
   // Vakken
   html += `<h3>Vakken</h3>` + (data.subjects.length ? `
@@ -2575,7 +2736,7 @@ function renderStatOverview() {
           <td class="val-vs"><a href="#" class="stat-drill" data-drill="detail" data-subject="${s.id}" data-filter="vs" title="Toon de vrijstellingen voor dit vak">${s.vs}</a></td>
           <td class="${s.tekorten > 0 ? "val-onv" : ""}"><a href="#" class="stat-drill" data-drill="detail" data-subject="${s.id}" data-filter="onvoldoendes" title="Toon de onvoldoendes voor dit vak">${s.tekorten}</a></td>
         </tr>`).join("")}</tbody>
-    </table><div class="pager" data-table="stat-subjects-table"></div>` : `<p class="hint">Geen vakken met cijfers in deze module.</p>`);
+    </table><div class="pager" data-table="stat-subjects-table"></div>${vakChart}` : `<p class="hint">Geen vakken met cijfers in deze module.</p>`);
   // Klassen-vergelijking
   if (data.classes.length > 1) {
     html += `<h3>Klassen-vergelijking</h3>
@@ -2590,7 +2751,7 @@ function renderStatOverview() {
           <td class="${c.attendance_avg !== null && c.attendance_avg < 85 ? "val-onv" : "val-vol"}">${pct(c.attendance_avg)}</td>
           <td class="${c.attendance_low > 0 ? "val-onv" : ""}">${c.attendance_low > 0 ? `<a href="#" class="stat-drill" data-drill="aanwezigheid" data-class="${c.class_id}" title="Toon deze studenten">${c.attendance_low}</a>` : c.attendance_low}</td>
         </tr>`).join("")}</tbody>
-    </table>`;
+    </table>${classChart}`;
   }
   // Signalering
   html += `<h3>Signalering</h3>` + (data.signals.length ? `

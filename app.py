@@ -1,3 +1,4 @@
+import json
 import math
 import os
 import secrets
@@ -5,10 +6,12 @@ import sqlite3
 import subprocess
 from datetime import datetime, timedelta
 
-from flask import Flask, g, jsonify, request, send_from_directory, session
+from flask import Flask, g, jsonify, request, send_file, send_from_directory, session
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import openpyxl
+from openpyxl.styles import Font
+from openpyxl.utils import get_column_letter
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("RAPPORTAPP_DB", os.path.join(APP_DIR, "rapportapp.db"))
@@ -2890,6 +2893,69 @@ def statistics():
         "classes": class_stats,
         "signals": signals,
     })
+
+
+@app.route("/api/statistics/export", methods=["POST"])
+def statistics_export():
+    user, err = auth_error("beheerder", "mentor", "docent", "administratie")
+    if err:
+        return err
+    payload = request.get_json(silent=True) or {}
+    sheets = payload.get("sheets") or []
+    if not isinstance(sheets, list) or not sheets:
+        return jsonify({"error": "Geen gegevens om te exporteren"}), 400
+    if len(sheets) > 20:
+        sheets = sheets[:20]
+
+    def safe_sheet_name(name, used):
+        base = "".join(ch for ch in str(name or "Blad") if ch not in "[]:*?/\\"
+                       ).strip()[:31] or "Blad"
+        candidate, n = base, 2
+        while candidate.lower() in used:
+            suffix = f" ({n})"
+            candidate = base[:31 - len(suffix)] + suffix
+            n += 1
+        used.add(candidate.lower())
+        return candidate
+
+    def cell_value(v):
+        if v is None:
+            return None
+        if isinstance(v, (int, float, bool)):
+            return v
+        if isinstance(v, (list, dict)):
+            return json.dumps(v, ensure_ascii=False)
+        return str(v)
+
+    import io
+    wb = openpyxl.Workbook()
+    default_ws = wb.active
+    used = set()
+    for sh in sheets:
+        ws = wb.create_sheet(title=safe_sheet_name(sh.get("name"), used))
+        headers = sh.get("headers") or []
+        if headers:
+            ws.append([cell_value(h) for h in headers])
+            for cell in ws[1]:
+                cell.font = Font(bold=True)
+        for row in sh.get("rows") or []:
+            ws.append([cell_value(c) for c in row])
+        widths = sh.get("widths") or []
+        for i, w in enumerate(widths, start=1):
+            if isinstance(w, (int, float)) and w > 0:
+                ws.column_dimensions[get_column_letter(i)].width = w
+    wb.remove(default_ws)
+    out = io.BytesIO()
+    wb.save(out)
+    out.seek(0)
+    filename = (payload.get("filename") or "statistieken").strip()
+    filename = "".join(ch for ch in filename if ch not in "/\\:*?\"<>|") or "statistieken"
+    return send_file(
+        out,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=f"{filename}.xlsx",
+    )
 
 
 @app.route("/api/report")

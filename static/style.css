@@ -575,3 +575,35 @@ input.note-open { cursor: pointer; }
 .combo-panel .combo-empty { display: block; padding: 6px 12px; opacity: .7; }
 
 .kd-unlinked { color: var(--subtext); text-align: center; opacity: .55; }
+
+/* ---------- Grafieken in statistieken ---------- */
+.chart-block {
+  margin: 10px 0 18px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+}
+.chart-block h3 { margin: 2px 0 8px; }
+.stat-chart { max-width: 100%; height: auto; }
+.stat-chart .chart-seg.vol { fill: var(--vol); }
+.stat-chart .chart-seg.onv { fill: var(--onv); }
+.stat-chart .chart-seg.vs { fill: var(--vs); }
+.stat-chart .chart-bar { fill: var(--accent); }
+.stat-chart .chart-bar.bar-onv { fill: var(--onv); }
+.stat-chart .chart-norm { stroke: var(--onv); stroke-dasharray: 5 4; stroke-width: 1; }
+.stat-chart .chart-label { font-size: 11px; fill: var(--text); }
+.stat-chart .chart-value { font-size: 11px; fill: var(--text); }
+.stat-chart .chart-axis { font-size: 10px; fill: var(--subtext); }
+.chart-legend { margin: 6px 0 0; font-size: 11px; color: var(--subtext); }
+.legend-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin: 0 3px 0 8px;
+  vertical-align: middle;
+}
+.legend-vol { background: var(--vol); }
+.legend-onv { background: var(--onv); }
+.legend-vs { background: var(--vs); }
