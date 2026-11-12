@@ -692,7 +692,7 @@ def auditlog_list():
     return jsonify([dict(r) for r in rows])
 
 
-MAX_LOGO_BYTES = 700 * 1024
+MAX_LOGO_BYTES = 1024 * 1024
 
 
 def get_setting(db, key, default=""):
@@ -703,9 +703,9 @@ def get_setting(db, key, default=""):
 @app.route("/api/settings")
 def settings_get():
     user, err = auth_error()
-    if err:
-        return err
     db = get_db()
+    if err:
+        return jsonify({"school_name": get_setting(db, "school_name")})
     return jsonify({
         "school_name": get_setting(db, "school_name"),
         "logo": get_setting(db, "logo"),
@@ -731,7 +731,7 @@ def settings_put():
             if not logo.startswith("data:image/"):
                 return jsonify({"error": "Logo moet een afbeelding zijn (png, jpg, gif of svg)"}), 400
             if len(logo) > MAX_LOGO_BYTES:
-                return jsonify({"error": "Logo is te groot (max. 700 kB)"}), 400
+                return jsonify({"error": "Logo is te groot (max. 700 kB als bestand)"}), 400
         updates["logo"] = logo
     for key, value in updates.items():
         db.execute(

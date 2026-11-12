@@ -293,7 +293,20 @@ function activateDefaultTab() {
   }
 }
 
+function applySchoolName() {
+  const name = settings.school_name || "MBO ICT-opleiding";
+  document.title = `RapportApp \u2014 ${name}`;
+  const headerH1 = $("#app-header h1");
+  if (headerH1) headerH1.textContent = `RapportApp \u2014 ${name}`;
+  const loginH1 = $("#login-screen h1");
+  if (loginH1) loginH1.textContent = `RapportApp \u2014 ${name}`;
+}
+
 async function init() {
+  settings = Object.assign({ school_name: "", logo: "" },
+    await api("/api/settings").catch(() => ({})));
+  applySchoolName();
+  renderSettingsUi();
   try {
     currentUser = await api("/api/auth/me");
   } catch (e) {
@@ -311,6 +324,7 @@ async function init() {
   activateDefaultTab();
   settings = Object.assign({ school_name: "", logo: "" },
     await api("/api/settings").catch(() => ({})));
+  applySchoolName();
   renderSettingsUi();
   await loadAll();
 }
@@ -2965,6 +2979,7 @@ $("#btn-save-settings").addEventListener("click", async () => {
       body: JSON.stringify(body),
     });
     pendingLogo = null;
+    applySchoolName();
     result.textContent = "Instellingen opgeslagen.";
     result.classList.remove("hidden");
     if ($("#report-output") && $("#report-output").innerHTML.trim()) {
