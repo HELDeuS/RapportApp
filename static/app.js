@@ -43,9 +43,17 @@ function sortRows(rows, state, fieldOf) {
   if (!state || !state.key) return rows;
   const dir = state.dir;
   return [...rows].sort((a, b) => {
-    const av = (fieldOf(a, state.key) || "").toString().toLowerCase();
-    const bv = (fieldOf(b, state.key) || "").toString().toLowerCase();
-    return av < bv ? -dir : av > bv ? dir : 0;
+    const av = fieldOf(a, state.key);
+    const bv = fieldOf(b, state.key);
+    const na = parseFloat(av);
+    const nb = parseFloat(bv);
+    if (av !== "" && av !== null && bv !== "" && bv !== null &&
+        !isNaN(na) && !isNaN(nb)) {
+      return na < nb ? -dir : na > nb ? dir : 0;
+    }
+    const sav = (av || "").toString().toLowerCase();
+    const sbv = (bv || "").toString().toLowerCase();
+    return sav < sbv ? -dir : sav > sbv ? dir : 0;
   });
 }
 
@@ -1120,7 +1128,7 @@ function renderCohorts() {
   const page = pageSlice("#cohorts-table", rows);
   $("#cohorts-table tbody").innerHTML = page.length ? page.map((c) => `
     <tr data-id="${c.id}">
-      <td>${esc(c.name)}</td>
+      <td><input data-field="name" value="${esc(c.name)}"></td>
       ${isAdmin() ? `<td><button class="secondary" data-archive>Archiveren</button></td>
       <td><button class="danger" data-del>Verwijderen</button></td>` : "<td></td><td></td>"}
     </tr>`).join("") : `<tr><td colspan="3" class="hint">${q ? "Niets gevonden voor deze zoekopdracht." : "Nog geen cohorten."}</td></tr>`;
@@ -1132,7 +1140,12 @@ function renderLeertrajecten() {
     (t.name || "").toLowerCase().includes(q) ||
     (t.crebo || "").toLowerCase().includes(q) ||
     (t.cohort || "").toLowerCase().includes(q)) : leertrajecten;
-  const rows = sortRows(visible, listSort.leertrajecten, (t, key) => t[key]);
+  const classCount = {};
+  classes.forEach((c) => {
+    if (c.leertraject_id) classCount[c.leertraject_id] = (classCount[c.leertraject_id] || 0) + 1;
+  });
+  const rows = sortRows(visible, listSort.leertrajecten, (t, key) =>
+    key === "classes_count" ? (classCount[t.id] || 0) : t[key]);
   updateSortArrows("#leertrajecten-table", listSort.leertrajecten);
   refillKeepingValue("#lt-add-crebo", creboOptions(""));
   refillKeepingValue("#lt-add-cohort", optList("", cohorts, "Geen cohort"));
@@ -1142,9 +1155,10 @@ function renderLeertrajecten() {
       <td><input data-field="name" value="${esc(t.name)}"></td>
       <td><select data-field="crebo_id">${creboOptions(t.crebo_id)}</select></td>
       <td><select data-field="cohort_id">${optList(t.cohort_id, cohorts, "Geen cohort")}</select></td>
+      <td title="Aantal klassen met dit leertraject" class="${(classCount[t.id] || 0) ? "" : "muted"}">${classCount[t.id] || 0}</td>
       ${isAdmin() ? `<td><button class="secondary" data-archive>Archiveren</button></td>
       <td><button class="danger" data-del>Verwijderen</button></td>` : "<td></td><td></td>"}
-    </tr>`).join("") : `<tr><td colspan="5" class="hint">${q ? "Niets gevonden voor deze zoekopdracht." : "Nog geen leertrajecten."}</td></tr>`;
+    </tr>`).join("") : `<tr><td colspan="6" class="hint">${q ? "Niets gevonden voor deze zoekopdracht." : "Nog geen leertrajecten."}</td></tr>`;
 }
 
 function renderClasses() {
@@ -1209,6 +1223,26 @@ $("#btn-add-cohort").addEventListener("click", async () => {
   } catch (err) {
     alert("Cohort toevoegen mislukt: " + err.message);
   }
+});
+
+$("#cohorts-table tbody").addEventListener("change", async (e) => {
+  const tr = e.target.closest("tr");
+  const field = e.target.dataset.field;
+  if (!tr || !field) return;
+  const c = cohorts.find((x) => String(x.id) === tr.dataset.id);
+  if (!c) return;
+  const value = e.target.value.trim();
+  if (!value) return alert("Naam mag niet leeg zijn.");
+  try {
+    await api(`/api/cohorts/${c.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: value }),
+    });
+  } catch (err) {
+    alert("Opslaan mislukt: " + err.message);
+  }
+  await loadAll();
 });
 
 $("#cohorts-table tbody").addEventListener("click", async (e) => {

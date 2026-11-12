@@ -440,6 +440,8 @@ td.tekort-2, td.tekort-3, td.tekort-4, td.tekort-5 { color: var(--tekort); font-
 }
 #tab-klassen .block-title:first-of-type { margin-top: 0; }
 
+.muted { color: var(--subtext); }
+
 /* Toevoegbalken: label boven het veld, alles netjes uitgelijnd */
 .addbar { align-items: flex-end; }
 .addbar label {

@@ -889,11 +889,24 @@ def cohort_item(cohort_id):
     db = get_db()
     if request.method == "PUT":
         data = request.get_json(force=True)
-        archived = 1 if data.get("archived") else 0
-        db.execute("UPDATE cohorts SET archived = ? WHERE id = ?", (archived, cohort_id))
-        db.commit()
-        audit(db, user, "archiveren" if archived else "herstellen", "cohort",
-              cohort_id, "")
+        updates = {}
+        if "name" in data:
+            name = (data.get("name") or "").strip()
+            if not name:
+                return jsonify({"error": "Naam is verplicht"}), 400
+            updates["name"] = name
+        if "archived" in data:
+            updates["archived"] = 1 if data.get("archived") else 0
+        if updates:
+            sets = ", ".join(f"{k} = ?" for k in updates)
+            db.execute(f"UPDATE cohorts SET {sets} WHERE id = ?",
+                       (*updates.values(), cohort_id))
+            db.commit()
+            gewijzigd = [k for k in ("name", "archived") if k in data]
+            action = "hernoemen" if "name" in updates and "archived" not in updates else (
+                "archiveren" if updates.get("archived") else "herstellen")
+            audit(db, user, action, "cohort", cohort_id,
+                  f"Velden: {', '.join(gewijzigd)}" if gewijzigd else "")
     else:
         db.execute("DELETE FROM cohorts WHERE id = ?", (cohort_id,))
         db.commit()
