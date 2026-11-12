@@ -99,7 +99,8 @@ CREATE TABLE IF NOT EXISTS users (
     active INTEGER DEFAULT 1,
     first_name TEXT DEFAULT '',
     last_name TEXT DEFAULT '',
-    email TEXT DEFAULT ''
+    email TEXT DEFAULT '',
+    must_change_password INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS students (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -206,6 +207,17 @@ def init_db():
     pcols = [r[1] for r in db.execute("PRAGMA table_info(periods)").fetchall()]
     if "year" not in pcols:
         db.execute("ALTER TABLE periods ADD COLUMN year TEXT DEFAULT ''")
+    ucols = [r[1] for r in db.execute("PRAGMA table_info(users)").fetchall()]
+    if "must_change_password" not in ucols:
+        db.execute("ALTER TABLE users ADD COLUMN must_change_password "
+                   "INTEGER NOT NULL DEFAULT 0")
+    for uid, pw_hash, flagged in db.execute(
+            "SELECT id, password_hash, must_change_password FROM users").fetchall():
+        if not flagged and any(check_password_hash(pw_hash, d)
+                               for d in ("welkom", "rapportapp")):
+            db.execute("UPDATE users SET must_change_password = 1 WHERE id = ?",
+                       (uid,))
+    db.commit()
     # Migratie niveau -> crebo: oude tabel en kolom hernoemen.
     tables = [r[0] for r in db.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()]
@@ -284,7 +296,8 @@ def init_db():
             db.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT DEFAULT ''")
     if not db.execute("SELECT COUNT(*) FROM users").fetchone()[0]:
         db.execute(
-            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+            "INSERT INTO users (username, password_hash, role, must_change_password) "
+            "VALUES (?, ?, ?, 1)",
             ("beheerder", generate_password_hash("rapportapp"), "beheerder"),
         )
     for table in ("students", "classes", "subjects", "cohorts", "leertrajecten"):
@@ -473,7 +486,30 @@ def auth_login():
     session["user_id"] = row["id"]
     audit(get_db(), row, "login", "account", row["id"], "Ingelogd")
     return jsonify({"id": row["id"], "username": row["username"],
-                    "role": row["role"], "student_id": row["student_id"]})
+                    "role": row["role"], "student_id": row["student_id"],
+                    "must_change_password": bool(row["must_change_password"])})
+
+
+@app.route("/api/auth/password", methods=["PUT"])
+def auth_password():
+    user, err = auth_error()
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    current = data.get("current_password") or ""
+    new = data.get("new_password") or ""
+    if not check_password_hash(user["password_hash"], current):
+        return jsonify({"error": "Huidig wachtwoord is niet juist"}), 400
+    if len(new) < 8:
+        return jsonify({"error": "Het nieuwe wachtwoord moet minimaal 8 tekens bevatten"}), 400
+    if new == current:
+        return jsonify({"error": "Het nieuwe wachtwoord mag niet gelijk zijn aan het oude"}), 400
+    db = get_db()
+    db.execute("UPDATE users SET password_hash = ?, must_change_password = 0 "
+               "WHERE id = ?", (generate_password_hash(new), user["id"]))
+    db.commit()
+    audit(db, user, "wachtwoord", "account", user["id"], "Eigen wachtwoord gewijzigd")
+    return jsonify({"ok": True})
 
 
 @app.route("/api/auth/logout", methods=["POST"])
@@ -488,7 +524,8 @@ def auth_me():
     if user is None:
         return jsonify({"error": "Niet ingelogd"}), 401
     return jsonify({"id": user["id"], "username": user["username"],
-                    "role": user["role"], "student_id": user["student_id"]})
+                    "role": user["role"], "student_id": user["student_id"],
+                    "must_change_password": bool(user["must_change_password"])})
 
 
 @app.route("/api/users", methods=["GET", "POST"])
@@ -512,8 +549,9 @@ def users_collection():
         try:
             cur = db.execute(
                 """INSERT INTO users (username, password_hash, role, student_id,
-                                      first_name, last_name, email)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                                      first_name, last_name, email,
+                                      must_change_password)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 1)""",
                 (username, generate_password_hash(password), role, student_id,
                  (data.get("first_name") or "").strip(),
                  (data.get("last_name") or "").strip(),
@@ -569,8 +607,10 @@ def user_item(user_id):
     if request.method == "PUT":
         data = request.get_json(force=True)
         if data.get("password"):
-            db.execute("UPDATE users SET password_hash = ? WHERE id = ?",
-                       (generate_password_hash(data["password"]), user_id))
+            db.execute("UPDATE users SET password_hash = ?, must_change_password = ? "
+                       "WHERE id = ?",
+                       (generate_password_hash(data["password"]),
+                        0 if user_id == user["id"] else 1, user_id))
         if "role" in data:
             if data["role"] not in ROLES:
                 return jsonify({"error": "Onbekende rol"}), 400
@@ -665,8 +705,9 @@ def ensure_student_account(db, student_row):
     if existing is None:
         db.execute(
             """INSERT INTO users (username, password_hash, role, student_id,
-                                  first_name, last_name, email)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                                  first_name, last_name, email,
+                                  must_change_password)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 1)""",
             (username, generate_password_hash("welkom"), "student", student_row["id"],
              first, last, email),
         )
@@ -795,8 +836,9 @@ def users_import():
             skipped += 1
             continue
         db.execute(
-            """INSERT INTO users (username, password_hash, role, first_name, last_name, email)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO users (username, password_hash, role, first_name,
+                                  last_name, email, must_change_password)
+               VALUES (?, ?, ?, ?, ?, ?, 1)""",
             (username, generate_password_hash(password), role,
              cell("first_name"), cell("last_name"), cell("email")),
         )

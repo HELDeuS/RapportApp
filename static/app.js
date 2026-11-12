@@ -322,6 +322,7 @@ async function init() {
   $("#app-header").classList.remove("hidden");
   applyRoleUi();
   activateDefaultTab();
+  if (currentUser.must_change_password) showPasswordChangeDialog();
   settings = Object.assign({ school_name: "", logo: "" },
     await api("/api/settings").catch(() => ({})));
   applySchoolName();
@@ -3089,6 +3090,41 @@ $("#btn-save-settings").addEventListener("click", async () => {
     result.textContent = err.message;
     result.classList.remove("hidden");
     setResultKind(result, true);
+  }
+});
+
+// ---------- Wachtwoord wijzigen (verplicht bij standaardwachtwoord) ----------
+function showPasswordChangeDialog() {
+  ["#pwchange-current", "#pwchange-new", "#pwchange-repeat"].forEach((sel) => { $(sel).value = ""; });
+  $("#pwchange-error").classList.add("hidden");
+  $("#pwchange-dialog").classList.remove("hidden");
+  $("#pwchange-current").focus();
+}
+
+$("#pwchange-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = $("#pwchange-error");
+  errEl.classList.add("hidden");
+  const nieuw = $("#pwchange-new").value;
+  if (nieuw !== $("#pwchange-repeat").value) {
+    errEl.textContent = "De nieuwe wachtwoorden zijn niet gelijk.";
+    errEl.classList.remove("hidden");
+    return;
+  }
+  try {
+    await api("/api/auth/password", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        current_password: $("#pwchange-current").value,
+        new_password: nieuw,
+      }),
+    });
+    currentUser.must_change_password = 0;
+    $("#pwchange-dialog").classList.add("hidden");
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.classList.remove("hidden");
   }
 });
 

@@ -81,6 +81,28 @@
     </div>
   </div>
 
+  <div id="pwchange-dialog" class="dialog-overlay hidden">
+    <div class="dialog note-dialog-box">
+      <h3>Wachtwoord wijzigen</h3>
+      <p class="hint">Je logt voor het eerst in met een standaardwachtwoord. Kies een eigen wachtwoord (minimaal 8 tekens) om verder te gaan.</p>
+      <form id="pwchange-form">
+        <label>Huidig wachtwoord
+          <input type="password" id="pwchange-current" autocomplete="current-password" required>
+        </label>
+        <label>Nieuw wachtwoord
+          <input type="password" id="pwchange-new" autocomplete="new-password" minlength="8" required>
+        </label>
+        <label>Herhaal nieuw wachtwoord
+          <input type="password" id="pwchange-repeat" autocomplete="new-password" minlength="8" required>
+        </label>
+        <div id="pwchange-error" class="login-error hidden"></div>
+        <div class="dialog-actions">
+          <button type="submit">Opslaan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div id="note-dialog" class="dialog-overlay hidden">
     <div class="dialog note-dialog-box">
       <h3 id="note-dialog-title">Opmerking</h3>

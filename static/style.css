@@ -536,6 +536,15 @@ html { scroll-behavior: smooth; }
   z-index: 100;
 }
 .note-dialog-box { width: min(560px, 90vw); }
+#pwchange-form { display: flex; flex-direction: column; gap: 10px; }
+#pwchange-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: .85rem;
+  color: var(--subtext);
+}
+#pwchange-form input { width: 100%; }
 .note-dialog-box textarea {
   font-family: inherit;
   font-size: 1rem;
