@@ -2947,7 +2947,7 @@ $("#settings-logo-file").addEventListener("change", (e) => {
   e.target.value = "";
   if (!file) return;
   if (file.size > 700 * 1024) return alert("Logo is te groot (max. 700 kB).");
-  pendingLogo = new Promise((resolve) => {
+  pendingLogo = new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
       resolve(reader.result);
@@ -2955,6 +2955,10 @@ $("#settings-logo-file").addEventListener("change", (e) => {
       preview.src = reader.result;
       preview.classList.remove("hidden");
       $("#btn-remove-logo").classList.remove("hidden");
+    };
+    reader.onerror = () => {
+      reject(new Error("Logo kon niet worden ingelezen door de browser."));
+      pendingLogo = null;
     };
     reader.readAsDataURL(file);
   });
@@ -2970,7 +2974,16 @@ $("#btn-remove-logo").addEventListener("click", () => {
 
 $("#btn-save-settings").addEventListener("click", async () => {
   const body = { school_name: $("#settings-school-name").value };
-  if (pendingLogo !== null) body.logo = await pendingLogo;
+  let logoMeegestuurd = false;
+  if (pendingLogo !== null) {
+    try {
+      body.logo = await pendingLogo;
+      logoMeegestuurd = true;
+    } catch (err) {
+      alert(err.message);
+      return;
+    }
+  }
   const result = $("#settings-result");
   try {
     settings = await api("/api/settings", {
@@ -2980,7 +2993,14 @@ $("#btn-save-settings").addEventListener("click", async () => {
     });
     pendingLogo = null;
     applySchoolName();
-    result.textContent = "Instellingen opgeslagen.";
+    renderSettingsUi();
+    if (logoMeegestuurd && !settings.logo) {
+      alert("Het logo is NIET opgeslagen door de server. " +
+            "Controleer of de app op de server is bijgewerkt (git pull + herstart) en probeer het opnieuw.");
+    }
+    result.textContent = logoMeegestuurd
+      ? (settings.logo ? "Instellingen opgeslagen, logo bewaard." : "Instellingen opgeslagen, maar logo ontbreekt op de server!")
+      : (settings.logo ? "Instellingen opgeslagen (logo ongewijzigd)." : "Instellingen opgeslagen.");
     result.classList.remove("hidden");
     if ($("#report-output") && $("#report-output").innerHTML.trim()) {
       showReport().catch(() => {});
