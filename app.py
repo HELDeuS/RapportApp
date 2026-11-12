@@ -71,7 +71,8 @@ app.teardown_appcontext(close_db)
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS crebos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE
+    name TEXT NOT NULL UNIQUE,
+    sbu_doel INTEGER NOT NULL DEFAULT 720
 );
 CREATE TABLE IF NOT EXISTS cohorts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -207,6 +208,10 @@ def init_db():
     pcols = [r[1] for r in db.execute("PRAGMA table_info(periods)").fetchall()]
     if "year" not in pcols:
         db.execute("ALTER TABLE periods ADD COLUMN year TEXT DEFAULT ''")
+    ccols = [r[1] for r in db.execute("PRAGMA table_info(crebos)").fetchall()]
+    if "sbu_doel" not in ccols:
+        db.execute("ALTER TABLE crebos ADD COLUMN sbu_doel INTEGER "
+                   "NOT NULL DEFAULT 720")
     ucols = [r[1] for r in db.execute("PRAGMA table_info(users)").fetchall()]
     if "must_change_password" not in ucols:
         db.execute("ALTER TABLE users ADD COLUMN must_change_password "
@@ -998,12 +1003,27 @@ def crebos_collection():
     return jsonify([dict(r) for r in rows])
 
 
-@app.route("/api/crebos/<int:crebo_id>", methods=["DELETE"])
+@app.route("/api/crebos/<int:crebo_id>", methods=["PUT", "DELETE"])
 def crebo_item(crebo_id):
     user, err = auth_error("beheerder")
     if err:
         return err
     db = get_db()
+    if request.method == "PUT":
+        data = request.get_json(silent=True) or {}
+        if "sbu_doel" in data:
+            try:
+                doel = int(data["sbu_doel"])
+            except (TypeError, ValueError):
+                return jsonify({"error": "SBU-doel moet een getal zijn"}), 400
+            if doel <= 0:
+                return jsonify({"error": "SBU-doel moet groter dan 0 zijn"}), 400
+            db.execute("UPDATE crebos SET sbu_doel = ? WHERE id = ?",
+                       (doel, crebo_id))
+            db.commit()
+            audit(db, user, "wijzigen", "crebo", crebo_id,
+                  audit_detail(db, "crebos", crebo_id, ["sbu_doel"]))
+        return jsonify({"ok": True})
     detail = audit_detail(db, "crebos", crebo_id)
     db.execute("DELETE FROM crebos WHERE id = ?", (crebo_id,))
     db.commit()
@@ -1383,6 +1403,28 @@ def subject_with_periods(db, subject_id):
 KEUZEDEEL_SBU_DOEL = 720
 
 
+def sbu_doel_for_lt(db, leertraject_id):
+    if not leertraject_id:
+        return KEUZEDEEL_SBU_DOEL
+    lt = db.execute("SELECT crebo_id FROM leertrajecten WHERE id = ?",
+                    (leertraject_id,)).fetchone()
+    if lt is None or lt["crebo_id"] is None:
+        return KEUZEDEEL_SBU_DOEL
+    row = db.execute("SELECT sbu_doel FROM crebos WHERE id = ?",
+                     (lt["crebo_id"],)).fetchone()
+    if row is None or not row["sbu_doel"]:
+        return KEUZEDEEL_SBU_DOEL
+    return row["sbu_doel"]
+
+
+def sbu_doel_for_student(db, student_id):
+    row = db.execute(
+        """SELECT c.leertraject_id FROM students st
+           JOIN classes c ON c.id = st.class_id WHERE st.id = ?""",
+        (student_id,)).fetchone()
+    return sbu_doel_for_lt(db, row["leertraject_id"]) if row else KEUZEDEEL_SBU_DOEL
+
+
 @app.route("/api/keuzedelen")
 def keuzedelen_collection():
     """Alle keuzedelen (subjects met kind='keuzedeel')."""
@@ -1425,7 +1467,8 @@ def keuzedelen_matrix():
         args.append(cohort_id)
     students = db.execute(
         f"""SELECT st.id, st.name, st.student_number, st.first_name,
-                   st.prefix, st.last_name, c.name AS class_name
+                   st.prefix, st.last_name, c.name AS class_name,
+                   c.leertraject_id
             FROM students st
             LEFT JOIN classes c ON c.id = st.class_id
             WHERE {where} ORDER BY st.name""",
@@ -1454,7 +1497,8 @@ def keuzedelen_matrix():
                        if (s["id"], kid) in grades},
             "sbu_total": sbu_totals.get(s["id"], 0),
         } for s in students],
-        "sbu_doel": KEUZEDEEL_SBU_DOEL,
+        "sbu_doel": (sbu_doel_for_lt(db, students[0]["leertraject_id"])
+                     if students else KEUZEDEEL_SBU_DOEL),
     })
 
 
@@ -1673,7 +1717,7 @@ def student_keuzedelen(student_id):
     return jsonify({
         "keuzedelen": [dict(r) for r in rows],
         "sbu_total": total,
-        "sbu_doel": KEUZEDEEL_SBU_DOEL,
+        "sbu_doel": sbu_doel_for_student(db, student_id),
     })
 
 
@@ -2636,13 +2680,14 @@ def statistics():
         att = attendance.get(s["id"])
         present = round(att["present"], 1) if att and att["present"] is not None else None
         sbu_total = sbu.get(s["id"], 0)
+        doel = sbu_doel_for_student(db, s["id"])
         reasons = []
         if st_tekorten >= 3:
             reasons.append(f"{st_tekorten} tekorten")
         if present is not None and present < 85:
             reasons.append(f"aanwezigheid {present}%")
-        if sbu_total < KEUZEDEEL_SBU_DOEL:
-            reasons.append(f"SBU {int(sbu_total)}/{KEUZEDEEL_SBU_DOEL}")
+        if sbu_total < doel:
+            reasons.append(f"SBU {int(sbu_total)}/{doel}")
         if reasons:
             signals.append({
                 "student": s["name"],
@@ -2652,6 +2697,7 @@ def statistics():
                 "tekorten": st_tekorten,
                 "present": present,
                 "sbu": int(sbu_total),
+                "sbu_doel": doel,
             })
 
     # Specifieke rapporten op verzoek.
@@ -2758,7 +2804,8 @@ def statistics():
         rows = []
         for s in students:
             total = sbu.get(s["id"], 0)
-            if total >= KEUZEDEEL_SBU_DOEL:
+            doel = sbu_doel_for_student(db, s["id"])
+            if total >= doel:
                 continue
             names = [r["name"] for r in db.execute(
                 """SELECT s2.name FROM student_keuzedelen k
@@ -2768,7 +2815,8 @@ def statistics():
             rows.append({
                 "student": s["name"], "student_number": s["student_number"],
                 "class": s["class_name"] or "", "sbu": int(total),
-                "tekort": int(KEUZEDEEL_SBU_DOEL - total),
+                "sbu_doel": doel,
+                "tekort": int(doel - total),
                 "keuzedelen": ", ".join(names) or "(geen gekoppeld)",
             })
         return jsonify({"period": period_dict(),
@@ -3019,7 +3067,7 @@ def report():
             "notes": note,
             "keuzedelen": keuzedelen,
             "sbu_total": sum(k["sbu"] for k in keuzedelen),
-            "sbu_doel": KEUZEDEEL_SBU_DOEL,
+            "sbu_doel": sbu_doel_for_student(db, s["id"]),
             "audience": audience,
         })
     return jsonify({"period": dict(period), "students": result})

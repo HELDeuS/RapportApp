@@ -1150,8 +1150,9 @@ function renderCrebos() {
   $("#crebos-table tbody").innerHTML = page.length ? page.map((n) => `
     <tr data-id="${n.id}">
       <td>${esc(n.name)}</td>
+      <td>${isAdmin() ? `<input data-field="sbu_doel" value="${esc(n.sbu_doel ?? 720)}" style="width:90px">` : esc(n.sbu_doel ?? 720)}</td>
       ${isAdmin() ? `<td><button class="danger" data-del>Verwijderen</button></td>` : "<td></td>"}
-    </tr>`).join("") : `<tr><td colspan="2" class="hint">${q ? "Niets gevonden voor deze zoekopdracht." : "Nog geen crebos."}</td></tr>`;
+    </tr>`).join("") : `<tr><td colspan="3" class="hint">${q ? "Niets gevonden voor deze zoekopdracht." : "Nog geen crebos."}</td></tr>`;
 }
 
 function renderCohorts() {
@@ -1391,6 +1392,24 @@ $("#crebos-table tbody").addEventListener("click", async (e) => {
 });
 
 $("#crebo-search").addEventListener("input", () => { resetPage("#crebos-table"); renderCrebos(); });
+
+$("#crebos-table tbody").addEventListener("change", async (e) => {
+  const tr = e.target.closest("tr");
+  const field = e.target.dataset.field;
+  if (!tr || !field) return;
+  const n = crebos.find((x) => String(x.id) === tr.dataset.id);
+  if (!n) return;
+  try {
+    await api(`/api/crebos/${n.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [field]: e.target.value }),
+    });
+  } catch (err) {
+    alert("Opslaan mislukt: " + err.message);
+  }
+  await loadAll();
+});
 $("#cohort-search").addEventListener("input", () => { resetPage("#cohorts-table"); renderCohorts(); });
 $("#lt-search").addEventListener("input", () => { resetPage("#leertrajecten-table"); renderLeertrajecten(); });
 
@@ -2391,7 +2410,7 @@ function renderStatReport(report, data) {
             <td>${esc(r.student)}</td><td>${esc(r.student_number || "")}</td><td>${esc(r.class)}</td>
             <td class="${r.tekorten >= 3 ? "val-onv" : ""}">${r.tekorten}</td>
             <td class="${r.present !== null && r.present < 85 ? "val-onv" : ""}">${pct(r.present)}</td>
-            <td class="${r.sbu < 720 ? "val-onv" : "val-vol"}">${r.sbu} / 720</td>
+            <td class="${r.sbu < (r.sbu_doel || 720) ? "val-onv" : "val-vol"}">${r.sbu} / ${r.sbu_doel || 720}</td>
             <td>${r.reasons.map((x) => esc(x)).join(", ")}</td>
           </tr>`).join("")}</tbody>
       </table>` : `<p class="hint">Geen studenten met signalen in deze selectie.</p>`;
@@ -2415,17 +2434,17 @@ function renderStatReport(report, data) {
         </table>`).join("")}`).join("")
       : `<p class="hint">Geen bewaarde resultaten in deze selectie.</p>`;
   } else if (report === "keuzedelen") {
-    title = "Missende keuzedelen (minder dan 720 SBU gekoppeld)";
+    title = "Missende keuzedelen (minder SBU gekoppeld dan het crebo-doel)";
     table = data.report_rows.length ? `
       <table class="list">
         <thead><tr><th>Student</th><th>Nr.</th><th>Klas</th><th>SBU gekoppeld</th><th>SBU tekort</th><th>Gekoppelde keuzedelen</th></tr></thead>
         <tbody>${data.report_rows.map((r) => `
           <tr>
             <td>${esc(r.student)}</td><td>${esc(r.student_number || "")}</td><td>${esc(r.class)}</td>
-            <td class="val-onv">${r.sbu} / 720</td><td class="val-onv">${r.tekort}</td>
+            <td class="val-onv">${r.sbu} / ${r.sbu_doel || 720}</td><td class="val-onv">${r.tekort}</td>
             <td>${esc(r.keuzedelen)}</td>
           </tr>`).join("")}</tbody>
-      </table>` : `<p class="hint">Alle studenten in deze selectie hebben 720 SBU of meer aan keuzedelen.</p>`;
+      </table>` : `<p class="hint">Alle studenten in deze selectie hebben het SBU-doel van hun crebo gehaald.</p>`;
   } else if (report === "aanwezigheid") {
     title = "Aanwezigheid onder de norm (<85%)";
     table = data.report_rows.length ? `
@@ -2582,7 +2601,7 @@ function renderStatOverview() {
           <td>${esc(s.student)}</td><td>${esc(s.student_number || "")}</td><td>${esc(s.class)}</td>
           <td class="${s.tekorten >= 3 ? "val-onv" : ""}">${s.tekorten}</td>
           <td class="${s.present !== null && s.present < 85 ? "val-onv" : ""}">${pct(s.present)}</td>
-          <td class="${s.sbu < 720 ? "val-onv" : "val-vol"}">${s.sbu} / 720</td>
+          <td class="${s.sbu < (s.sbu_doel || 720) ? "val-onv" : "val-vol"}">${s.sbu} / ${s.sbu_doel || 720}</td>
           <td>${s.reasons.map((r) => esc(r)).join(", ")}</td>
         </tr>`).join("")}</tbody>
     </table><div class="pager" data-table="stat-signals-table"></div>` : `<p class="hint">Geen studenten met signalen in deze selectie.</p>`);
