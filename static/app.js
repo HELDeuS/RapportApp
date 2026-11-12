@@ -1747,7 +1747,6 @@ function renderReportCards(data, periodOverride) {
             <td class="${e.value === "VS" ? "val-vs" : (e.tekorten > 0 ? "val-onv" : "val-vol")}">${esc(e.value)}</td>
           </tr>`).join("")}
         </tbody>
-        <tfoot><tr><td>Totaal tekorten</td><td>${s.total_tekorten}</td></tr></tfoot>
       </table>` : `<p class="hint report-empty">Geen cijfers bekend in deze module.</p>`}
       ${s.attendance ? `
       <h3 class="report-section">Aanwezigheid</h3>
