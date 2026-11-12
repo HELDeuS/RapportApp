@@ -439,7 +439,7 @@ td.tekort-2, td.tekort-3, td.tekort-4, td.tekort-5 { color: var(--tekort); font-
   font-size: 1.05rem;
   scroll-margin-top: 12px;
 }
-#tab-klassen details:first-of-type > summary { margin-top: 0; }
+.panel details:first-of-type > summary { margin-top: 0; }
 details.block > summary.block-title { cursor: pointer; user-select: none; }
 details.block > summary.block-title:hover { color: var(--accent); }
 details.block > summary.block-title::marker { color: var(--subtext); }
@@ -476,6 +476,14 @@ html { scroll-behavior: smooth; }
 .addbar label > input,
 .addbar label > select { width: 220px; }
 .addbar > input.push-right { margin-left: auto; }
+
+.filterbar { padding: 8px 12px; margin-bottom: 10px; }
+.filterbar > input {
+  flex: 0 1 220px;
+  min-width: 0;
+  max-width: 220px;
+  margin-left: auto;
+}
 
 /* Keuzedelen */
 .kd-progress { margin-bottom: 14px; }

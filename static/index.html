@@ -500,56 +500,75 @@
 
 <!-- Archief -->
 <section id="tab-archief" class="panel">
-  <p class="hint">Gearchiveerde studenten, klassen, vakken en cohorten blijven bewaard (inclusief cijfers) maar zijn niet zichtbaar in de actieve overzichten en rapporten. Gebruik het zoekveld om te filteren; klik op een kolomkop om te sorteren.</p>
+  <p class="hint">Gearchiveerde studenten, klassen, vakken, cohorten en leertrajecten blijven bewaard (inclusief cijfers) maar zijn niet zichtbaar in de actieve overzichten en rapporten. Gebruik het zoekveld om te filteren, klik op een kolomkop om te sorteren en op een bloktitel om een blok in of uit te klappen.</p>
 
-  <div class="toolbar subtoolbar">
-    <strong>Studenten</strong>
-    <input id="arch-students-search" placeholder="&#9906; Zoek in archief...">
+  <nav class="quicknav">
+    <a href="#arch-blok-studenten">Studenten</a>
+    <a href="#arch-blok-klassen">Klassen</a>
+    <a href="#arch-blok-vakken">Vakken</a>
+    <a href="#arch-blok-cohorten">Cohorten</a>
+    <a href="#arch-blok-leertrajecten">Leertrajecten</a>
+  </nav>
+
+<details class="block" id="arch-blok-studenten" open>
+  <summary class="block-title">Studenten</summary>
+  <div class="toolbar filterbar">
+    <input id="arch-students-search" class="push-right" placeholder="&#9906; Zoek in archief...">
   </div>
   <table class="list sortable" id="arch-students-table" data-kind="students">
     <thead><tr><th data-key="name">Naam</th><th data-key="student_number">Studentnummer</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
   <div class="pager" data-table="arch-students-table"></div>
+</details>
 
-  <div class="toolbar subtoolbar">
-    <strong>Klassen</strong>
-    <input id="arch-classes-search" placeholder="&#9906; Zoek in archief...">
+<details class="block" id="arch-blok-klassen" open>
+  <summary class="block-title">Klassen</summary>
+  <div class="toolbar filterbar">
+    <input id="arch-classes-search" class="push-right" placeholder="&#9906; Zoek in archief...">
   </div>
   <table class="list sortable" id="arch-classes-table" data-kind="classes">
     <thead><tr><th data-key="name">Klas</th><th data-key="crebo">Crebo</th><th data-key="cohort">Cohort</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
   <div class="pager" data-table="arch-classes-table"></div>
+</details>
 
-  <div class="toolbar subtoolbar">
-    <strong>Vakken</strong>
-    <input id="arch-subjects-search" placeholder="&#9906; Zoek in archief...">
+<details class="block" id="arch-blok-vakken">
+  <summary class="block-title">Vakken</summary>
+  <div class="toolbar filterbar">
+    <input id="arch-subjects-search" class="push-right" placeholder="&#9906; Zoek in archief...">
   </div>
   <table class="list sortable" id="arch-subjects-table" data-kind="subjects">
     <thead><tr><th data-key="name">Vak</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
   <div class="pager" data-table="arch-subjects-table"></div>
+</details>
 
-  <div class="toolbar subtoolbar">
-    <strong>Cohorten</strong>
-    <input id="arch-cohorts-search" placeholder="&#9906; Zoek in archief...">
+<details class="block" id="arch-blok-cohorten">
+  <summary class="block-title">Cohorten</summary>
+  <div class="toolbar filterbar">
+    <input id="arch-cohorts-search" class="push-right" placeholder="&#9906; Zoek in archief...">
   </div>
   <table class="list sortable" id="arch-cohorts-table" data-kind="cohorts">
     <thead><tr><th data-key="name">Cohort</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
   <div class="pager" data-table="arch-cohorts-table"></div>
+</details>
 
-  <div class="toolbar subtoolbar">
-    <strong>Leertrajecten</strong>
-    <input id="arch-leertrajecten-search" placeholder="&#9906; Zoek in archief...">
+<details class="block" id="arch-blok-leertrajecten">
+  <summary class="block-title">Leertrajecten</summary>
+  <div class="toolbar filterbar">
+    <input id="arch-leertrajecten-search" class="push-right" placeholder="&#9906; Zoek in archief...">
   </div>
   <table class="list sortable" id="arch-leertrajecten-table" data-kind="leertrajecten">
     <thead><tr><th data-key="name">Leertraject</th><th data-key="crebo">Crebo</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
+  <div class="pager" data-table="arch-leertrajecten-table"></div>
+</details>
 </section>
 
 <script src="/static/app.js"></script>
