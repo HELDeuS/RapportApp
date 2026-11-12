@@ -130,7 +130,7 @@ button {
 }
 
 button.secondary { background: #6b7684; }
-button.danger { background: var(--tekort); padding: 4px 10px; font-size: .85rem; }
+button.danger { background: var(--tekort); }
 
 input, select {
   padding: 7px 10px;
