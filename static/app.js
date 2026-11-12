@@ -3027,7 +3027,8 @@ $("#btn-meeting-new").addEventListener("click", async () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ class_id: +classId, period_id: +periodId,
-                             meeting_date: meetingDate }),
+                             meeting_date: meetingDate,
+                             include_sbu: $("#meeting-include-sbu").checked }),
     });
     await loadMeetings();
     await openMeeting(res.id);
@@ -3086,6 +3087,7 @@ function renderMeetingDetail() {
     <div class="toolbar">
       <h2 style="margin:0">Vergadering ${esc(m.class_name)} — ${esc(periodLabel({ name: m.period_name, year: m.period_year }))}</h2>
       <span class="meeting-date">${esc(m.meeting_date)}</span>
+      ${m.include_sbu ? "" : `<span class="badge-sbu-off" title="SBU-tekort bij keuzedelen is voor deze vergadering niet als signaal meegenomen">geen SBU-signaal</span>`}
       ${meetingStatusLabel(m)}
       <span class="push-right"></span>
       ${mayManage ? `<button id="btn-beamer" class="primary">Beamermodus</button>` : ""}

@@ -201,6 +201,7 @@ CREATE TABLE IF NOT EXISTS meetings (
     period_id INTEGER NOT NULL REFERENCES periods(id) ON DELETE CASCADE,
     meeting_date TEXT NOT NULL DEFAULT (date('now', 'localtime')),
     status TEXT NOT NULL DEFAULT 'open',
+    include_sbu INTEGER NOT NULL DEFAULT 1,
     created_by INTEGER,
     created_at TEXT DEFAULT (datetime('now', 'localtime'))
 );
@@ -233,6 +234,10 @@ def init_db():
     if "sbu_doel" not in ccols:
         db.execute("ALTER TABLE crebos ADD COLUMN sbu_doel INTEGER "
                    "NOT NULL DEFAULT 720")
+    mcols = [r[1] for r in db.execute("PRAGMA table_info(meetings)").fetchall()]
+    if mcols and "include_sbu" not in mcols:
+        db.execute("ALTER TABLE meetings ADD COLUMN include_sbu "
+                   "INTEGER NOT NULL DEFAULT 1")
     ucols = [r[1] for r in db.execute("PRAGMA table_info(users)").fetchall()]
     if "must_change_password" not in ucols:
         db.execute("ALTER TABLE users ADD COLUMN must_change_password "
@@ -2980,7 +2985,7 @@ def statistics_export():
 # Rapportvergaderingen (bespreeklijst per klas + module)
 # ---------------------------------------------------------------------------
 
-def meeting_student_signals(db, class_id, period_id):
+def meeting_student_signals(db, class_id, period_id, include_sbu=True):
     """Per student van een klas de signaleringscijfers voor een module:
     tekorten, aanwezigheid en SBU-voortgang (zelfde regels als de signalering)."""
     students = db.execute(
@@ -3019,7 +3024,7 @@ def meeting_student_signals(db, class_id, period_id):
             reasons.append(f"{t} tekorten")
         if present is not None and present < 85:
             reasons.append(f"aanwezigheid {round(present, 1)}%")
-        if sbu.get(sid, 0) < doel:
+        if include_sbu and sbu.get(sid, 0) < doel:
             reasons.append(f"SBU {int(sbu.get(sid, 0))}/{doel}")
         result[sid] = {
             "tekorten": t,
@@ -3121,19 +3126,21 @@ def meetings_create():
     if user["role"] == "mentor" and (not mentor_ids or class_id not in mentor_ids):
         return jsonify({"error": "Deze klas is niet van jou"}), 403
     meeting_date = (data.get("meeting_date") or "").strip()
+    include_sbu = 1 if data.get("include_sbu", True) else 0
     if meeting_date:
         db.execute(
-            "INSERT INTO meetings (class_id, period_id, meeting_date, created_by) "
-            "VALUES (?, ?, ?, ?)",
-            (class_id, period_id, meeting_date, user["id"]))
+            "INSERT INTO meetings (class_id, period_id, meeting_date, include_sbu, created_by) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (class_id, period_id, meeting_date, include_sbu, user["id"]))
     else:
         db.execute(
-            "INSERT INTO meetings (class_id, period_id, created_by) "
-            "VALUES (?, ?, ?)",
-            (class_id, period_id, user["id"]))
+            "INSERT INTO meetings (class_id, period_id, include_sbu, created_by) "
+            "VALUES (?, ?, ?, ?)",
+            (class_id, period_id, include_sbu, user["id"]))
     db.commit()
     meeting_id = db.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
-    signals = meeting_student_signals(db, class_id, period_id)
+    signals = meeting_student_signals(db, class_id, period_id,
+                                       include_sbu=bool(include_sbu))
     added = 0
     for sid, sig in signals.items():
         if sig["reasons"]:
@@ -3161,7 +3168,9 @@ def meetings_detail(meeting_id):
         ids = mentor_class_ids(user)
         if not ids or meeting["class_id"] not in ids:
             return jsonify({"error": "Deze klas is niet van jou"}), 403
-    signals = meeting_student_signals(db, meeting["class_id"], meeting["period_id"])
+    signals = meeting_student_signals(
+        db, meeting["class_id"], meeting["period_id"],
+        include_sbu=bool(meeting["include_sbu"]))
     items = db.execute(
         """SELECT i.student_id, i.reason, i.conclusion, i.followup,
                   st.first_name, st.prefix, st.last_name, st.student_number
