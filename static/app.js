@@ -2434,7 +2434,7 @@ function renderStatReport(report, data) {
         </table>`).join("")}`).join("")
       : `<p class="hint">Geen bewaarde resultaten in deze selectie.</p>`;
   } else if (report === "keuzedelen") {
-    title = "Missende keuzedelen (minder SBU gekoppeld dan het crebo-doel)";
+    title = "Missende keuzedelen (minder SBU gekoppeld dan de Keuzedeel-SBU van het crebo)";
     table = data.report_rows.length ? `
       <table class="list">
         <thead><tr><th>Student</th><th>Nr.</th><th>Klas</th><th>SBU gekoppeld</th><th>SBU tekort</th><th>Gekoppelde keuzedelen</th></tr></thead>
@@ -2444,7 +2444,7 @@ function renderStatReport(report, data) {
             <td class="val-onv">${r.sbu} / ${r.sbu_doel || 720}</td><td class="val-onv">${r.tekort}</td>
             <td>${esc(r.keuzedelen)}</td>
           </tr>`).join("")}</tbody>
-      </table>` : `<p class="hint">Alle studenten in deze selectie hebben het SBU-doel van hun crebo gehaald.</p>`;
+      </table>` : `<p class="hint">Alle studenten in deze selectie hebben de Keuzedeel-SBU van hun crebo gehaald.</p>`;
   } else if (report === "aanwezigheid") {
     title = "Aanwezigheid onder de norm (<85%)";
     table = data.report_rows.length ? `

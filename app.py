@@ -1015,9 +1015,9 @@ def crebo_item(crebo_id):
             try:
                 doel = int(data["sbu_doel"])
             except (TypeError, ValueError):
-                return jsonify({"error": "SBU-doel moet een getal zijn"}), 400
+                return jsonify({"error": "Keuzedeel-SBU moet een getal zijn"}), 400
             if doel <= 0:
-                return jsonify({"error": "SBU-doel moet groter dan 0 zijn"}), 400
+                return jsonify({"error": "Keuzedeel-SBU moet groter dan 0 zijn"}), 400
             db.execute("UPDATE crebos SET sbu_doel = ? WHERE id = ?",
                        (doel, crebo_id))
             db.commit()
