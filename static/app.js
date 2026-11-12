@@ -2933,15 +2933,17 @@ $("#settings-logo-file").addEventListener("change", (e) => {
   e.target.value = "";
   if (!file) return;
   if (file.size > 700 * 1024) return alert("Logo is te groot (max. 700 kB).");
-  const reader = new FileReader();
-  reader.onload = () => {
-    pendingLogo = reader.result;
-    const preview = $("#settings-logo-preview");
-    preview.src = pendingLogo;
-    preview.classList.remove("hidden");
-    $("#btn-remove-logo").classList.remove("hidden");
-  };
-  reader.readAsDataURL(file);
+  pendingLogo = new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      resolve(reader.result);
+      const preview = $("#settings-logo-preview");
+      preview.src = reader.result;
+      preview.classList.remove("hidden");
+      $("#btn-remove-logo").classList.remove("hidden");
+    };
+    reader.readAsDataURL(file);
+  });
 });
 
 $("#btn-remove-logo").addEventListener("click", () => {
@@ -2954,7 +2956,7 @@ $("#btn-remove-logo").addEventListener("click", () => {
 
 $("#btn-save-settings").addEventListener("click", async () => {
   const body = { school_name: $("#settings-school-name").value };
-  if (pendingLogo !== null) body.logo = pendingLogo;
+  if (pendingLogo !== null) body.logo = await pendingLogo;
   const result = $("#settings-result");
   try {
     settings = await api("/api/settings", {
@@ -2965,7 +2967,11 @@ $("#btn-save-settings").addEventListener("click", async () => {
     pendingLogo = null;
     result.textContent = "Instellingen opgeslagen.";
     result.classList.remove("hidden");
+    if ($("#report-output") && $("#report-output").innerHTML.trim()) {
+      showReport().catch(() => {});
+    }
   } catch (err) {
+    alert("Opslaan mislukt: " + err.message);
     result.textContent = err.message;
     result.classList.remove("hidden");
   }
