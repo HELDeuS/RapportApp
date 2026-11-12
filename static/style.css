@@ -504,6 +504,8 @@ html { scroll-behavior: smooth; }
 
 /* Template-links bij CSV-import */
 .template-link { font-size: .85rem; }
+.toolbar > span#grade-import-ui,
+.toolbar > span#student-import-ui { display: inline-flex; gap: 10px; align-items: center; }
 
 .stat-module-head { margin: 14px 0 4px; font-weight: 700; }
 .badge-outside {
