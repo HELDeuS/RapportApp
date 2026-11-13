@@ -551,6 +551,78 @@
       <input id="settings-aanwezigheidsgrens" type="number" min="0" max="100" step="0.5" placeholder="85">
     </label>
   </div>
+  <details class="block" id="settings-blok-mail" open>
+    <summary class="block-title">E-mailmeldingen</summary>
+    <p class="hint">Meldingen bij een nieuwe of afgeronde vergadering (met bespreeklijst/conclusies) en zodra het rapport van een student compleet is. Kies per meldingsoort de ontvangers (komma-gescheiden) en of de mail direct of als dagelijkse samenvatting gaat. Zonder SMTP-server worden geen meldingen verstuurd.</p>
+    <div class="toolbar addbar">
+      <label>SMTP-server
+        <input id="settings-smtp-host" placeholder="Bijv. smtp.school.nl">
+      </label>
+      <label>Poort
+        <input id="settings-smtp-port" type="number" min="1" max="65535" step="1" placeholder="587">
+      </label>
+      <label>Gebruiker
+        <input id="settings-smtp-user" autocomplete="off" placeholder="Bijv. rapportapp@school.nl">
+      </label>
+      <label>Wachtwoord
+        <input id="settings-smtp-pass" type="password" autocomplete="new-password" placeholder="(ongewijzigd)">
+      </label>
+      <label>Afzender
+        <input id="settings-smtp-from" placeholder="Bijv. rapportapp@school.nl">
+      </label>
+      <label><input type="checkbox" id="settings-smtp-starttls" checked> STARTTLS</label>
+    </div>
+    <div class="toolbar addbar">
+      <label>Ontvangers vergadering
+        <input id="settings-mail-vergadering" placeholder="Bijv. slber@school.nl, beheer@school.nl">
+      </label>
+      <label>Modus
+        <select id="settings-mailmode-vergadering">
+          <option value="direct">Direct versturen</option>
+          <option value="samenvatting">Dagelijkse samenvatting</option>
+        </select>
+      </label>
+    </div>
+    <div class="toolbar addbar">
+      <label>Ontvangers rapport gereed
+        <input id="settings-mail-rapport" placeholder="Bijv. slber@school.nl, beheer@school.nl">
+      </label>
+      <label>Modus
+        <select id="settings-mailmode-rapport">
+          <option value="direct">Direct versturen</option>
+          <option value="samenvatting">Dagelijkse samenvatting</option>
+        </select>
+      </label>
+    </div>
+    <div class="toolbar">
+      <button id="btn-mail-test" class="secondary">Verstuur testmail</button>
+      <button id="btn-mail-digest" class="secondary">Verstuur samenvatting nu</button>
+      <span class="hint" id="mail-pending-hint"></span>
+    </div>
+    <div class="toolbar filterbar">
+      <label>Soort:
+        <select id="mail-event-filter">
+          <option value="">Alle soorten</option>
+          <option value="vergadering">Vergadering</option>
+          <option value="rapport">Rapport gereed</option>
+        </select>
+      </label>
+      <label>Status:
+        <select id="mail-status-filter">
+          <option value="">Alle statussen</option>
+          <option value="verzonden">Verzonden</option>
+          <option value="wachtend">Wachtend (samenvatting)</option>
+          <option value="mislukt">Mislukt</option>
+        </select>
+      </label>
+      <input id="mail-search" placeholder="&#9906; Zoek in meldingen..." style="margin-left:auto;">
+    </div>
+    <table class="list sortable" id="mail-table">
+      <thead><tr><th data-key="created_at">Aangemaakt</th><th data-key="event">Soort</th><th data-key="subject">Onderwerp</th><th data-key="recipients">Ontvangers</th><th data-key="status">Status</th><th data-key="error">Foutmelding</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="pager" data-table="mail-table"></div>
+  </details>
   <div class="toolbar addbar">
     <button id="btn-save-settings" class="push-right">Instellingen opslaan</button>
   </div>

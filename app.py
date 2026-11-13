@@ -214,6 +214,17 @@ CREATE TABLE IF NOT EXISTS meeting_items (
     followup TEXT DEFAULT '',
     UNIQUE (meeting_id, student_id)
 );
+CREATE TABLE IF NOT EXISTS mail_outbox (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event TEXT NOT NULL,
+    mode TEXT NOT NULL DEFAULT 'direct',
+    subject TEXT NOT NULL,
+    body TEXT NOT NULL,
+    recipients TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    sent_at TEXT,
+    error TEXT DEFAULT ''
+);
 """
 
 
@@ -792,6 +803,206 @@ def signal_thresholds(db):
     return t, a
 
 
+# ---------------------------------------------------------------------------
+# E-mailmeldingen (vergadering + rapport gereed)
+# ---------------------------------------------------------------------------
+
+DEFAULT_SMTP_PORT = 587
+MAIL_EVENTS = {
+    "vergadering": "Vergadering",
+    "rapport": "Rapport gereed",
+}
+
+
+def mail_settings(db):
+    return {
+        "smtp_host": get_setting(db, "smtp_host"),
+        "smtp_port": get_setting(db, "smtp_port", str(DEFAULT_SMTP_PORT)),
+        "smtp_user": get_setting(db, "smtp_user"),
+        "smtp_pass": get_setting(db, "smtp_pass"),
+        "smtp_from": get_setting(db, "smtp_from"),
+        "smtp_starttls": get_setting(db, "smtp_starttls", "1") == "1",
+        "recipients": {e: get_setting(db, f"mail_recipients_{e}") for e in MAIL_EVENTS},
+        "modes": {e: get_setting(db, f"mail_mode_{e}", "direct") for e in MAIL_EVENTS},
+    }
+
+
+def parse_recipients(raw):
+    return [r.strip() for r in (raw or "").replace(";", ",").split(",")
+            if r.strip() and "@" in r]
+
+
+def smtp_send(cfg, recipients, subject, body):
+    import smtplib
+    from email.message import EmailMessage
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = cfg["smtp_from"] or cfg["smtp_user"] or "rapportapp@localhost"
+    msg["To"] = ", ".join(recipients)
+    msg.set_content(body)
+    try:
+        port = int(cfg["smtp_port"] or DEFAULT_SMTP_PORT)
+    except (TypeError, ValueError):
+        port = DEFAULT_SMTP_PORT
+    with smtplib.SMTP(cfg["smtp_host"], port, timeout=15) as srv:
+        if cfg["smtp_starttls"]:
+            srv.starttls()
+        if cfg["smtp_user"]:
+            srv.login(cfg["smtp_user"], cfg["smtp_pass"])
+        srv.send_message(msg)
+
+
+def mail_enabled(db, event):
+    """True als voor deze gebeurtenis een melding kan worden verstuurd."""
+    cfg = mail_settings(db)
+    return bool(cfg["smtp_host"] and parse_recipients(cfg["recipients"][event]))
+
+
+def queue_mail(db, event, subject, body):
+    """Melding in de wachtrij; bij modus 'direct' meteen proberen te versturen."""
+    if event not in MAIL_EVENTS:
+        return
+    cfg = mail_settings(db)
+    recipients = parse_recipients(cfg["recipients"][event])
+    if not recipients or not cfg["smtp_host"]:
+        return
+    mode = cfg["modes"][event]
+    if mode not in ("direct", "samenvatting"):
+        mode = "direct"
+    cur = db.execute(
+        "INSERT INTO mail_outbox (event, mode, subject, body, recipients) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (event, mode, subject, body, ", ".join(recipients)))
+    if mode == "direct":
+        try:
+            smtp_send(cfg, recipients, subject, body)
+            db.execute(
+                "UPDATE mail_outbox SET sent_at = datetime('now','localtime'), "
+                "error = '' WHERE id = ?", (cur.lastrowid,))
+        except Exception as e:
+            db.execute("UPDATE mail_outbox SET error = ? WHERE id = ?",
+                       (str(e)[:300], cur.lastrowid))
+    db.commit()
+
+
+def flush_digest(db, force=False):
+    """Verstuur alle wachtende samenvattingsmeldingen in één dagelijkse mail."""
+    rows = db.execute(
+        "SELECT * FROM mail_outbox WHERE sent_at IS NULL "
+        "AND mode = 'samenvatting' ORDER BY id").fetchall()
+    if not rows:
+        return 0
+    if not force:
+        last = get_setting(db, "mail_last_digest")
+        if last:
+            try:
+                sent_at = datetime.strptime(last, "%Y-%m-%d %H:%M:%S")
+                if datetime.now() - sent_at < timedelta(hours=24):
+                    return 0
+            except ValueError:
+                pass
+    cfg = mail_settings(db)
+    if not cfg["smtp_host"]:
+        return 0
+    recipients = []
+    for r in rows:
+        for addr in parse_recipients(r["recipients"]):
+            if addr not in recipients:
+                recipients.append(addr)
+    if not recipients:
+        return 0
+    body_lines = ["Dagelijkse samenvatting van RapportApp:", ""]
+    for event, label in MAIL_EVENTS.items():
+        ev_rows = [r for r in rows if r["event"] == event]
+        if not ev_rows:
+            continue
+        body_lines.append(f"== {label} ==")
+        for r in ev_rows:
+            body_lines.append(f"- {r['subject']} ({r['created_at']})")
+        body_lines.append("")
+    try:
+        smtp_send(cfg, recipients, "RapportApp \u2014 dagelijkse samenvatting",
+                  "\n".join(body_lines))
+    except Exception as e:
+        db.execute("UPDATE mail_outbox SET error = ? "
+                   "WHERE sent_at IS NULL AND mode = 'samenvatting'",
+                   (str(e)[:300],))
+        db.commit()
+        return 0
+    db.execute(
+        "UPDATE mail_outbox SET sent_at = datetime('now','localtime'), error = '' "
+        "WHERE sent_at IS NULL AND mode = 'samenvatting'")
+    db.execute(
+        "INSERT INTO settings (key, value) VALUES ('mail_last_digest', "
+        "datetime('now','localtime')) ON CONFLICT(key) DO UPDATE "
+        "SET value = datetime('now','localtime')")
+    db.commit()
+    return len(rows)
+
+
+@app.after_request
+def try_daily_digest(response):
+    try:
+        db = get_db()
+        flush_digest(db)
+        close_db()
+    except Exception:
+        pass
+    return response
+
+
+def report_ready_students(db, period_id, student_ids):
+    """Van deze studenten is het rapport voor de module compleet: alle vakken
+    die aan de module zijn gekoppeld (exclusief keuzedelen) hebben een resultaat."""
+    ids = [s for s in (student_ids or []) if s]
+    if not ids:
+        return []
+    ph = ",".join("?" for _ in ids)
+    expected = {}
+    for r in db.execute(
+        f"""SELECT sp.subject_id FROM subject_periods sp
+            JOIN subjects s ON s.id = sp.subject_id
+            WHERE sp.period_id = ? AND COALESCE(s.kind, 'vak') != 'keuzedeel'""",
+        (period_id,)).fetchall():
+        expected[r["subject_id"]] = True
+    if not expected:
+        return []
+    done = []
+    for sid in ids:
+        got = {r["subject_id"] for r in db.execute(
+            "SELECT subject_id FROM grades "
+            "WHERE period_id = ? AND student_id = ?",
+            (period_id, sid)).fetchall()}
+        if expected.keys() <= got:
+            done.append(sid)
+    return done
+
+
+def notify_report_ready(db, period_id, student_ids):
+    """'Rapport gereed'-meldingen, per student+module maar één keer (dedup)."""
+    for sid in report_ready_students(db, period_id, student_ids):
+        student = db.execute(
+            "SELECT name, student_number FROM students WHERE id = ?",
+            (sid,)).fetchone()
+        period = db.execute(
+            "SELECT name FROM periods WHERE id = ?", (period_id,)).fetchone()
+        if not student or not period:
+            continue
+        subject = (f"Rapport gereed: {student['name']} "
+                   f"({student['student_number'] or sid}) \u2014 module {period['name']}")
+        exists = db.execute(
+            "SELECT COUNT(*) FROM mail_outbox WHERE event = 'rapport' "
+            "AND subject = ?", (subject,)).fetchone()[0]
+        if exists:
+            continue
+        body = (f"Het rapport van {student['name']} "
+                f"({student['student_number'] or sid}) voor module "
+                f"{period['name']} is compleet: alle vakken van deze module "
+                "hebben een resultaat.\n\n"
+                "Open RapportApp om het rapport te bekijken of af te drukken.")
+        queue_mail(db, "rapport", subject, body)
+
+
 @app.route("/api/settings")
 def settings_get():
     user, err = auth_error()
@@ -799,11 +1010,20 @@ def settings_get():
     if err:
         return jsonify({"school_name": get_setting(db, "school_name")})
     t, a = signal_thresholds(db)
+    cfg = mail_settings(db)
     return jsonify({
         "school_name": get_setting(db, "school_name"),
         "logo": get_setting(db, "logo"),
         "signal_tekortendrempel": t,
         "signal_aanwezigheidsgrens": a,
+        "smtp_host": cfg["smtp_host"],
+        "smtp_port": cfg["smtp_port"],
+        "smtp_user": cfg["smtp_user"],
+        "smtp_from": cfg["smtp_from"],
+        "smtp_starttls": cfg["smtp_starttls"],
+        "smtp_pass_set": bool(cfg["smtp_pass"]),
+        "mail_recipients": cfg["recipients"],
+        "mail_modes": cfg["modes"],
     })
 
 
@@ -844,6 +1064,39 @@ def settings_put():
             if len(logo) > MAX_LOGO_BYTES:
                 return jsonify({"error": "Logo is te groot (max. 700 kB als bestand)"}), 400
         updates["logo"] = logo
+    if "smtp_host" in data:
+        updates["smtp_host"] = str(data["smtp_host"] or "").strip()[:200]
+    if "smtp_port" in data:
+        port = str(data["smtp_port"] or "").strip()
+        if port:
+            try:
+                p = int(port)
+            except (TypeError, ValueError):
+                return jsonify({"error": "SMTP-poort moet een getal zijn"}), 400
+            if not (1 <= p <= 65535):
+                return jsonify({"error": "SMTP-poort moet tussen 1 en 65535 liggen"}), 400
+        updates["smtp_port"] = port
+    if "smtp_user" in data:
+        updates["smtp_user"] = str(data["smtp_user"] or "").strip()[:200]
+    if "smtp_pass" in data:
+        updates["smtp_pass"] = str(data["smtp_pass"] or "")[:200]
+    if "smtp_from" in data:
+        updates["smtp_from"] = str(data["smtp_from"] or "").strip()[:200]
+    if "smtp_starttls" in data:
+        updates["smtp_starttls"] = "1" if data["smtp_starttls"] else "0"
+    for event in MAIL_EVENTS:
+        if f"mail_recipients_{event}" in data:
+            raw = str(data[f"mail_recipients_{event}"] or "")[:1000]
+            bad = [r for r in raw.replace(";", ",").split(",")
+                   if r.strip() and ("@" not in r.strip() or " " in r.strip())]
+            if bad:
+                return jsonify({"error": "Ongeldig e-mailadres: " + bad[0].strip()}), 400
+            updates[f"mail_recipients_{event}"] = raw
+        if f"mail_mode_{event}" in data:
+            mode = data[f"mail_mode_{event}"]
+            if mode not in ("direct", "samenvatting"):
+                return jsonify({"error": "Ongeldige meldingsmodus"}), 400
+            updates[f"mail_mode_{event}"] = mode
     for key, value in updates.items():
         db.execute(
             "INSERT INTO settings (key, value) VALUES (?, ?) "
@@ -852,13 +1105,73 @@ def settings_put():
     db.commit()
     audit(db, user, "wijzigen", "instellingen", None,
           ", ".join(sorted(updates)))
+    return settings_get_inner(db)
+
+
+def settings_get_inner(db):
     t, a = signal_thresholds(db)
+    cfg = mail_settings(db)
     return jsonify({
         "school_name": get_setting(db, "school_name"),
         "logo": get_setting(db, "logo"),
         "signal_tekortendrempel": t,
         "signal_aanwezigheidsgrens": a,
+        "smtp_host": cfg["smtp_host"],
+        "smtp_port": cfg["smtp_port"],
+        "smtp_user": cfg["smtp_user"],
+        "smtp_from": cfg["smtp_from"],
+        "smtp_starttls": cfg["smtp_starttls"],
+        "smtp_pass_set": bool(cfg["smtp_pass"]),
+        "mail_recipients": cfg["recipients"],
+        "mail_modes": cfg["modes"],
     })
+
+
+@app.route("/api/mail/outbox")
+def mail_outbox_list():
+    user, err = auth_error("beheerder")
+    if err:
+        return err
+    db = get_db()
+    rows = db.execute(
+        "SELECT * FROM mail_outbox ORDER BY id DESC LIMIT 1000").fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/mail/test", methods=["POST"])
+def mail_test():
+    user, err = auth_error("beheerder")
+    if err:
+        return err
+    db = get_db()
+    cfg = mail_settings(db)
+    recipients = parse_recipients(cfg["recipients"]["vergadering"])
+    if not recipients:
+        recipients = parse_recipients(cfg["recipients"]["rapport"])
+    if not cfg["smtp_host"]:
+        return jsonify({"error": "Vul eerst een SMTP-server in en sla op"}), 400
+    if not recipients:
+        return jsonify({"error": "Vul eerst minstens één ontvanger in en sla op"}), 400
+    try:
+        smtp_send(cfg, recipients, "RapportApp \u2014 testmelding",
+                  "Dit is een testmelding van RapportApp.\n"
+                  "Als je deze mail ontvangt, werkt de e-mailinstelling.")
+    except Exception as e:
+        return jsonify({"error": f"Versturen mislukt: {e}"}), 400
+    return jsonify({"ok": True, "recipients": recipients})
+
+
+@app.route("/api/mail/digest", methods=["POST"])
+def mail_digest_now():
+    user, err = auth_error("beheerder")
+    if err:
+        return err
+    db = get_db()
+    sent = flush_digest(db, force=True)
+    if not sent:
+        return jsonify({"error": "Er zijn geen wachtende samenvattingsmeldingen "
+                                  "(of versturen is mislukt; zie het overzicht)"}), 400
+    return jsonify({"ok": True, "sent": sent})
 
 
 @app.route("/api/users/import", methods=["POST"])
@@ -2021,6 +2334,11 @@ def grade_set():
           f"vak {name_of(db, 'subjects', subject_id)}, "
           f"module {name_of(db, 'periods', period_id)}: "
           f"{'verwijderd' if value == '' else value}")
+    if value != "":
+        try:
+            notify_report_ready(db, period_id, [student_id])
+        except Exception:
+            pass
     return jsonify({"ok": True, "value": value,
                     "tekorten": tekorten_for_value(value)})
 
@@ -2068,6 +2386,11 @@ def grade_bulk():
           f"{imported} cijfer(s) voor vak {subject['name']}, "
           f"module {name_of(db, 'periods', period_id)}"
           + (f"; fouten: {'; '.join(errors[:3])}" if errors else ""))
+    try:
+        notify_report_ready(db, period_id,
+                            [e.get("student_id") for e in entries])
+    except Exception:
+        pass
     return jsonify({"ok": True, "imported": imported, "errors": errors[:50]})
 
 
@@ -2165,6 +2488,7 @@ def import_grades():
         )
 
     imported, skipped = 0, 0
+    affected = set()
     for row in data_rows:
         if not row or not (row[0] or "").strip():
             continue
@@ -2193,11 +2517,16 @@ def import_grades():
                 (student["id"], subject_ids[j], period_id, value),
             )
             imported += 1
+            affected.add(student["id"])
     db.commit()
     audit(db, user, "import", "cijfers", None,
           f"{imported} cijfer(s) geïmporteerd, {skipped} overgeslagen, "
           f"{len(errors)} foutmelding(en) voor module "
           f"{name_of(db, 'periods', period_id)}")
+    try:
+        notify_report_ready(db, period_id, list(affected))
+    except Exception:
+        pass
     return jsonify({"imported": imported, "skipped": skipped,
                    "errors": errors[:50]})
 
@@ -3204,6 +3533,30 @@ def meetings_create():
     db.commit()
     audit(db, user, "aanmaak", "vergadering", meeting_id,
           f"{cls['name']} / {period['name']} \u2014 {added} student(en) auto-geselecteerd")
+    try:
+        if mail_enabled(db, "vergadering"):
+            lines = [f"Er is een rapportvergadering aangemaakt: "
+                     f"{cls['name']} \u2014 module {period['name']}.",
+                     f"Datum: {meeting_date or 'vandaag'}", "",
+                     f"Bespreeklijst ({added} student(en), volgens de "
+                     "signaalcriteria):"]
+            for it in db.execute(
+                """SELECT st.first_name, st.prefix, st.last_name,
+                          st.student_number, i.reason
+                   FROM meeting_items i JOIN students st ON st.id = i.student_id
+                   WHERE i.meeting_id = ? ORDER BY st.last_name, st.first_name""",
+                (meeting_id,)).fetchall():
+                name = " ".join(x for x in [it["first_name"], it["prefix"],
+                                          it["last_name"]] if x)
+                lines.append(f"- {name} ({it['student_number'] or it['student_id']})"
+                             + (f": {it['reason']}" if it["reason"] else ""))
+            if not added:
+                lines.append("(geen studenten op de bespreeklijst)")
+            queue_mail(db, "vergadering",
+                       f"Vergadering aangemaakt: {cls['name']} / {period['name']}",
+                       "\n".join(lines))
+    except Exception:
+        pass
     return jsonify({"id": meeting_id, "auto_added": added}), 201
 
 
@@ -3323,6 +3676,34 @@ def meetings_update(meeting_id):
     audit(db, user, "wijziging", "vergadering", meeting_id,
           f"{meeting['class_name']} / {meeting['period_name']} \u2014 "
           f"Velden: {', '.join(f.split(' = ')[0] for f in fields)}")
+    if data.get("status") == "afgerond":
+        try:
+            if mail_enabled(db, "vergadering"):
+                lines = [f"De rapportvergadering van {meeting['class_name']} "
+                         f"\u2014 module {meeting['period_name']} is afgerond.", "",
+                         "Genomen conclusies en vervolgacties:"]
+                for it in db.execute(
+                    """SELECT st.first_name, st.prefix, st.last_name,
+                              st.student_number, i.conclusion, i.followup
+                       FROM meeting_items i
+                       JOIN students st ON st.id = i.student_id
+                       WHERE i.meeting_id = ?
+                       ORDER BY st.last_name, st.first_name""",
+                    (meeting_id,)).fetchall():
+                    name = " ".join(x for x in [it["first_name"], it["prefix"],
+                                              it["last_name"]] if x)
+                    lines.append(f"- {name} "
+                                 f"({it['student_number'] or it['student_id']})")
+                    if it["conclusion"]:
+                        lines.append(f"  Conclusie: {it['conclusion']}")
+                    if it["followup"]:
+                        lines.append(f"  Vervolgactie: {it['followup']}")
+                queue_mail(db, "vergadering",
+                           f"Vergadering afgerond: {meeting['class_name']} / "
+                           f"{meeting['period_name']}",
+                           "\n".join(lines))
+        except Exception:
+            pass
     return jsonify({"ok": True})
 
 

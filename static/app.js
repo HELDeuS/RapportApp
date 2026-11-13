@@ -3460,6 +3460,7 @@ $$(".tab").forEach((btn) => {
     if (btn.dataset.tab === "keuzedelen") { renderKeuzedelenTab(); loadKdMatrix(); loadKdBulk(); }
     if (btn.dataset.tab === "statistieken") fillStatFilters();
     if (btn.dataset.tab === "vergadering") renderMeetingsTab();
+    if (btn.dataset.tab === "instellingen") renderMailOutbox().catch(() => {});
   });
 });
 
@@ -3747,6 +3748,20 @@ function renderSettingsUi() {
   }
   const removeBtn = $("#btn-remove-logo");
   if (removeBtn) removeBtn.classList.toggle("hidden", !settings.logo);
+  const smtpHost = $("#settings-smtp-host");
+  if (smtpHost) {
+    smtpHost.value = settings.smtp_host || "";
+    $("#settings-smtp-port").value = settings.smtp_port || "";
+    $("#settings-smtp-user").value = settings.smtp_user || "";
+    $("#settings-smtp-pass").value = "";
+    $("#settings-smtp-pass").placeholder = settings.smtp_pass_set ? "(ongewijzigd)" : "";
+    $("#settings-smtp-from").value = settings.smtp_from || "";
+    $("#settings-smtp-starttls").checked = settings.smtp_starttls !== false;
+    $("#settings-mail-vergadering").value = (settings.mail_recipients && settings.mail_recipients.vergadering) || "";
+    $("#settings-mail-rapport").value = (settings.mail_recipients && settings.mail_recipients.rapport) || "";
+    $("#settings-mailmode-vergadering").value = (settings.mail_modes && settings.mail_modes.vergadering) || "direct";
+    $("#settings-mailmode-rapport").value = (settings.mail_modes && settings.mail_modes.rapport) || "direct";
+  }
   pendingLogo = null;
 }
 
@@ -3759,6 +3774,15 @@ function markSettingsUnsaved() {
 $("#settings-school-name").addEventListener("input", markSettingsUnsaved);
 $("#settings-tekortendrempel").addEventListener("input", markSettingsUnsaved);
 $("#settings-aanwezigheidsgrens").addEventListener("input", markSettingsUnsaved);
+for (const sel of ["#settings-smtp-host", "#settings-smtp-port", "#settings-smtp-user",
+                   "#settings-smtp-pass", "#settings-smtp-from", "#settings-mail-vergadering",
+                   "#settings-mail-rapport"]) {
+  $(sel).addEventListener("input", markSettingsUnsaved);
+}
+for (const sel of ["#settings-smtp-starttls", "#settings-mailmode-vergadering",
+                   "#settings-mailmode-rapport"]) {
+  $(sel).addEventListener("change", markSettingsUnsaved);
+}
 
 $("#settings-logo-file").addEventListener("change", (e) => {
   const file = e.target.files[0];
@@ -3798,6 +3822,19 @@ $("#btn-save-settings").addEventListener("click", async () => {
     signal_tekortendrempel: +$("#settings-tekortendrempel").value || 3,
     signal_aanwezigheidsgrens: +$("#settings-aanwezigheidsgrens").value || 85,
   };
+  if ($("#settings-smtp-host")) {
+    body.smtp_host = $("#settings-smtp-host").value;
+    body.smtp_port = $("#settings-smtp-port").value;
+    body.smtp_user = $("#settings-smtp-user").value;
+    body.smtp_from = $("#settings-smtp-from").value;
+    body.smtp_starttls = $("#settings-smtp-starttls").checked;
+    body.mail_recipients_vergadering = $("#settings-mail-vergadering").value;
+    body.mail_recipients_rapport = $("#settings-mail-rapport").value;
+    body.mail_mode_vergadering = $("#settings-mailmode-vergadering").value;
+    body.mail_mode_rapport = $("#settings-mailmode-rapport").value;
+    const pass = $("#settings-smtp-pass").value;
+    if (pass) body.smtp_pass = pass;
+  }
   let logoMeegestuurd = false;
   if (pendingLogo !== null) {
     try {
@@ -3835,6 +3872,101 @@ $("#btn-save-settings").addEventListener("click", async () => {
     result.textContent = err.message;
     result.classList.remove("hidden");
     setResultKind(result, true);
+  }
+});
+
+// ---------- E-mailmeldingen: overzicht, testmail, samenvatting ----------
+let mailEntries = [];
+let mailSort = { key: null, dir: 1 };
+
+async function renderMailOutbox() {
+  try {
+    mailEntries = await api("/api/mail/outbox");
+  } catch (err) {
+    mailEntries = [];
+  }
+  const pending = mailEntries.filter((r) => !r.sent_at && !r.error).length;
+  const hint = $("#mail-pending-hint");
+  if (hint) hint.textContent = pending
+    ? `${pending} melding(en) wachten op de dagelijkse samenvatting.`
+    : "";
+  renderMailTable();
+}
+
+function mailStatus(r) {
+  if (r.sent_at) return "verzonden";
+  return r.error ? "mislukt" : "wachtend";
+}
+
+function mailFilteredRows() {
+  const q = ($("#mail-search").value || "").trim().toLowerCase();
+  const event = $("#mail-event-filter").value;
+  const status = $("#mail-status-filter").value;
+  let rows = mailEntries;
+  if (event) rows = rows.filter((r) => r.event === event);
+  if (status) rows = rows.filter((r) => mailStatus(r) === status);
+  if (q) {
+    rows = rows.filter((r) =>
+      (r.subject || "").toLowerCase().includes(q) ||
+      (r.recipients || "").toLowerCase().includes(q) ||
+      (r.error || "").toLowerCase().includes(q));
+  }
+  return sortRows(rows, mailSort, (r, key) =>
+    key === "status" ? mailStatus(r) : (r[key] || ""));
+}
+
+function renderMailTable() {
+  const rows = mailFilteredRows();
+  updateSortArrows("#mail-table", mailSort);
+  $("#mail-table tbody").innerHTML = rows.length
+    ? pageSlice("#mail-table", rows).map((r) => `
+      <tr>
+        <td>${esc(r.created_at || "")}</td>
+        <td>${esc(r.event === "vergadering" ? "Vergadering" : "Rapport gereed")}</td>
+        <td>${esc(r.subject || "")}</td>
+        <td>${esc(r.recipients || "")}</td>
+        <td>${esc(mailStatus(r))}${r.sent_at ? " " + esc(r.sent_at) : ""}</td>
+        <td>${esc(r.error || "")}</td>
+      </tr>`).join("")
+    : `<tr><td colspan="6" class="hint">Geen e-mailmeldingen.</td></tr>`;
+}
+
+$("#mail-search").addEventListener("input", () => { resetPage("#mail-table"); renderMailTable(); });
+$("#mail-event-filter").addEventListener("change", () => { resetPage("#mail-table"); renderMailTable(); });
+$("#mail-status-filter").addEventListener("change", () => { resetPage("#mail-table"); renderMailTable(); });
+$("#mail-table thead").addEventListener("click", (e) => {
+  const key = e.target.dataset.key;
+  if (key === undefined) return;
+  if (mailSort.key === key) mailSort.dir = mailSort.dir === 1 ? -1 : 1;
+  else { mailSort.key = key; mailSort.dir = 1; }
+  renderMailTable();
+});
+
+$("#btn-mail-test").addEventListener("click", async () => {
+  const btn = $("#btn-mail-test");
+  btn.disabled = true;
+  try {
+    const res = await api("/api/mail/test", { method: "POST" });
+    alert("Testmail verstuurd naar: " + res.recipients.join(", "));
+  } catch (err) {
+    alert("Testmail mislukt: " + err.message);
+  } finally {
+    btn.disabled = false;
+    renderMailOutbox().catch(() => {});
+  }
+});
+
+$("#btn-mail-digest").addEventListener("click", async () => {
+  const btn = $("#btn-mail-digest");
+  btn.disabled = true;
+  try {
+    const res = await api("/api/mail/digest", { method: "POST" });
+    alert(`Samenvatting verstuurd (${res.sent} melding(en)).`);
+  } catch (err) {
+    alert("Samenvatting niet verstuurd: " + err.message);
+  } finally {
+    btn.disabled = false;
+    renderMailOutbox().catch(() => {});
   }
 });
 
