@@ -240,6 +240,7 @@ def main():
     # --------------------------------------------------------------- studenten
     number = 210001
     students_by_class = []
+    numbers_by_id = {}
     for cid, leerjaar, cname in class_ids:
         made = []
         for i in range(25):
@@ -251,6 +252,7 @@ def main():
                 "first_name": first, "prefix": prefix, "last_name": last,
                 "email": f"s{number}@school.nl", "class_id": cid})
             made.append(body["id"])
+            numbers_by_id[body["id"]] = str(number - 1)
             number += 1
         students_by_class.append((cid, leerjaar, made))
     print("150 studenten klaar.")
@@ -326,8 +328,13 @@ def main():
     print(f"Keuzedelen klaar: {len(kd_specs)} keuzedelen, {linked} studenten gekoppeld.")
 
     # ------------------------------------------------- inlogaccounts studenten
-    _, body = s.post("/api/students/bulk", {"ids": all_ids, "action": "login_on"})
-    print(f"Studentaccounts: {body.get('affected', '?')}")
+    accounts = 0
+    for sid in all_ids:
+        _, body = s.post("/api/users", {
+            "username": numbers_by_id[sid], "password": "welkom",
+            "role": "student", "student_id": sid})
+        accounts += 1 if body.get("id") else 0
+    print(f"Studentaccounts: {accounts}")
 
     print("\nKlaar! Overzicht:")
     print("  Modules: M1 t/m M12 (stage: M5, M6, M11, M12)")

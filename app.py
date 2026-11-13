@@ -111,7 +111,6 @@ CREATE TABLE IF NOT EXISTS students (
     name TEXT NOT NULL,
     student_number TEXT DEFAULT '',
     class_id INTEGER REFERENCES classes(id) ON DELETE SET NULL,
-    login_enabled INTEGER DEFAULT 0,
     first_name TEXT DEFAULT '',
     prefix TEXT DEFAULT '',
     last_name TEXT DEFAULT '',
@@ -238,6 +237,11 @@ def init_db():
             "ALTER TABLE students ADD COLUMN class_id INTEGER "
             "REFERENCES classes(id) ON DELETE SET NULL"
         )
+    if "login_enabled" in cols:
+        try:
+            db.execute("ALTER TABLE students DROP COLUMN login_enabled")
+        except sqlite3.OperationalError:
+            pass
     pcols = [r[1] for r in db.execute("PRAGMA table_info(periods)").fetchall()]
     if "year" not in pcols:
         db.execute("ALTER TABLE periods ADD COLUMN year TEXT DEFAULT ''")
@@ -324,8 +328,6 @@ def init_db():
         db.execute("ALTER TABLE classes ADD COLUMN mentor_id INTEGER "
                    "REFERENCES users(id) ON DELETE SET NULL")
     stcols = [r[1] for r in db.execute("PRAGMA table_info(students)").fetchall()]
-    if "login_enabled" not in stcols:
-        db.execute("ALTER TABLE students ADD COLUMN login_enabled INTEGER DEFAULT 0")
     for col in ("first_name", "prefix", "last_name", "email"):
         if col not in stcols:
             db.execute(f"ALTER TABLE students ADD COLUMN {col} TEXT DEFAULT ''")
@@ -769,43 +771,6 @@ def student_display_name(data):
     """Bouw de weergavenaam uit voornaam/tussenvoegsel/achternaam."""
     parts = [data.get("first_name") or "", data.get("prefix") or "", data.get("last_name") or ""]
     return " ".join(p.strip() for p in parts if p and p.strip())
-
-
-def ensure_student_account(db, student_row):
-    """Maakt (of activeert) het studentaccount bij een student; geeft de gebruikersnaam terug."""
-    base = (student_row["student_number"] or "").strip() or f"student{student_row['id']}"
-    username = base
-    n = 0
-    while db.execute(
-        "SELECT id FROM users WHERE username = ? AND NOT (role = 'student' AND student_id = ?)",
-        (username, student_row["id"]),
-    ).fetchone():
-        n += 1
-        username = f"{base}{n}"
-    existing = db.execute(
-        "SELECT * FROM users WHERE role = 'student' AND student_id = ?",
-        (student_row["id"],),
-    ).fetchone()
-    first = student_row.get("first_name") or ""
-    last = student_row.get("last_name") or ""
-    email = student_row.get("email") or ""
-    if existing is None:
-        db.execute(
-            """INSERT INTO users (username, password_hash, role, student_id,
-                                  first_name, last_name, email,
-                                  must_change_password)
-               VALUES (?, ?, ?, ?, ?, ?, ?, 1)""",
-            (username, generate_password_hash("welkom"), "student", student_row["id"],
-             first, last, email),
-        )
-    else:
-        db.execute(
-            """UPDATE users SET username = ?, active = 1,
-                               first_name = ?, last_name = ?, email = ?
-               WHERE id = ?""",
-            (username, first, last, email, existing["id"]),
-        )
-    return username
 
 
 @app.route("/api/auditlog")
@@ -1645,21 +1610,15 @@ def students_collection():
         if user["role"] == "mentor" and not mentor_owns_student(user, None, class_id):
             return jsonify({"error": "Als mentor kun je alleen studenten in je eigen klas toevoegen"}), 403
         cur = db.execute(
-            """INSERT INTO students (name, student_number, class_id, login_enabled,
+            """INSERT INTO students (name, student_number, class_id,
                                      first_name, prefix, last_name, email)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (name, number, class_id, 1 if data.get("login_enabled") else 0,
-             first, prefix, last, email),
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (name, number, class_id, first, prefix, last, email),
         )
         db.commit()
         student = dict(db.execute(
             "SELECT * FROM students WHERE id = ?", (cur.lastrowid,)
         ).fetchone())
-        username = None
-        if data.get("login_enabled"):
-            username = ensure_student_account(db, student)
-            db.commit()
-        student["login_username"] = username
         audit(db, user, "aanmaken", "student", cur.lastrowid,
               f"Student '{name}' ({number})")
         return jsonify(student), 201
@@ -1672,20 +1631,14 @@ def students_collection():
             return jsonify([])
         placeholders = ",".join("?" for _ in mentor_ids)
         rows = db.execute(
-            f"""SELECT st.*, u.username AS login_username, u.active AS login_active
-                FROM students st
-                LEFT JOIN users u ON u.student_id = st.id AND u.role = 'student'
+            f"""SELECT st.* FROM students st
                 WHERE st.archived = ? AND st.class_id IN ({placeholders})
                 ORDER BY st.name""",
             (archived, *mentor_ids),
         ).fetchall()
     else:
         rows = db.execute(
-            """SELECT st.*, u.username AS login_username, u.active AS login_active
-               FROM students st
-               LEFT JOIN users u ON u.student_id = st.id AND u.role = 'student'
-               WHERE st.archived = ?
-               ORDER BY st.name""",
+            "SELECT st.* FROM students st WHERE st.archived = ? ORDER BY st.name",
             (archived,),
         ).fetchall()
     return jsonify([dict(r) for r in rows])
@@ -1696,7 +1649,7 @@ def students_bulk():
     data = request.get_json(force=True)
     ids = data.get("ids") or []
     action = data.get("action")
-    if not ids or action not in ("login_on", "login_off", "archive", "unarchive", "delete"):
+    if not ids or action not in ("archive", "unarchive", "delete"):
         return jsonify({"error": "Ongeldig bulkverzoek"}), 400
     user, err = auth_error("beheerder") if action == "delete" else auth_error("beheerder", "mentor")
     if err:
@@ -1709,7 +1662,6 @@ def students_bulk():
     if user["role"] == "mentor":
         own = mentor_class_ids(user)
         rows = [r for r in rows if r["class_id"] in own]
-    usernames = []
     for r in rows:
         if action == "delete":
             db.execute("DELETE FROM students WHERE id = ?", (r["id"],))
@@ -1717,17 +1669,10 @@ def students_bulk():
             db.execute("UPDATE students SET archived = 1 WHERE id = ?", (r["id"],))
         elif action == "unarchive":
             db.execute("UPDATE students SET archived = 0 WHERE id = ?", (r["id"],))
-        elif action == "login_on":
-            db.execute("UPDATE students SET login_enabled = 1 WHERE id = ?", (r["id"],))
-            usernames.append(ensure_student_account(db, dict(r)))
-        elif action == "login_off":
-            db.execute("UPDATE students SET login_enabled = 0 WHERE id = ?", (r["id"],))
-            db.execute("UPDATE users SET active = 0 WHERE role = 'student' AND student_id = ?",
-                       (r["id"],))
     db.commit()
     audit(db, user, "bulk-" + action, "student", None,
           f"{len(rows)} student(en): {action}")
-    return jsonify({"ok": True, "affected": len(rows), "usernames": usernames})
+    return jsonify({"ok": True, "affected": len(rows)})
 
 
 @app.route("/api/students/<int:student_id>", methods=["PUT", "DELETE"])
@@ -1767,28 +1712,12 @@ def student_item(student_id):
             sets = ", ".join(f"{k} = ?" for k in updates)
             db.execute(f"UPDATE students SET {sets} WHERE id = ?",
                        (*updates.values(), student_id))
-        if "login_enabled" in data:
-            enable = 1 if data.get("login_enabled") else 0
-            db.execute("UPDATE students SET login_enabled = ? WHERE id = ?",
-                       (enable, student_id))
-            db.commit()
-            if enable:
-                fresh = db.execute(
-                    "SELECT * FROM students WHERE id = ?", (student_id,)
-                ).fetchone()
-                username = ensure_student_account(db, dict(fresh))
-                db.commit()
-                return jsonify({"ok": True, "login_username": username})
-            db.execute(
-                "UPDATE users SET active = 0 WHERE role = 'student' AND student_id = ?",
-                (student_id,),
-            )
         if "archived" in data:
             db.execute("UPDATE students SET archived = ? WHERE id = ?",
                        (1 if data.get("archived") else 0, student_id))
         db.commit()
         gewijzigd = [k for k in ("name", "student_number", "class_id", "first_name",
-                                 "prefix", "last_name", "email", "login_enabled",
+                                 "prefix", "last_name", "email",
                                  "archived") if k in data]
         audit(db, user, "wijzigen", "student", student_id,
               audit_detail(db, "students", student_id, gewijzigd))
