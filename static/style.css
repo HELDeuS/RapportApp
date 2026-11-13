@@ -72,6 +72,43 @@ header h1 { margin: 0 0 8px; font-size: 1.3rem; }
 
 nav { display: flex; gap: 6px; flex-wrap: wrap; }
 
+.tab-group { position: relative; display: inline-flex; }
+
+.tab-group-btn::after { content: ""; }
+
+.tab-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 190px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 0 8px 8px 8px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .18);
+  padding: 6px;
+  z-index: 60;
+}
+
+.tab-group.open .tab-menu { display: block; }
+
+.tab-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  color: var(--text);
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: .95rem;
+}
+
+.tab-item:hover { background: var(--th-bg); }
+
+.tab-item.active { font-weight: 600; text-decoration: underline; }
+
 .tab {
   border: none;
   background: rgba(255, 255, 255, .15);

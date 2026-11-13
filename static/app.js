@@ -242,10 +242,27 @@ function ownClassesOnly(list) {
   return list.filter((c) => String(c.mentor_id) === String(currentUser.id));
 }
 
+function activateGroupOf(tabName) {
+  $$(".tab-group").forEach((g) => {
+    const btn = g.querySelector(".tab-group-btn");
+    if (btn) btn.classList.toggle("active",
+      !!g.querySelector(`[data-tab="${tabName}"]`));
+  });
+}
+
+function closeTabMenus() {
+  $$(".tab-group.open").forEach((g) => g.classList.remove("open"));
+}
+
 function applyRoleUi() {
   const role = currentUser ? currentUser.role : null;
-  $$(".tab").forEach((btn) => {
+  $$(".tab[data-tab]").forEach((btn) => {
     btn.style.display = role && ROLE_TABS[role].includes(btn.dataset.tab) ? "" : "none";
+  });
+  $$(".tab-group").forEach((g) => {
+    const anyVisible = [...g.querySelectorAll("[data-tab]")]
+      .some((b) => b.style.display !== "none");
+    g.style.display = anyVisible ? "" : "none";
   });
   $("#user-info").textContent = currentUser
     ? `${currentUser.username} (${ROLE_LABELS[currentUser.role] || currentUser.role})` : "";
@@ -287,11 +304,12 @@ function renderStudentReportUi() {
 
 function activateDefaultTab() {
   $$(".panel").forEach((p) => p.classList.remove("hidden", "active"));
-  $$(".tab").forEach((b) => b.classList.remove("active"));
-  const firstTab = [...$$(".tab")].find((b) => b.style.display !== "none");
+  $$(".tab[data-tab]").forEach((b) => b.classList.remove("active"));
+  const firstTab = [...$$(".tab[data-tab]")].find((b) => b.style.display !== "none");
   if (firstTab) {
     firstTab.classList.add("active");
     $(`#tab-${firstTab.dataset.tab}`).classList.add("active");
+    activateGroupOf(firstTab.dataset.tab);
   }
 }
 
@@ -365,13 +383,39 @@ $$(".quicknav a").forEach((a) => a.addEventListener("click", () => {
 }));
 
 // ---------- Tabs ----------
-$$(".tab").forEach((btn) => {
+$$("nav [data-tab]").forEach((btn) => {
   btn.addEventListener("click", () => {
-    $$(".tab").forEach((b) => b.classList.remove("active"));
+    $$(".tab[data-tab]").forEach((b) => b.classList.remove("active"));
     $$(".panel").forEach((p) => p.classList.remove("active", "hidden"));
     btn.classList.add("active");
     $(`#tab-${btn.dataset.tab}`).classList.add("active");
+    activateGroupOf(btn.dataset.tab);
+    closeTabMenus();
   });
+});
+
+$$(".tab-group-btn").forEach((btn) => {
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const group = btn.closest(".tab-group");
+    const visible = [...group.querySelectorAll("[data-tab]")]
+      .filter((b) => b.style.display !== "none");
+    if (visible.length === 1) {
+      visible[0].click();
+      return;
+    }
+    const wasOpen = group.classList.contains("open");
+    closeTabMenus();
+    if (!wasOpen) group.classList.add("open");
+  });
+});
+
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".tab-group")) closeTabMenus();
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeTabMenus();
 });
 
 // ---------- Loaders ----------
@@ -3428,7 +3472,7 @@ async function setArchived(kind, id, archived) {
   await renderArchive();
 }
 
-$$(".tab").forEach((btn) => {
+$$("nav [data-tab]").forEach((btn) => {
   btn.addEventListener("click", () => {
     if (btn.dataset.tab === "archief") renderArchive();
     if (btn.dataset.tab === "logboek") renderAuditLog();

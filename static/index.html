@@ -22,18 +22,33 @@
   <h1>RapportApp &mdash; MBO ICT</h1>
   <nav>
     <button data-tab="cijfers" class="tab active">Cijfers</button>
-    <button data-tab="studenten" class="tab">Studenten</button>
-    <button data-tab="structuur" class="tab">Structuur</button>
-    <button data-tab="vakken" class="tab">Vakken</button>
-    <button data-tab="periodes" class="tab">Modules</button>
-    <button data-tab="rapport" class="tab">Rapport</button>
+    <div class="tab-group" id="tabgroup-rapport">
+      <button class="tab tab-group-btn" data-group="rapport">Rapport &#9662;</button>
+      <div class="tab-menu">
+        <button data-tab="rapport" class="tab-item">Rapport</button>
+        <button data-tab="statistieken" class="tab-item">Statistieken</button>
+      </div>
+    </div>
     <button data-tab="vergadering" class="tab">Vergadering</button>
-    <button data-tab="archief" class="tab">Archief</button>
-    <button data-tab="logboek" class="tab">Logboek</button>
-    <button data-tab="keuzedelen" class="tab">Keuzedelen</button>
-    <button data-tab="statistieken" class="tab">Statistieken</button>
-    <button data-tab="gebruikers" class="tab">Gebruikers</button>
-    <button data-tab="instellingen" class="tab">Instellingen</button>
+    <div class="tab-group" id="tabgroup-beheer">
+      <button class="tab tab-group-btn" data-group="beheer">Beheer &#9662;</button>
+      <div class="tab-menu">
+        <button data-tab="studenten" class="tab-item">Studenten</button>
+        <button data-tab="structuur" class="tab-item">Structuur</button>
+        <button data-tab="vakken" class="tab-item">Vakken</button>
+        <button data-tab="periodes" class="tab-item">Modules</button>
+        <button data-tab="keuzedelen" class="tab-item">Keuzedelen</button>
+        <button data-tab="gebruikers" class="tab-item">Gebruikers</button>
+        <button data-tab="archief" class="tab-item">Archief</button>
+      </div>
+    </div>
+    <div class="tab-group" id="tabgroup-systeem">
+      <button class="tab tab-group-btn" data-group="systeem">Systeem &#9662;</button>
+      <div class="tab-menu">
+        <button data-tab="instellingen" class="tab-item">Instellingen</button>
+        <button data-tab="logboek" class="tab-item">Logboek</button>
+      </div>
+    </div>
     <button id="btn-theme" class="theme-toggle" title="Donker/licht thema wisselen">&#9681;</button>
     <span id="user-info" class="user-info"></span>
     <button id="btn-logout" class="secondary">Uitloggen</button>
