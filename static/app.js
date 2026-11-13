@@ -1002,7 +1002,6 @@ function renderStudents() {
   };
   const rows = sortRows(visibleStudentsList(), listSort.students, (s, key) =>
     key === "class" ? classOf(s)
-    : key === "login_enabled" ? (s.login_enabled ? "1" : "0")
     : (s[key] || ""));
   updateSortArrows("#students-table", listSort.students);
   $("#students-table tbody").innerHTML = pageSlice("#students-table", rows).map((s) => `
@@ -1014,7 +1013,6 @@ function renderStudents() {
       <td><input data-field="last_name" value="${esc(s.last_name || "")}" style="width:130px"></td>
       <td><input type="email" data-field="email" value="${esc(s.email || "")}" style="width:160px"></td>
       <td><select data-field="class_id">${classOptions(s.class_id)}</select></td>
-      <td title="${s.login_username ? "Gebruikersnaam: " + esc(s.login_username) : "Nog geen account"}"><input type="checkbox" data-field="login_enabled"${s.login_enabled ? " checked" : ""}></td>
       <td><button class="secondary" data-archive>Archiveren</button></td>
       ${!currentUser || currentUser.role === "beheerder" ? `<td><button class="danger" data-del>Verwijderen</button></td>` : "<td></td>"}
     </tr>`).join("");
@@ -1066,22 +1064,17 @@ async function bulkAction(action, confirmMsg) {
   if (!ids.length) return;
   if (confirmMsg && !confirm(confirmMsg.replace("{n}", ids.length))) return;
   try {
-    const res = await api("/api/students/bulk", {
+    await api("/api/students/bulk", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ids, action }),
     });
-    if (action === "login_on" && res.usernames && res.usernames.length) {
-      alert("Accounts aangemaakt (" + res.usernames.length + ").\nGebruikersnamen: " + res.usernames.join(", ") + "\nStandaardwachtwoord: welkom");
-    }
     await loadAll();
   } catch (err) {
     alert("Bulkactie mislukt: " + err.message);
   }
 }
 
-$("#bulk-login-on").addEventListener("click", () => bulkAction("login_on"));
-$("#bulk-login-off").addEventListener("click", () => bulkAction("login_off"));
 $("#bulk-archive").addEventListener("click", () =>
   bulkAction("archive", "{n} studenten archiveren?"));
 $("#bulk-delete").addEventListener("click", () =>
@@ -1102,24 +1095,6 @@ $("#students-table tbody").addEventListener("change", async (e) => {
   const tr = e.target.closest("tr");
   const s = students.find((x) => x.id === +tr.dataset.id);
   if (!s) return;
-  if (e.target.dataset.field === "login_enabled") {
-    try {
-      const res = await api(`/api/students/${s.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ login_enabled: e.target.checked }),
-      });
-      if (e.target.checked && res.login_username) {
-        const msg = "Account aangemaakt voor " + studentName(s) + ".\nGebruikersnaam: " + res.login_username + "\nStandaardwachtwoord: welkom";
-        alert(msg);
-      }
-      await loadAll();
-    } catch (err) {
-      alert(err.message);
-      await loadAll();
-    }
-    return;
-  }
   const field = e.target.dataset.field;
   if (!field) return;
   const value = e.target.value === "" ? null : e.target.value;
@@ -3615,6 +3590,7 @@ function renderUsers() {
   updateSortArrows("#users-table", listSort.users);
   $("#users-table tbody").innerHTML = pageSlice("#users-table", rows).map((u) => `
     <tr data-id="${u.id}">
+      <td><input type="checkbox" class="row-select" data-id="${u.id}"></td>
       <td>${esc(u.username)}</td>
       <td><input data-field="first_name" value="${esc(u.first_name || "")}" style="width:110px"></td>
       <td><input data-field="last_name" value="${esc(u.last_name || "")}" style="width:110px"></td>
@@ -3625,7 +3601,82 @@ function renderUsers() {
       <td><input type="password" placeholder="Nieuw wachtwoord" data-field="password" style="width:140px"></td>
       <td><button class="danger" data-del>Verwijderen</button></td>
     </tr>`).join("");
+  fillUserStudentOptions();
+  updateUsersBulkBar();
 }
+
+function studentsWithoutAccount() {
+  const taken = new Set(users.filter((u) => u.student_id).map((u) => u.student_id));
+  return students.filter((s) => !s.archived && !taken.has(s.id));
+}
+
+function fillUserStudentOptions() {
+  const sel = $("#user-student");
+  if (!sel) return;
+  const prev = sel.value;
+  const opts = studentsWithoutAccount();
+  sel.innerHTML = `<option value="">Kies student...</option>` +
+    opts.map((s) => `<option value="${s.id}">${esc(studentName(s))}${s.student_number ? " (" + esc(s.student_number) + ")" : ""}</option>`).join("");
+  sel.value = opts.some((s) => String(s.id) === prev) ? prev : "";
+}
+
+function selectedUserIds() {
+  return [...$$("#users-table tbody input.row-select:checked")].map((cb) => +cb.dataset.id);
+}
+
+function updateUsersBulkBar() {
+  const bar = $("#users-bulk-bar");
+  if (!bar) return;
+  const n = selectedUserIds().length;
+  bar.classList.toggle("hidden", n === 0);
+  $("#users-bulk-count").textContent = n + " geselecteerd";
+}
+
+async function usersBulkAction(action, confirmMsg) {
+  const ids = selectedUserIds();
+  if (!ids.length) return;
+  if (confirmMsg && !confirm(confirmMsg.replace("{n}", ids.length))) return;
+  try {
+    const res = await api("/api/users/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids, action }),
+    });
+    if (res.errors && res.errors.length) {
+      alert("Deels mislukt:\n" + res.errors.join("\n"));
+    } else if (action === "reset_password") {
+      alert("Wachtwoorden gereset naar het standaardwachtwoord (welkom, beheerders: rapportapp). Bij de volgende login moet een nieuw wachtwoord gekozen worden.");
+    }
+    await loadAll();
+  } catch (err) {
+    alert("Bulkactie mislukt: " + err.message);
+  }
+}
+
+$("#users-bulk-active-on").addEventListener("click", () =>
+  usersBulkAction("active_on"));
+$("#users-bulk-active-off").addEventListener("click", () =>
+  usersBulkAction("active_off"));
+$("#users-bulk-reset").addEventListener("click", () =>
+  usersBulkAction("reset_password",
+    "Wachtwoord van {n} account(s) resetten naar het standaardwachtwoord?"));
+
+$("#users-select-all").addEventListener("change", (e) => {
+  $$("#users-table tbody input.row-select").forEach((cb) => {
+    cb.checked = e.target.checked;
+  });
+  updateUsersBulkBar();
+});
+
+$("#users-table tbody").addEventListener("change", (e) => {
+  if (e.target.classList.contains("row-select")) updateUsersBulkBar();
+});
+
+$("#user-role").addEventListener("change", (e) => {
+  const isStudent = e.target.value === "student";
+  $("#user-student").classList.toggle("hidden", !isStudent);
+  if (isStudent && !$("#user-password").value) $("#user-password").value = "welkom";
+});
 
 $("#import-users-file").addEventListener("change", async (e) => {
   const file = e.target.files[0];
@@ -3657,13 +3708,15 @@ $("#btn-add-user").addEventListener("click", async () => {
   const username = $("#user-username").value.trim();
   const password = $("#user-password").value;
   const role = $("#user-role").value;
+  const studentId = role === "student" ? ($("#user-student").value || null) : null;
   if (!username || !password) return alert("Vul gebruikersnaam en wachtwoord in.");
+  if (role === "student" && !studentId) return alert("Kies de student voor dit account (alleen studenten zonder account staan in de lijst).");
   try {
     await api("/api/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        username, password, role,
+        username, password, role, student_id: studentId,
         first_name: $("#user-firstname").value.trim(),
         last_name: $("#user-lastname").value.trim(),
         email: $("#user-email").value.trim(),

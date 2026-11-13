@@ -43,7 +43,7 @@ De app vereist inloggen. Bij de eerste start wordt automatisch het account **`be
 | **Student** | Alleen het eigen rapport (studentvariant, zonder opmerking docenten) |
 
 - Elke klas kan een **mentor** gekoppeld krijgen (beheerder, op het tabblad Structuur).
-- **Studentaccounts** worden beheerd via het vinkje **"Inlog"** op het tabblad Studenten: aanvinken maakt automatisch een account aan (gebruikersnaam = studentnummer, anders `student<id>`; standaardwachtwoord `welkom`), afvinken blokkeert het account. In de gebruikerslijst op het tabblad Gebruikers kun je studentwachtwoorden resetten.
+- **Accounts (ook studentaccounts) worden uitsluitend beheerd op het tabblad Gebruikers**: maak een account aan met rol "Student" en koppel het aan een student die nog geen account heeft (standaardwachtwoord `welkom`, gebruikersnaam vrij te kiezen). Het vinkje **"Inlog"** bepaalt of een account mag inloggen. Met de selectievakjes (plus "Alles selecteren") kun je bulkacties uitvoeren: **Inlog aan**, **Inlog uit** en **Wachtwoord resetten** (terug naar het standaardwachtwoord: `welkom`, voor beheerders `rapportapp`; bij de volgende login moet een nieuw wachtwoord gekozen worden).
 - Rollen worden server-side afgedwongen op elk API-endpoint; de UI verbergt alleen wat niet mag.
 - **Gebruikers importeren** (beheerder, tabblad Gebruikers): CSV met kolommen `Gebruikersnaam,Wachtwoord,Rol,Voornaam,Achternaam,Email` (kopregel wordt herkend; zonder kopregel: die volgorde). Bestaande gebruikersnamen worden overgeslagen.
 

@@ -640,6 +640,51 @@ def last_admin_check(db, user_id, new_role=None, new_active=None):
     return None
 
 
+@app.route("/api/users/bulk", methods=["POST"])
+def users_bulk():
+    user, err = auth_error("beheerder")
+    if err:
+        return err
+    data = request.get_json(force=True)
+    ids = data.get("ids") or []
+    action = data.get("action")
+    if action not in ("active_on", "active_off", "reset_password"):
+        return jsonify({"error": "Onbekende actie"}), 400
+    db = get_db()
+    updated, skipped, errors = 0, 0, []
+    for uid in ids:
+        row = db.execute("SELECT * FROM users WHERE id = ?", (uid,)).fetchone()
+        if row is None:
+            skipped += 1
+            continue
+        if action in ("active_on", "active_off"):
+            new_active = 1 if action == "active_on" else 0
+            if uid == user["id"] and not new_active:
+                errors.append("Je kunt jezelf niet deactiveren")
+                continue
+            admin_err = last_admin_check(db, uid, new_active=new_active)
+            if admin_err:
+                errors.append(f"{row['username']}: {admin_err}")
+                continue
+            db.execute("UPDATE users SET active = ? WHERE id = ?",
+                       (new_active, uid))
+        else:
+            default = "rapportapp" if row["role"] == "beheerder" else "welkom"
+            db.execute(
+                "UPDATE users SET password_hash = ?, must_change_password = 1 "
+                "WHERE id = ?",
+                (generate_password_hash(default), uid))
+        updated += 1
+    db.commit()
+    label = {"active_on": "activeren", "active_off": "deactiveren",
+             "reset_password": "wachtwoord-reset"}[action]
+    audit(db, user, label, "gebruiker", None,
+          f"{updated} account(s) gewijzigd, {skipped} overgeslagen"
+          + (f"; fouten: {'; '.join(errors[:3])}" if errors else ""))
+    return jsonify({"ok": True, "updated": updated, "skipped": skipped,
+                   "errors": errors[:50]})
+
+
 @app.route("/api/users/<int:user_id>", methods=["PUT", "DELETE"])
 def user_item(user_id):
     user, err = auth_error("beheerder")

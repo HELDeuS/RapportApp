@@ -146,8 +146,6 @@
   <div id="students-import-result" class="result hidden"></div>
   <div class="toolbar hidden" id="bulk-bar">
     <strong id="bulk-count">0 geselecteerd</strong>
-    <button id="bulk-login-on" class="secondary">Inloggen aan</button>
-    <button id="bulk-login-off" class="secondary">Inloggen uit</button>
     <button id="bulk-archive" class="secondary">Archiveren</button>
     <button id="bulk-delete" class="danger">Verwijderen</button>
   </div>
@@ -161,7 +159,7 @@
     </label>
   </div>
   <table class="list sortable" id="students-table">
-    <thead><tr><th style="width:30px"><input type="checkbox" id="students-select-all" title="Alles selecteren"></th><th data-key="student_number">Nr.</th><th data-key="first_name">Voornaam</th><th data-key="prefix">Tussenv.</th><th data-key="last_name">Achternaam</th><th data-key="email">E-mail</th><th data-key="class">Klas</th><th data-key="login_enabled" title="Account mag inloggen">Inlog</th><th></th></tr></thead>
+    <thead><tr><th style="width:30px"><input type="checkbox" id="students-select-all" title="Alles selecteren"></th><th data-key="student_number">Nr.</th><th data-key="first_name">Voornaam</th><th data-key="prefix">Tussenv.</th><th data-key="last_name">Achternaam</th><th data-key="email">E-mail</th><th data-key="class">Klas</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
   <div class="pager" data-table="students-table"></div>
@@ -493,7 +491,9 @@
       <option value="mentor">Mentor</option>
       <option value="docent">Docent</option>
       <option value="administratie">Administratie</option>
+      <option value="student">Student</option>
     </select>
+    <select id="user-student" class="hidden" title="Koppel het account aan een student zonder account"></select>
     <button id="btn-add-user">Account aanmaken</button>
     <label class="file-label">Import CSV
       <input type="file" id="import-users-file" accept=".csv,.txt,.tsv,.xlsx,.xlsm">
@@ -501,6 +501,12 @@
     <button type="button" class="template-link" data-template="gebruikers">Template</button>
   </div>
   <div id="users-import-result" class="result hidden"></div>
+  <div class="toolbar hidden" id="users-bulk-bar">
+    <strong id="users-bulk-count">0 geselecteerd</strong>
+    <button id="users-bulk-active-on" class="secondary">Inlog aan</button>
+    <button id="users-bulk-active-off" class="secondary">Inlog uit</button>
+    <button id="users-bulk-reset" class="secondary">Wachtwoord resetten</button>
+  </div>
   <div class="toolbar">
     <input id="users-search" placeholder="&#9906; Zoek gebruiker...">
     <label>Rol:
@@ -521,11 +527,11 @@
     </label>
   </div>
   <table class="list sortable" id="users-table">
-    <thead><tr><th data-key="username">Gebruikersnaam</th><th data-key="first_name">Voornaam</th><th data-key="last_name">Achternaam</th><th data-key="email">E-mail</th><th data-key="role">Rol</th><th data-key="student_name">Student</th><th data-key="active">Actief</th><th></th><th></th></tr></thead>
+    <thead><tr><th style="width:30px"><input type="checkbox" id="users-select-all" title="Alles selecteren"></th><th data-key="username">Gebruikersnaam</th><th data-key="first_name">Voornaam</th><th data-key="last_name">Achternaam</th><th data-key="email">E-mail</th><th data-key="role">Rol</th><th data-key="student_name">Student</th><th data-key="active" title="Vinkje aan = account mag inloggen">Inlog</th><th></th><th></th></tr></thead>
     <tbody></tbody>
   </table>
   <div class="pager" data-table="users-table"></div>
-  <p class="hint">Wachtwoord wijzigen: typ een nieuw wachtwoord in de kolom en klik buiten het veld. Studentaccounts worden beheerd via het vinkje "Inlog" op het tabblad Studenten (standaardwachtwoord: welkom).</p>
+  <p class="hint">Wachtwoord wijzigen: typ een nieuw wachtwoord in de kolom en klik buiten het veld, of selecteer accounts en gebruik "Wachtwoord resetten" (terug naar het standaardwachtwoord: welkom, voor beheerders rapportapp; bij de volgende login moet een nieuw wachtwoord gekozen worden). Studentaccounts maak je hier aan met rol "Student" (standaardwachtwoord: welkom); het vinkje "Inlog" bepaalt of een account mag inloggen.</p>
 </section>
 
 <!-- Instellingen -->
