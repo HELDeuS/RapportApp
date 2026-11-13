@@ -923,8 +923,8 @@ $("#btn-paste-open").addEventListener("click", () => {
     `<option value="${s.id}">${esc(s.name)}</option>`).join("") ||
     `<option value="">(geen vakken in deze module)</option>`;
   $("#paste-area").placeholder = pasteMode() === "column"
-    ? "7,5\n6\nO\nVS\nof met naam: Jan Jansen\t7,5"
-    : "Naam\tNederlands\tRekenen\nJan\t7,5\tVS\nPiet\tO\t5,2";
+    ? "7,5\n6\nO\nVS\nof met studentnummer: 210001\t7,5"
+    : "Nummer\tNederlands\tRekenen\n210001\t7,5\tVS\n210002\tO\t5,2";
   $("#paste-area").focus();
 });
 
@@ -934,8 +934,8 @@ document.querySelectorAll('input[name="paste-mode"]').forEach((r) =>
     $("#paste-rows-hint").classList.toggle("hidden", column);
     $("#paste-column-controls").classList.toggle("hidden", !column);
     $("#paste-area").placeholder = column
-      ? "7,5\n6\nO\nVS\nof met naam: Jan Jansen\t7,5"
-      : "Naam\tNederlands\tRekenen\nJan\t7,5\tVS\nPiet\tO\t5,2";
+      ? "7,5\n6\nO\nVS\nof met studentnummer: 210001\t7,5"
+      : "Nummer\tNederlands\tRekenen\n210001\t7,5\tVS\n210002\tO\t5,2";
   }));
 
 $("#btn-paste-cancel").addEventListener("click", () => $("#paste-dialog").classList.add("hidden"));

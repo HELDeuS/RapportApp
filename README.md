@@ -235,18 +235,18 @@ Ook handig: een (wekelijkse) kopie naar een externe locatie en controleren of ee
 
 Zowel bestanden als geplakte tekst volgen dezelfde tabelvorm:
 
-| (leeg/Naam) | Nederlands | Rekenen | ... |
+| (leeg/Nummer) | Nederlands | Rekenen | ... |
 |-------------|-----------|---------|-----|
-| Jan         | 7,5       | VS      |     |
-| Piet        | O         | 5,2     |     |
+| 210001      | 7,5       | VS      |     |
+| 210002      | O         | 5,2     |     |
 
-- Eerste kolom: studentnaam of studentnummer.
+- Eerste kolom: uitsluitend studentnummer (geen naam).
 - Eerste rij: vaknamen (kopregel).
 - Cellen: cijfer (punt of komma als decimaalteken), `V`, `G`, `VS`, `O` of leeg.
 
 ### Kolom plakken (één vak)
 
-Bij "Plakken uit Excel" kun je ook de modus **Kolom (één vak)** kiezen: selecteer het vak, plak één kolom cijfers en de cijfers worden toegekend aan de studenten van de geselecteerde klas, in dezelfde volgorde als het cijferoverzicht. Je kunt per regel ook een naam of studentnummer voor het cijfer zetten (gescheiden met een tab of `;`), dan is de volgorde niet belangrijk. Onbekende studenten en ongeldige waarden worden als fout gemeld en overgeslagen.
+Bij "Plakken uit Excel" kun je ook de modus **Kolom (één vak)** kiezen: selecteer het vak, plak één kolom cijfers en de cijfers worden toegekend aan de studenten van de geselecteerde klas, in dezelfde volgorde als het cijferoverzicht. Je kunt per regel ook een studentnummer voor het cijfer zetten (gescheiden met een tab of `;`), dan is de volgorde niet belangrijk. Onbekende studentnummers en ongeldige waarden worden als fout gemeld en overgeslagen.
 
 ### Studenten invoeren
 

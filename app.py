@@ -2417,11 +2417,9 @@ def import_grades():
         return jsonify({"error": "Geen data gevonden"}), 400
 
     db = get_db()
-    students = {(r["name"].strip().lower(), r["student_number"].strip().lower()): r
-                for r in db.execute("SELECT * FROM students").fetchall()}
-    students_by_name = {r["name"].strip().lower(): r for r in students.values()}
     students_by_number = {r["student_number"].strip().lower(): r
-                          for r in students.values() if r["student_number"]}
+                          for r in db.execute("SELECT * FROM students").fetchall()
+                          if r["student_number"]}
     subjects = {r["name"].strip().lower(): r
                 for r in db.execute("SELECT * FROM subjects").fetchall()}
 
@@ -2430,7 +2428,7 @@ def import_grades():
     first_cell = (header[0] or "").strip().lower()
     header_is_subjects = any(
         (c or "").strip().lower() in subjects for c in header[1:]
-    ) or first_cell in ("", "student", "leerling", "naam", "naam student")
+    ) or first_cell in ("", "student", "studentnummer", "nummer", "nr", "nr.", "nr.")
 
     if header_is_subjects:
         subject_cells = header[1:]
@@ -2468,10 +2466,10 @@ def import_grades():
             continue
         ident = row[0].strip()
         key = ident.lower()
-        student = (students_by_name.get(key) or students_by_number.get(key))
+        student = students_by_number.get(key)
         if student is None:
             skipped += 1
-            errors.append(f"Onbekende student: {ident}")
+            errors.append(f"Onbekend studentnummer: {ident}")
             continue
         for j, raw in enumerate(row[1:]):
             if j >= len(subject_ids) or subject_ids[j] is None:
