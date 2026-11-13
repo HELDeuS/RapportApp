@@ -256,7 +256,7 @@ function closeTabMenus() {
 
 function applyRoleUi() {
   const role = currentUser ? currentUser.role : null;
-  $$(".tab[data-tab]").forEach((btn) => {
+  $$("nav [data-tab]").forEach((btn) => {
     btn.style.display = role && ROLE_TABS[role].includes(btn.dataset.tab) ? "" : "none";
   });
   $$(".tab-group").forEach((g) => {
@@ -304,8 +304,8 @@ function renderStudentReportUi() {
 
 function activateDefaultTab() {
   $$(".panel").forEach((p) => p.classList.remove("hidden", "active"));
-  $$(".tab[data-tab]").forEach((b) => b.classList.remove("active"));
-  const firstTab = [...$$(".tab[data-tab]")].find((b) => b.style.display !== "none");
+  $$("nav [data-tab]").forEach((b) => b.classList.remove("active"));
+  const firstTab = [...$$("nav [data-tab]")].find((b) => b.style.display !== "none");
   if (firstTab) {
     firstTab.classList.add("active");
     $(`#tab-${firstTab.dataset.tab}`).classList.add("active");
@@ -385,7 +385,7 @@ $$(".quicknav a").forEach((a) => a.addEventListener("click", () => {
 // ---------- Tabs ----------
 $$("nav [data-tab]").forEach((btn) => {
   btn.addEventListener("click", () => {
-    $$(".tab[data-tab]").forEach((b) => b.classList.remove("active"));
+    $$("nav [data-tab]").forEach((b) => b.classList.remove("active"));
     $$(".panel").forEach((p) => p.classList.remove("active", "hidden"));
     btn.classList.add("active");
     $(`#tab-${btn.dataset.tab}`).classList.add("active");
