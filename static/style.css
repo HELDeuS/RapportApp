@@ -542,7 +542,6 @@ html { scroll-behavior: smooth; }
 .kd-report h3 { margin: 0 0 6px; font-size: 1rem; }
 
 /* Template-links bij CSV-import */
-.template-link { font-size: .85rem; }
 .toolbar > span#grade-import-ui,
 .toolbar > span#student-import-ui { display: inline-flex; gap: 10px; align-items: center; }
 

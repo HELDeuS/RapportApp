@@ -89,7 +89,7 @@ function bindTableSort(tableSel, stateKey, rerender) {
 const IMPORT_TEMPLATES = {
   cijfers: {
     file: "voorbeeld-cijfers.csv",
-    text: "Naam;Vaknaam 1;Vaknaam 2\nJan Jansen;7,5;VS\nPiet Pietersen;O;5,2\n",
+    text: "Studentnummer;Vaknaam 1;Vaknaam 2\n210001;7,5;VS\n210002;O;5,2\n",
   },
   keuzedeel: {
     file: "voorbeeld-keuzedeel-resultaten.csv",
