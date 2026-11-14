@@ -534,6 +534,11 @@ html { scroll-behavior: smooth; }
   color: var(--text);
   font-size: .9rem;
 }
+.rolechecks label > input {
+  width: auto;
+  margin: 0;
+  flex: 0 0 auto;
+}
 
 .filterbar { padding: 8px 12px; margin-bottom: 10px; }
 .filterbar > input {
