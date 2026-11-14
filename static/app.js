@@ -3854,8 +3854,12 @@ function renderSettingsUi() {
     $("#settings-smtp-pass").placeholder = settings.smtp_pass_set ? "(ongewijzigd)" : "";
     $("#settings-smtp-from").value = settings.smtp_from || "";
     $("#settings-smtp-starttls").checked = settings.smtp_starttls !== false;
-    $("#settings-mail-vergadering").value = (settings.mail_recipients && settings.mail_recipients.vergadering) || "";
-    $("#settings-mail-rapport").value = (settings.mail_recipients && settings.mail_recipients.rapport) || "";
+    const rolesVergadering = (settings.mail_roles && settings.mail_roles.vergadering) || [];
+    const rolesRapport = (settings.mail_roles && settings.mail_roles.rapport) || [];
+    for (const cb of document.querySelectorAll(".mail-role-vergadering"))
+      cb.checked = rolesVergadering.includes(cb.value);
+    for (const cb of document.querySelectorAll(".mail-role-rapport"))
+      cb.checked = rolesRapport.includes(cb.value);
     $("#settings-mailmode-vergadering").value = (settings.mail_modes && settings.mail_modes.vergadering) || "direct";
     $("#settings-mailmode-rapport").value = (settings.mail_modes && settings.mail_modes.rapport) || "direct";
   }
@@ -3872,14 +3876,15 @@ $("#settings-school-name").addEventListener("input", markSettingsUnsaved);
 $("#settings-tekortendrempel").addEventListener("input", markSettingsUnsaved);
 $("#settings-aanwezigheidsgrens").addEventListener("input", markSettingsUnsaved);
 for (const sel of ["#settings-smtp-host", "#settings-smtp-port", "#settings-smtp-user",
-                   "#settings-smtp-pass", "#settings-smtp-from", "#settings-mail-vergadering",
-                   "#settings-mail-rapport"]) {
+                   "#settings-smtp-pass", "#settings-smtp-from"]) {
   $(sel).addEventListener("input", markSettingsUnsaved);
 }
 for (const sel of ["#settings-smtp-starttls", "#settings-mailmode-vergadering",
                    "#settings-mailmode-rapport"]) {
   $(sel).addEventListener("change", markSettingsUnsaved);
 }
+for (const cb of document.querySelectorAll(".mail-role-vergadering, .mail-role-rapport"))
+  cb.addEventListener("change", markSettingsUnsaved);
 
 $("#settings-logo-file").addEventListener("change", (e) => {
   const file = e.target.files[0];
@@ -3925,8 +3930,8 @@ $("#btn-save-settings").addEventListener("click", async () => {
     body.smtp_user = $("#settings-smtp-user").value;
     body.smtp_from = $("#settings-smtp-from").value;
     body.smtp_starttls = $("#settings-smtp-starttls").checked;
-    body.mail_recipients_vergadering = $("#settings-mail-vergadering").value;
-    body.mail_recipients_rapport = $("#settings-mail-rapport").value;
+    body.mail_roles_vergadering = [...document.querySelectorAll(".mail-role-vergadering:checked")].map(cb => cb.value);
+    body.mail_roles_rapport = [...document.querySelectorAll(".mail-role-rapport:checked")].map(cb => cb.value);
     body.mail_mode_vergadering = $("#settings-mailmode-vergadering").value;
     body.mail_mode_rapport = $("#settings-mailmode-rapport").value;
     const pass = $("#settings-smtp-pass").value;

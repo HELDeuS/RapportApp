@@ -822,6 +822,7 @@ MAIL_EVENTS = {
     "vergadering": "Vergadering",
     "rapport": "Rapport gereed",
 }
+MAIL_ROLES = ("beheerder", "mentor", "docent", "administratie")
 
 
 def mail_settings(db):
@@ -832,14 +833,42 @@ def mail_settings(db):
         "smtp_pass": get_setting(db, "smtp_pass"),
         "smtp_from": get_setting(db, "smtp_from"),
         "smtp_starttls": get_setting(db, "smtp_starttls", "1") == "1",
-        "recipients": {e: get_setting(db, f"mail_recipients_{e}") for e in MAIL_EVENTS},
+        "roles": {e: parse_roles(get_setting(db, f"mail_roles_{e}"))
+                  for e in MAIL_EVENTS},
         "modes": {e: get_setting(db, f"mail_mode_{e}", "direct") for e in MAIL_EVENTS},
     }
+
+
+def parse_roles(raw):
+    roles = []
+    for r in (raw or "").replace(";", ",").split(","):
+        r = r.strip()
+        if r in MAIL_ROLES and r not in roles:
+            roles.append(r)
+    return roles
 
 
 def parse_recipients(raw):
     return [r.strip() for r in (raw or "").replace(";", ",").split(",")
             if r.strip() and "@" in r]
+
+
+def role_recipients(db, roles):
+    """E-mailadressen van alle actieve gebruikers binnen de gegeven rollen."""
+    roles = [r for r in roles if r in MAIL_ROLES]
+    if not roles:
+        return []
+    marks = ",".join("?" for _ in roles)
+    rows = db.execute(
+        f"SELECT DISTINCT email FROM users "
+        f"WHERE role IN ({marks}) AND active = 1 "
+        f"AND TRIM(COALESCE(email, '')) != '' ORDER BY email", roles).fetchall()
+    return [r["email"].strip() for r in rows]
+
+
+def event_recipients(db, event):
+    cfg = mail_settings(db)
+    return role_recipients(db, cfg["roles"].get(event) or [])
 
 
 def smtp_send(cfg, recipients, subject, body):
@@ -865,7 +894,7 @@ def smtp_send(cfg, recipients, subject, body):
 def mail_enabled(db, event):
     """True als voor deze gebeurtenis een melding kan worden verstuurd."""
     cfg = mail_settings(db)
-    return bool(cfg["smtp_host"] and parse_recipients(cfg["recipients"][event]))
+    return bool(cfg["smtp_host"] and event_recipients(db, event))
 
 
 def queue_mail(db, event, subject, body):
@@ -873,7 +902,7 @@ def queue_mail(db, event, subject, body):
     if event not in MAIL_EVENTS:
         return
     cfg = mail_settings(db)
-    recipients = parse_recipients(cfg["recipients"][event])
+    recipients = event_recipients(db, event)
     if not recipients or not cfg["smtp_host"]:
         return
     mode = cfg["modes"][event]
@@ -1032,7 +1061,7 @@ def settings_get():
         "smtp_from": cfg["smtp_from"],
         "smtp_starttls": cfg["smtp_starttls"],
         "smtp_pass_set": bool(cfg["smtp_pass"]),
-        "mail_recipients": cfg["recipients"],
+        "mail_roles": cfg["roles"],
         "mail_modes": cfg["modes"],
     })
 
@@ -1095,13 +1124,14 @@ def settings_put():
     if "smtp_starttls" in data:
         updates["smtp_starttls"] = "1" if data["smtp_starttls"] else "0"
     for event in MAIL_EVENTS:
-        if f"mail_recipients_{event}" in data:
-            raw = str(data[f"mail_recipients_{event}"] or "")[:1000]
-            bad = [r for r in raw.replace(";", ",").split(",")
-                   if r.strip() and ("@" not in r.strip() or " " in r.strip())]
+        if f"mail_roles_{event}" in data:
+            roles = data[f"mail_roles_{event}"]
+            if not isinstance(roles, list):
+                return jsonify({"error": "Ontvangerrollen moeten een lijst zijn"}), 400
+            bad = [r for r in roles if r not in MAIL_ROLES]
             if bad:
-                return jsonify({"error": "Ongeldig e-mailadres: " + bad[0].strip()}), 400
-            updates[f"mail_recipients_{event}"] = raw
+                return jsonify({"error": "Onbekende rol: " + str(bad[0])}), 400
+            updates[f"mail_roles_{event}"] = ",".join(roles)
         if f"mail_mode_{event}" in data:
             mode = data[f"mail_mode_{event}"]
             if mode not in ("direct", "samenvatting"):
@@ -1132,7 +1162,7 @@ def settings_get_inner(db):
         "smtp_from": cfg["smtp_from"],
         "smtp_starttls": cfg["smtp_starttls"],
         "smtp_pass_set": bool(cfg["smtp_pass"]),
-        "mail_recipients": cfg["recipients"],
+        "mail_roles": cfg["roles"],
         "mail_modes": cfg["modes"],
     })
 
@@ -1155,13 +1185,13 @@ def mail_test():
         return err
     db = get_db()
     cfg = mail_settings(db)
-    recipients = parse_recipients(cfg["recipients"]["vergadering"])
+    recipients = event_recipients(db, "vergadering")
     if not recipients:
-        recipients = parse_recipients(cfg["recipients"]["rapport"])
+        recipients = event_recipients(db, "rapport")
     if not cfg["smtp_host"]:
         return jsonify({"error": "Vul eerst een SMTP-server in en sla op"}), 400
     if not recipients:
-        return jsonify({"error": "Vul eerst minstens één ontvanger in en sla op"}), 400
+        return jsonify({"error": "Vink eerst minstens één rol als ontvanger aan en sla op"}), 400
     try:
         smtp_send(cfg, recipients, "RapportApp \u2014 testmelding",
                   "Dit is een testmelding van RapportApp.\n"

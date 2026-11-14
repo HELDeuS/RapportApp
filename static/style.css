@@ -525,6 +525,16 @@ html { scroll-behavior: smooth; }
 .addbar label > select { width: 220px; }
 .addbar > .push-right { margin-left: auto; }
 
+/* Rolvinkjes (bijv. mailontvangers per rol) netjes naast elkaar */
+.rolechecks { display: inline-flex; flex-wrap: wrap; gap: 4px 14px; }
+.rolechecks label {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  font-size: .9rem;
+}
+
 .filterbar { padding: 8px 12px; margin-bottom: 10px; }
 .filterbar > input {
   flex: 0 1 220px;
