@@ -7,6 +7,7 @@ Ga verder met RapportApp (https://github.com/HELDeuS/RapportApp, direct naar mai
 - Flask 3 + SQLite backend (app.py), vanilla JS frontend (static/app.js, index.html, style.css)
 - Model: Crebo → Leertraject (met startcohort) → Module → Vak; Klas → Leertraject; crebo en cohort van een klas komen uit het leertraject
 - Keuzedelen: apart vaksoort met SBU (doel 720), matrixoverzicht, bulk-koppeling en CSV-import van resultaten
+- Specialisaties (keuzemodules): specialisatie → keuzemodule(s) die naast een bestaande module/periode lopen → vakken; studenten worden aan een specialisatie gekoppeld (bulk + CSV). Cijfers worden op het cijferoverzicht ingevoerd als extra kolommen in de periode waarin de keuzemodule loopt (alleen gekoppelde studenten kunnen een resultaat krijgen); ze tellen mee voor rapport, tekorten, signalering en 'rapport gereed'. Rapport toont per student de specialisatie(s) en de keuzemodule-vakken
 - Statistieken: leerjaar/module/cohort/klas/student-filters, sorteerbaar, gepagineerd, rapporten (signalering, alle resultaten per student, gekoppelde studenten per keuzedeel, onvoldoendes, aanwezigheid, keuzedelen) met drill-downs
 - Rapport: nette lay-out met info-blok (SLB'er, cohort, datum), ondertekenregels, logo-placeholder, print/PDF-vriendelijk
 - Rechten: 5 rollen (beheerder/mentor/docent/administratie/student), UI toont alleen wat een rol mag

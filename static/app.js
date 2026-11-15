@@ -11,6 +11,11 @@ let periods = [];
 let grades = {}; // "studentId:subjectId" -> value
 let attendance = {}; // studentId -> {present, absent_allowed, absent_unallowed}
 const ATT_FIELDS = ["present", "absent_allowed", "absent_unallowed"];
+let specialisaties = []; // specialisaties met modules en vakken
+let specLinks = []; // student-specialisatie-koppelingen
+let selectedSpecId = null;
+const studentSpecIds = (sid) =>
+  specLinks.filter((l) => l.student_id === sid).map((l) => l.specialisatie_id);
 let notes = {}; // studentId -> {comment, teacher_comment}
 let currentPeriod = null;
 let users = [];
@@ -40,6 +45,8 @@ const listSort = {
   periods: { key: "year", dir: 1 },
   grades: { key: "last_name", dir: 1 },
   users: { key: "username", dir: 1 },
+  specs: { key: "name", dir: 1 },
+  specstudents: { key: "last_name", dir: 1 },
 };
 
 function sortRows(rows, state, fieldOf) {
@@ -94,6 +101,14 @@ const IMPORT_TEMPLATES = {
   keuzedeel: {
     file: "voorbeeld-keuzedeel-resultaten.csv",
     text: "Studentnummer;Resultaat\n10001;8\n10002;VS\n10003;G\n",
+  },
+  "spec-koppeling": {
+    file: "voorbeeld-specialisatie-koppelingen.csv",
+    text: "Studentnummer;Specialisatie\n210001;Security\n210002;Netwerken\n",
+  },
+  "spec-resultaat": {
+    file: "voorbeeld-keuzemodule-resultaten.csv",
+    text: "Studentnummer;Vak;Resultaat\n210001;Netwerkbeveiliging;7,5\n210001;Ethical Hacking;G\n",
   },
   studenten: {
     file: "voorbeeld-studenten.csv",
@@ -225,10 +240,10 @@ const ROLE_LABELS = {
 };
 
 const ROLE_TABS = {
-  beheerder: ["cijfers", "studenten", "structuur", "vakken", "periodes", "keuzedelen", "statistieken", "rapport", "vergadering", "archief", "gebruikers", "instellingen", "logboek"],
-  mentor: ["cijfers", "studenten", "keuzedelen", "statistieken", "rapport", "vergadering", "archief", "logboek"],
-  docent: ["cijfers", "keuzedelen", "statistieken", "rapport", "vergadering", "logboek"],
-  administratie: ["keuzedelen", "statistieken", "rapport", "logboek"],
+  beheerder: ["cijfers", "studenten", "structuur", "vakken", "periodes", "keuzedelen", "specialisaties", "statistieken", "rapport", "vergadering", "archief", "gebruikers", "instellingen", "logboek"],
+  mentor: ["cijfers", "studenten", "keuzedelen", "specialisaties", "statistieken", "rapport", "vergadering", "archief", "logboek"],
+  docent: ["cijfers", "keuzedelen", "specialisaties", "statistieken", "rapport", "vergadering", "logboek"],
+  administratie: ["keuzedelen", "specialisaties", "statistieken", "rapport", "logboek"],
   student: ["rapport"],
 };
 
@@ -428,6 +443,9 @@ async function loadAll() {
   [students, classes, crebos, cohorts, leertrajecten, subjects, periods] = await Promise.all([
     api("/api/students"), api("/api/classes"), api("/api/crebos"), api("/api/cohorts"), api("/api/leertrajecten"), api("/api/subjects"), api("/api/periods"),
   ]);
+  [specialisaties, specLinks] = await Promise.all([
+    api("/api/specialisaties"), api("/api/specialisaties/links"),
+  ]).catch(() => [[], []]);
   if (currentUser && currentUser.role === "beheerder") {
     users = await api("/api/users").catch(() => []);
     renderUsers();
@@ -486,7 +504,7 @@ function renderPeriodSelects() {
     sel.innerHTML = `<option value="">Alle cohorten</option>` +
       cohorts.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("");
   }
-  for (const kbc of [$("#kd-matrix-class"), $("#kd-bulk-class")]) {
+  for (const kbc of [$("#kd-matrix-class"), $("#kd-bulk-class"), $("#spec-bulk-class")]) {
     const kbcPrev = kbc.value;
     kbc.innerHTML = `<option value="">Alle klassen</option>` +
       classes.map((c) => `<option value="${c.id}">${esc(classLabel(c))}</option>`).join("");
@@ -567,17 +585,20 @@ function visibleStudents() {
 
 function subjectsForPeriod() {
   if (!currentPeriod) return subjects;
-  const classId = +($("#grade-class").value || 0) || null;
-  const cls = classes.find((x) => String(x.id) === String(classId));
-  const ltId = cls ? cls.leertraject_id : null;
-  return subjects.filter((s) =>
+  const vakken = subjects.filter((s) =>
     (s.kind || "vak") === "vak" &&
     (s.period_ids || []).includes(currentPeriod)
   );
+  const keuzemodules = subjects.filter((s) =>
+    s.kind === "keuzemodule" &&
+    s.keuzemodule && s.keuzemodule.period_id === currentPeriod
+  );
+  return [...vakken, ...keuzemodules];
 }
 
 async function loadGrades() {
   if (!currentPeriod) { renderGradeTable(); return; }
+  specLinks = await api("/api/specialisaties/links").catch(() => specLinks);
   const rows = await api(`/api/grades?period_id=${currentPeriod}`);
   grades = {};
   for (const r of rows) grades[`${r.student_id}:${r.subject_id}`] = r.value;
@@ -619,7 +640,9 @@ function renderGradeTable() {
   const gradeDis = maySetGrades() ? "" : " disabled";
   const attDis = maySetAttendanceNotes() ? "" : " disabled";
   thead.innerHTML = `<tr><th data-key="student_number">Nr.</th><th data-key="first_name">Voornaam</th><th data-key="prefix">Tussenv.</th><th data-key="last_name">Achternaam</th>` +
-    periodSubjects.map((s) => `<th draggable="true" data-subject="${s.id}" title="Beoordeling: ${typeShort[s.assessment_type] || "1-10"} — sleep om te herschikken">${esc(s.name)}<br><small>${typeShort[s.assessment_type] || "1-10"}</small></th>`).join("") +
+    periodSubjects.map((s) => s.kind === "keuzemodule"
+      ? `<th draggable="true" data-subject="${s.id}" title="Keuzemodule ${esc(s.keuzemodule.module_name)} (specialisatie ${esc(s.keuzemodule.specialisatie_name)}) — beoordeling: ${typeShort[s.assessment_type] || "1-10"} — alleen voor studenten die deze specialisatie volgen">${esc(s.name)}<br><small>${esc(s.keuzemodule.module_name)}</small></th>`
+      : `<th draggable="true" data-subject="${s.id}" title="Beoordeling: ${typeShort[s.assessment_type] || "1-10"} — sleep om te herschikken">${esc(s.name)}<br><small>${typeShort[s.assessment_type] || "1-10"}</small></th>`).join("") +
     `<th title="Aanwezigheid">Aanw. %</th>` +
     `<th title="Geoorloofd afwezig">Geoorl. afw. %</th>` +
     `<th title="Ongeoorloofd afwezig">Ongeoorl. afw. %</th>` +
@@ -642,6 +665,10 @@ function renderGradeTable() {
       total += tekorten(v);
       const cls = v && tekorten(v) > 0 ? ` class="tekort-${tekorten(v)}"` : "";
       const kind = gradeKind(v);
+      if (su.kind === "keuzemodule" &&
+          !studentSpecIds(st.id).includes(su.keuzemodule.specialisatie_id)) {
+        return `<td${cls}><input class="cell km-nvt" data-sid="${st.id}" data-suid="${su.id}" value="\u2014" disabled title="Deze student volgt de specialisatie ${esc(su.keuzemodule.specialisatie_name)} niet"></td>`;
+      }
       return `<td${cls}><input class="cell${kind ? " val-" + kind : ""}" data-sid="${st.id}" data-suid="${su.id}" value="${esc(v)}"${gradeDis}></td>`;
     }).join("");
     const att = attendance[st.id] || {};
@@ -1842,6 +1869,7 @@ function renderReportCards(data, periodOverride) {
         </tbody>
       </table>
       ${s.entries.length ? `
+      ${s.specialisaties && s.specialisaties.length ? `<p class="hint report-specs">Specialisatie: <strong>${s.specialisaties.map(esc).join(", ")}</strong></p>` : ""}
       <h3 class="report-section">Beoordelingen</h3>
       <table class="report-grades">
         <thead><tr><th>Vak</th><th>Beoordeling</th></tr></thead>
@@ -3533,6 +3561,7 @@ $$("nav [data-tab]").forEach((btn) => {
     if (btn.dataset.tab === "archief") renderArchive();
     if (btn.dataset.tab === "logboek") renderAuditLog();
     if (btn.dataset.tab === "keuzedelen") { renderKeuzedelenTab(); loadKdMatrix(); loadKdBulk(); }
+    if (btn.dataset.tab === "specialisaties") { renderSpecs(); renderSpecDetail(); renderSpecBulk(); renderSpecStudents(); fillSpecSelects(); }
     if (btn.dataset.tab === "statistieken") fillStatFilters();
     if (btn.dataset.tab === "vergadering") renderMeetingsTab();
     if (btn.dataset.tab === "instellingen") renderMailOutbox().catch(() => {});
@@ -4162,6 +4191,347 @@ $("#pwchange-form").addEventListener("submit", async (e) => {
   } catch (err) {
     errEl.textContent = err.message;
     errEl.classList.remove("hidden");
+  }
+});
+
+// ---------- Specialisaties (keuzemodules) ----------
+function specCounts(spec) {
+  return {
+    module_count: spec.modules.length,
+    subject_count: spec.subjects.length,
+    student_count: spec.student_count,
+  };
+}
+
+function renderSpecs() {
+  const q = ($("#spec-filter").value || "").trim().toLowerCase();
+  let rows = specialisaties;
+  if (q) rows = rows.filter((s) => s.name.toLowerCase().includes(q));
+  rows = rows.map((s) => ({ ...s, ...specCounts(s) }));
+  rows = sortRows(rows, listSort.specs, (s, key) => s[key]);
+  updateSortArrows("#specs-table", listSort.specs);
+  $("#specs-table tbody").innerHTML = rows.length
+    ? pageSlice("#specs-table", rows).map((s) => `
+      <tr data-id="${s.id}" class="${selectedSpecId === s.id ? "selected" : ""}">
+        <td>${isAdmin() ? `<input data-field="name" value="${esc(s.name)}">` : esc(s.name)}</td>
+        <td>${s.module_count}</td>
+        <td>${s.subject_count}</td>
+        <td>${s.student_count}</td>
+        <td>${isAdmin() ? `<button class="danger" data-del>Verwijderen</button>` : ""}</td>
+      </tr>`).join("")
+    : `<tr><td colspan="5" class="hint">Nog geen specialisaties.</td></tr>`;
+}
+
+function renderSpecDetail() {
+  const box = $("#spec-detail");
+  const spec = specialisaties.find((s) => s.id === selectedSpecId);
+  if (!spec) { box.innerHTML = "<p class='hint'>Kies een specialisatie in de tabel hierboven om keuzemodules en vakken te beheren.</p>"; return; }
+  const periodOpts = (sel) => `<option value="">(losse module)</option>` + periods.map((p) =>
+    `<option value="${p.id}"${sel === p.id ? " selected" : ""}>${esc(periodLabel(p))}</option>`).join("");
+  const modulesHtml = spec.modules.map((m) => `
+    <tr data-id="${m.id}">
+      <td>${isAdmin() ? `<input data-field="mod-name" value="${esc(m.name)}">` : esc(m.name)}</td>
+      <td>${isAdmin() ? `<select data-field="mod-period">${periodOpts(m.period_id)}</select>` : esc(m.period_name || "")}</td>
+      <td>${m.subject_count}</td>
+      <td>${isAdmin() ? `<button class="danger" data-del-mod>Verwijderen</button>` : ""}</td>
+    </tr>`).join("");
+  const subjectsHtml = spec.subjects.map((s) => {
+    const mod = spec.modules.find((m) => m.id === s.specialisatie_module_id);
+    return `
+    <tr data-id="${s.id}">
+      <td>${isAdmin() ? `<input data-field="subj-name" value="${esc(s.name)}">` : esc(s.name)}</td>
+      <td>${esc(mod ? mod.name : "")}</td>
+      <td>${esc({ cijfer: "Cijfer (1-10)", letter: "Letter (V/G/O/VS)", vnv: "V/NV" }[s.assessment_type] || s.assessment_type)}</td>
+      <td>${isAdmin() ? `<button class="danger" data-del-subj>Verwijderen</button>` : ""}</td>
+    </tr>`;
+  }).join("");
+  box.innerHTML = `
+    <h3>Keuzemodules en vakken van ${esc(spec.name)}</h3>
+    ${isAdmin() ? `
+    <div class="toolbar addbar">
+      <strong>Keuzemodule toevoegen:</strong>
+      <input id="spec-mod-name" placeholder="Naam keuzemodule (bijv. Security 1)">
+      <label>Loopt naast module:
+        <select id="spec-mod-period">${periodOpts("")}</select>
+      </label>
+      <button id="btn-add-spec-mod">Toevoegen</button>
+    </div>` : ""}
+    <div class="table-wrap">
+      <table class="list" id="spec-mods-table">
+        <thead><tr><th>Keuzemodule</th><th>Loopt naast</th><th>Vakken</th><th></th></tr></thead>
+        <tbody>${modulesHtml || `<tr><td colspan="4" class="hint">Nog geen keuzemodules.</td></tr>`}</tbody>
+      </table>
+    </div>
+    ${isAdmin() ? `
+    <div class="toolbar addbar">
+      <strong>Vak toevoegen aan keuzemodule:</strong>
+      <select id="spec-subj-mod">${spec.modules.map((m) => `<option value="${m.id}">${esc(m.name)}</option>`).join("") || "<option value=''>Voeg eerst een keuzemodule toe</option>"}</select>
+      <input id="spec-subj-name" placeholder="Naam vak">
+      <label>Beoordeling:
+        <select id="spec-subj-assessment">
+          <option value="cijfer">Cijfer (1-10)</option>
+          <option value="letter">Letter (V/G/O/VS)</option>
+          <option value="vnv">Voldaan / niet voldaan (V/NV)</option>
+        </select>
+      </label>
+      <button id="btn-add-spec-subj">Toevoegen</button>
+    </div>` : ""}
+    <div class="table-wrap">
+      <table class="list" id="spec-subjs-table">
+        <thead><tr><th>Vak</th><th>Keuzemodule</th><th>Beoordeling</th><th></th></tr></thead>
+        <tbody>${subjectsHtml || `<tr><td colspan="4" class="hint">Nog geen vakken.</td></tr>`}</tbody>
+      </table>
+    </div>`;
+}
+
+async function refreshSpecs() {
+  specialisaties = await api("/api/specialisaties").catch(() => specialisaties);
+  specLinks = await api("/api/specialisaties/links").catch(() => specLinks);
+  renderSpecs();
+  renderSpecDetail();
+  renderSpecBulk();
+  renderSpecStudents();
+  fillSpecSelects();
+  renderGradeTable();
+}
+
+function fillSpecSelects() {
+  const opts = specialisaties.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join("");
+  for (const sel of ["#spec-bulk-spec", "#spec-students-spec"]) {
+    const el = $(sel);
+    const cur = el.value;
+    el.innerHTML = `<option value="">Kies een specialisatie...</option>` + opts;
+    if (cur && specialisaties.some((s) => String(s.id) === cur)) el.value = cur;
+  }
+}
+
+function specBulkRows() {
+  const q = ($("#spec-bulk-search").value || "").trim().toLowerCase();
+  const classId = +($("#spec-bulk-class").value || 0);
+  let list = visibleStudents().filter((s) => !s.archived);
+  if (classId) list = list.filter((s) => String(s.class_id) === String(classId));
+  if (q) list = list.filter((s) => studentName(s).toLowerCase().includes(q) ||
+    (s.student_number || "").toLowerCase().includes(q));
+  return list;
+}
+
+function renderSpecBulk() {
+  const specId = +($("#spec-bulk-spec").value || 0);
+  const linked = new Set(specLinks.filter((l) => l.specialisatie_id === specId).map((l) => l.student_id));
+  const rows = specBulkRows().map((s) => ({ ...s, spec_linked: linked.has(s.id) ? "Ja" : "" }));
+  const sorted = [...rows].sort((a, b) =>
+    (a.last_name || a.name).localeCompare(b.last_name || b.name, "nl"));
+  $("#spec-bulk-table tbody").innerHTML = rows.length
+    ? pageSlice("#spec-bulk-table", sorted).map((s) => `
+      <tr data-id="${s.id}">
+        <td><input type="checkbox" class="spec-bulk-check" data-sid="${s.id}"${s.spec_linked ? " checked" : ""}></td>
+        <td>${esc(s.student_number || "")}</td>
+        <td>${esc(s.last_name || s.name)}</td>
+        <td>${esc(s.class_name || (classes.find((c) => c.id === s.class_id) || {}).name || "")}</td>
+        <td>${s.spec_linked ? "Ja" : ""}</td>
+      </tr>`).join("")
+    : `<tr><td colspan="5" class="hint">Geen studenten.</td></tr>`;
+}
+
+async function renderSpecStudents() {
+  const specId = +($("#spec-students-spec").value || 0);
+  const tbody = $("#spec-students-table tbody");
+  if (!specId) { tbody.innerHTML = `<tr><td colspan="4" class="hint">Kies links een specialisatie.</td></tr>`; return; }
+  const data = await api(`/api/specialisaties/${specId}/students`).catch(() => null);
+  if (!data) { tbody.innerHTML = `<tr><td colspan="4" class="hint">Kon studenten niet laden.</td></tr>`; return; }
+  const q = ($("#spec-students-search").value || "").trim().toLowerCase();
+  let rows = data.students;
+  if (q) rows = rows.filter((s) => studentName(s).toLowerCase().includes(q) ||
+    (s.student_number || "").toLowerCase().includes(q));
+  rows = sortRows(rows, listSort.specstudents, (s, key) => key === "last_name" ? (s.last_name || s.name) : s[key]);
+  updateSortArrows("#spec-students-table", listSort.specstudents);
+  tbody.innerHTML = rows.length
+    ? pageSlice("#spec-students-table", rows).map((s) => `
+      <tr data-id="${s.id}">
+        <td>${esc(s.student_number || "")}</td>
+        <td>${esc(s.last_name || s.name)}</td>
+        <td>${esc(s.class_name || "")}</td>
+        <td>${isRole("beheerder", "mentor") ? `<button class="secondary" data-unlink>Ontkoppel</button>` : ""}</td>
+      </tr>`).join("")
+    : `<tr><td colspan="4" class="hint">Nog geen studenten gekoppeld.</td></tr>`;
+}
+
+$("#spec-filter").addEventListener("input", () => { resetPage("#specs-table"); renderSpecs(); });
+$("#specs-table thead").addEventListener("click", (e) => {
+  const key = e.target.dataset.key;
+  if (!key) return;
+  if (listSort.specs.key === key) listSort.specs.dir = listSort.specs.dir === 1 ? -1 : 1;
+  else { listSort.specs.key = key; listSort.specs.dir = 1; }
+  renderSpecs();
+});
+$("#specs-table tbody").addEventListener("click", async (e) => {
+  const tr = e.target.closest("tr[data-id]");
+  if (!tr) return;
+  if (e.target.dataset.del !== undefined) {
+    if (!confirm("Specialisatie verwijderen? Koppelingen, keuzemodules en vakken gaan mee weg; cijfers blijven bestaan.")) return;
+    await api(`/api/specialisaties/${tr.dataset.id}`, { method: "DELETE" });
+    if (selectedSpecId === +tr.dataset.id) selectedSpecId = null;
+    await refreshSpecs();
+    return;
+  }
+  if (e.target.tagName === "TD" || e.target.tagName === "INPUT") {
+    selectedSpecId = +tr.dataset.id;
+    renderSpecs();
+    renderSpecDetail();
+  }
+});
+$("#specs-table tbody").addEventListener("change", async (e) => {
+  if (e.target.dataset.field !== "name") return;
+  const id = e.target.closest("tr").dataset.id;
+  await api(`/api/specialisaties/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: e.target.value }),
+  });
+  await refreshSpecs();
+});
+$("#btn-add-spec").addEventListener("click", async () => {
+  const name = $("#spec-name").value.trim();
+  if (!name) return;
+  await api("/api/specialisaties", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  $("#spec-name").value = "";
+  await refreshSpecs();
+});
+$("#spec-detail").addEventListener("click", async (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  if (btn.id === "btn-add-spec-mod") {
+    const name = $("#spec-mod-name").value.trim();
+    if (!name) return alert("Vul een naam in.");
+    if (!selectedSpecId) return;
+    await api(`/api/specialisaties/${selectedSpecId}/modules`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, period_id: +($("#spec-mod-period").value || 0) || null }),
+    });
+    await refreshSpecs();
+  } else if (btn.id === "btn-add-spec-subj") {
+    const modId = +($("#spec-subj-mod").value || 0);
+    const name = $("#spec-subj-name").value.trim();
+    if (!modId) return alert("Voeg eerst een keuzemodule toe.");
+    if (!name) return alert("Vul een vaknaam in.");
+    await api("/api/subjects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        kind: "keuzemodule",
+        assessment_type: $("#spec-subj-assessment").value,
+        specialisatie_module_id: modId,
+      }),
+    });
+    $("#spec-subj-name").value = "";
+    await refreshSpecs();
+    await loadAll();
+  } else if (btn.dataset.delMod !== undefined) {
+    if (!confirm("Keuzemodule verwijderen? De vakken en cijfers gaan mee weg.")) return;
+    await api(`/api/specialisaties/modules/${btn.closest("tr").dataset.id}`, { method: "DELETE" });
+    await refreshSpecs();
+    await loadAll();
+  } else if (btn.dataset.delSubj !== undefined) {
+    if (!confirm("Vak verwijderen? Cijfers gaan mee weg.")) return;
+    await api(`/api/subjects/${btn.closest("tr").dataset.id}`, { method: "DELETE" });
+    await refreshSpecs();
+    await loadAll();
+  }
+});
+$("#spec-detail").addEventListener("change", async (e) => {
+  const tr = e.target.closest("tr[data-id]");
+  if (!tr || !selectedSpecId) return;
+  if (e.target.dataset.field === "mod-name") {
+    await api(`/api/specialisaties/modules/${tr.dataset.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: e.target.value }),
+    });
+    await refreshSpecs();
+  } else if (e.target.dataset.field === "mod-period") {
+    await api(`/api/specialisaties/modules/${tr.dataset.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ period_id: +e.target.value || null }),
+    });
+    await refreshSpecs();
+    await loadAll();
+  } else if (e.target.dataset.field === "subj-name") {
+    await api(`/api/subjects/${tr.dataset.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: e.target.value }),
+    });
+    await refreshSpecs();
+  }
+});
+$("#spec-bulk-spec").addEventListener("change", renderSpecBulk);
+$("#spec-bulk-search").addEventListener("input", () => { resetPage("#spec-bulk-table"); renderSpecBulk(); });
+$("#spec-bulk-class").addEventListener("change", () => { resetPage("#spec-bulk-table"); renderSpecBulk(); });
+$("#spec-bulk-select-all").addEventListener("change", (e) => {
+  document.querySelectorAll(".spec-bulk-check").forEach((c) => { c.checked = e.target.checked; });
+});
+async function specBulk(action) {
+  const specId = +($("#spec-bulk-spec").value || 0);
+  if (!specId) return alert("Kies eerst een specialisatie.");
+  const ids = [...document.querySelectorAll(".spec-bulk-check:checked")].map((c) => +c.dataset.sid);
+  if (!ids.length) return alert("Kies eerst minimaal \u00e9\u00e9n student.");
+  await api("/api/specialisaties/bulk", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ specialisatie_id: specId, student_ids: ids, action }),
+  });
+  await refreshSpecs();
+}
+$("#btn-spec-bulk-link").addEventListener("click", () => specBulk("link"));
+$("#btn-spec-bulk-unlink").addEventListener("click", () => specBulk("unlink"));
+$("#spec-students-spec").addEventListener("change", () => { resetPage("#spec-students-table"); renderSpecStudents(); });
+$("#spec-students-search").addEventListener("input", () => { resetPage("#spec-students-table"); renderSpecStudents(); });
+$("#spec-students-table thead").addEventListener("click", (e) => {
+  const key = e.target.dataset.key;
+  if (!key) return;
+  if (listSort.specstudents.key === key) listSort.specstudents.dir = listSort.specstudents.dir === 1 ? -1 : 1;
+  else { listSort.specstudents.key = key; listSort.specstudents.dir = 1; }
+  renderSpecStudents();
+});
+$("#spec-students-table tbody").addEventListener("click", async (e) => {
+  if (e.target.dataset.unlink === undefined) return;
+  const tr = e.target.closest("tr");
+  const specId = +($("#spec-students-spec").value || 0);
+  await api("/api/specialisaties/bulk", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ specialisatie_id: specId, student_ids: [+tr.dataset.id], action: "unlink" }),
+  });
+  await refreshSpecs();
+});
+$("#spec-import-file").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  const fd = new FormData();
+  fd.append("file", file);
+  const box = $("#spec-import-result");
+  try {
+    const res = await fetch("/api/specialisaties/import", { method: "POST", body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Import mislukt");
+    box.textContent = `${data.imported} regel(s) ge\u00efmporteerd, ${data.skipped} leeg` +
+      (data.errors.length ? `. Fouten: ${data.errors.slice(0, 5).join("; ")}` : ".");
+    box.classList.remove("hidden", "err");
+    box.classList.add("ok");
+    await refreshSpecs();
+    await loadAll();
+  } catch (err) {
+    box.textContent = "Import mislukt: " + err.message;
+    box.classList.remove("hidden", "ok");
+    box.classList.add("err");
   }
 });
 

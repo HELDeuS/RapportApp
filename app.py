@@ -133,7 +133,24 @@ CREATE TABLE IF NOT EXISTS subjects (
     name TEXT NOT NULL,
     assessment_type TEXT DEFAULT 'cijfer',
     kind TEXT DEFAULT 'vak',
-    sbu REAL DEFAULT 0
+    sbu REAL DEFAULT 0,
+    specialisatie_module_id INTEGER
+);
+CREATE TABLE IF NOT EXISTS specialisaties (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    archived INTEGER DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS specialisatie_modules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    specialisatie_id INTEGER NOT NULL REFERENCES specialisaties(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    period_id INTEGER REFERENCES periods(id) ON DELETE SET NULL
+);
+CREATE TABLE IF NOT EXISTS student_specialisaties (
+    student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    specialisatie_id INTEGER NOT NULL REFERENCES specialisaties(id) ON DELETE CASCADE,
+    PRIMARY KEY (student_id, specialisatie_id)
 );
 CREATE TABLE IF NOT EXISTS student_keuzedelen (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -385,6 +402,9 @@ def init_db():
     if "kind" not in scols:
         db.execute("ALTER TABLE subjects ADD COLUMN kind TEXT DEFAULT 'vak'")
         scols.append("kind")
+    if "specialisatie_module_id" not in scols:
+        db.execute("ALTER TABLE subjects ADD COLUMN specialisatie_module_id INTEGER")
+        scols.append("specialisatie_module_id")
     if "sbu" not in scols:
         db.execute("ALTER TABLE subjects ADD COLUMN sbu REAL DEFAULT 0")
         scols.append("sbu")
@@ -768,8 +788,10 @@ def admin_reset():
         keep.add(admin["id"])
     for table in ("grades", "attendance", "notes", "subject_periods",
                  "subject_classes", "subject_leertrajecten", "student_keuzedelen",
+                 "student_specialisaties", "specialisatie_modules",
                  "leertraject_periods", "students", "subjects",
-                 "periods", "classes", "cohorts", "crebos", "leertrajecten"):
+                 "periods", "classes", "cohorts", "crebos", "leertrajecten",
+                 "specialisaties"):
         db.execute(f"DELETE FROM {table}")
     db.execute("DELETE FROM users WHERE id NOT IN (%s)" % ",".join("?" * len(keep)),
                tuple(keep))
@@ -1031,7 +1053,17 @@ def report_ready_students(db, period_id, student_ids):
             "SELECT subject_id FROM grades "
             "WHERE period_id = ? AND student_id = ?",
             (period_id, sid)).fetchall()}
-        if expected.keys() <= got:
+        # Keuzemodule-vakken van de specialisatie(s) van deze student tellen
+        # mee als verwacht resultaat voor deze periode.
+        km_expected = {r["subject_id"] for r in db.execute(
+            """SELECT s.id AS subject_id
+               FROM student_specialisaties ss
+               JOIN specialisatie_modules m ON m.specialisatie_id = ss.specialisatie_id
+               JOIN subjects s ON s.specialisatie_module_id = m.id
+               WHERE ss.student_id = ? AND m.period_id = ?
+                 AND COALESCE(s.archived, 0) = 0""",
+            (sid, period_id)).fetchall()}
+        if expected.keys() | km_expected <= got:
             done.append(sid)
     return done
 
@@ -1816,6 +1848,21 @@ def subject_with_periods(db, subject_id):
             (subject_id,),
         ).fetchall()
     ]
+    if result.get("specialisatie_module_id"):
+        mod = db.execute(
+            """SELECT m.name, m.period_id, m.specialisatie_id, sp.name AS specialisatie
+               FROM specialisatie_modules m
+               JOIN specialisaties sp ON sp.id = m.specialisatie_id
+               WHERE m.id = ?""",
+            (result["specialisatie_module_id"],)).fetchone()
+        if mod:
+            result["keuzemodule"] = {
+                "module_id": result["specialisatie_module_id"],
+                "module_name": mod["name"],
+                "period_id": mod["period_id"],
+                "specialisatie_id": mod["specialisatie_id"],
+                "specialisatie_name": mod["specialisatie"],
+            }
     return result
 
 
@@ -2076,6 +2123,380 @@ def keuzedeel_grade():
                     "tekorten": tekorten_for_value(parsed) if parsed else 0})
 
 
+# ---------------------------------------------------------------------------
+# Specialisaties (keuzemodules): specialisatie → keuzemodule(s) → vakken.
+# Een keuzemodule loopt los van maar tegelijk met een bestaande periode;
+# resultaten worden per student per vak in de bestaande grades-tabel gezet.
+# ---------------------------------------------------------------------------
+
+
+def specialisatie_detail(db, spec_id):
+    spec = db.execute("SELECT * FROM specialisaties WHERE id = ?", (spec_id,)).fetchone()
+    if spec is None:
+        return None
+    modules = db.execute(
+        """SELECT m.id, m.name, m.period_id, p.name AS period_name,
+                  (SELECT COUNT(*) FROM subjects s
+                   WHERE s.specialisatie_module_id = m.id
+                     AND COALESCE(s.archived, 0) = 0) AS subject_count
+           FROM specialisatie_modules m
+           LEFT JOIN periods p ON p.id = m.period_id
+           WHERE m.specialisatie_id = ?
+           ORDER BY m.period_id, m.name COLLATE nl""",
+        (spec_id,)).fetchall()
+    subject_rows = db.execute(
+        """SELECT s.id, s.name, s.assessment_type, s.specialisatie_module_id
+           FROM subjects s
+           WHERE s.kind = 'keuzemodule' AND COALESCE(s.archived, 0) = 0
+             AND s.specialisatie_module_id IN
+                 (SELECT id FROM specialisatie_modules WHERE specialisatie_id = ?)
+           ORDER BY s.name COLLATE nl""",
+        (spec_id,)).fetchall()
+    student_count = db.execute(
+        "SELECT COUNT(*) FROM student_specialisaties WHERE specialisatie_id = ?",
+        (spec_id,)).fetchone()[0]
+    return {
+        "id": spec["id"],
+        "name": spec["name"],
+        "archived": bool(spec["archived"]),
+        "student_count": student_count,
+        "modules": [dict(m) for m in modules],
+        "subjects": [dict(s) for s in subject_rows],
+    }
+
+
+@app.route("/api/specialisaties")
+def specialisaties_list():
+    user, err = auth_error("beheerder", "mentor", "docent", "administratie")
+    if err:
+        return err
+    db = get_db()
+    archived = 1 if request.args.get("archived") == "1" else 0
+    rows = db.execute(
+        "SELECT id FROM specialisaties WHERE archived = ? ORDER BY name COLLATE nl",
+        (archived,)).fetchall()
+    return jsonify([specialisatie_detail(db, r["id"]) for r in rows])
+
+
+@app.route("/api/specialisaties", methods=["POST"])
+def specialisaties_create():
+    user, err = auth_error("beheerder")
+    if err:
+        return err
+    data = request.get_json(force=True)
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "Naam is verplicht"}), 400
+    db = get_db()
+    cur = db.execute("INSERT INTO specialisaties (name) VALUES (?)", (name,))
+    db.commit()
+    audit(db, user, "aanmaken", "specialisatie", cur.lastrowid, name)
+    return jsonify(specialisatie_detail(db, cur.lastrowid)), 201
+
+
+@app.route("/api/specialisaties/<int:spec_id>", methods=["PUT", "DELETE"])
+def specialisaties_item(spec_id):
+    user, err = auth_error("beheerder")
+    if err:
+        return err
+    db = get_db()
+    spec = db.execute("SELECT * FROM specialisaties WHERE id = ?", (spec_id,)).fetchone()
+    if spec is None:
+        return jsonify({"error": "Specialisatie bestaat niet"}), 404
+    if request.method == "PUT":
+        data = request.get_json(force=True)
+        if "name" in data:
+            name = (data.get("name") or "").strip()
+            if not name:
+                return jsonify({"error": "Naam is verplicht"}), 400
+            db.execute("UPDATE specialisaties SET name = ? WHERE id = ?",
+                       (name, spec_id))
+        if "archived" in data:
+            db.execute("UPDATE specialisaties SET archived = ? WHERE id = ?",
+                       (1 if data.get("archived") else 0, spec_id))
+        db.commit()
+        audit(db, user, "wijzigen", "specialisatie", spec_id,
+              audit_detail(db, "specialisaties", spec_id,
+                           [k for k in ("name", "archived") if k in data]))
+        return jsonify(specialisatie_detail(db, spec_id))
+    detail = audit_detail(db, "specialisaties", spec_id)
+    db.execute("DELETE FROM specialisaties WHERE id = ?", (spec_id,))
+    db.commit()
+    audit(db, user, "verwijderen", "specialisatie", spec_id, detail)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/specialisaties/<int:spec_id>/modules", methods=["POST"])
+def specialisatie_modules_create(spec_id):
+    user, err = auth_error("beheerder")
+    if err:
+        return err
+    db = get_db()
+    spec = db.execute("SELECT * FROM specialisaties WHERE id = ?", (spec_id,)).fetchone()
+    if spec is None:
+        return jsonify({"error": "Specialisatie bestaat niet"}), 404
+    data = request.get_json(force=True)
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "Naam is verplicht"}), 400
+    period_id = data.get("period_id") or None
+    if period_id:
+        if db.execute("SELECT id FROM periods WHERE id = ?",
+                      (period_id,)).fetchone() is None:
+            return jsonify({"error": "Module/periode bestaat niet"}), 400
+    cur = db.execute(
+        "INSERT INTO specialisatie_modules (specialisatie_id, name, period_id) "
+        "VALUES (?, ?, ?)", (spec_id, name, period_id))
+    db.commit()
+    audit(db, user, "aanmaken", "keuzemodule", cur.lastrowid,
+          f"{spec['name']} — {name}")
+    return jsonify(specialisatie_detail(db, spec_id)), 201
+
+
+@app.route("/api/specialisaties/modules/<int:module_id>", methods=["PUT", "DELETE"])
+def specialisatie_module_item(module_id):
+    user, err = auth_error("beheerder")
+    if err:
+        return err
+    db = get_db()
+    mod = db.execute("SELECT * FROM specialisatie_modules WHERE id = ?",
+                     (module_id,)).fetchone()
+    if mod is None:
+        return jsonify({"error": "Keuzemodule bestaat niet"}), 404
+    if request.method == "PUT":
+        data = request.get_json(force=True)
+        if "name" in data:
+            name = (data.get("name") or "").strip()
+            if not name:
+                return jsonify({"error": "Naam is verplicht"}), 400
+            db.execute("UPDATE specialisatie_modules SET name = ? WHERE id = ?",
+                       (name, module_id))
+        if "period_id" in data:
+            period_id = data.get("period_id") or None
+            if period_id and db.execute(
+                    "SELECT id FROM periods WHERE id = ?",
+                    (period_id,)).fetchone() is None:
+                return jsonify({"error": "Module/periode bestaat niet"}), 400
+            db.execute("UPDATE specialisatie_modules SET period_id = ? WHERE id = ?",
+                       (period_id, module_id))
+        db.commit()
+        audit(db, user, "wijzigen", "keuzemodule", module_id,
+              audit_detail(db, "specialisatie_modules", module_id,
+                           [k for k in ("name", "period_id") if k in data]))
+        return jsonify(specialisatie_detail(db, mod["specialisatie_id"]))
+    spec_id = mod["specialisatie_id"]
+    detail = audit_detail(db, "specialisatie_modules", module_id)
+    db.execute("DELETE FROM specialisatie_modules WHERE id = ?", (module_id,))
+    db.commit()
+    audit(db, user, "verwijderen", "keuzemodule", module_id, detail)
+    return jsonify(specialisatie_detail(db, spec_id))
+
+
+@app.route("/api/specialisaties/<int:spec_id>/students")
+def specialisatie_students(spec_id):
+    """Gekoppelde studenten van deze specialisatie."""
+    user, err = auth_error("beheerder", "mentor", "docent", "administratie")
+    if err:
+        return err
+    db = get_db()
+    spec = db.execute("SELECT * FROM specialisaties WHERE id = ?", (spec_id,)).fetchone()
+    if spec is None:
+        return jsonify({"error": "Specialisatie bestaat niet"}), 404
+    where = "st.archived = 0"
+    args = []
+    if user["role"] == "mentor":
+        own = mentor_class_ids(user)
+        if not own:
+            return jsonify({"specialisatie": {"id": spec_id, "name": spec["name"]},
+                            "students": []})
+        where += f" AND st.class_id IN ({','.join('?' for _ in own)})"
+        args.extend(own)
+    rows = db.execute(
+        f"""SELECT st.id, st.name, st.student_number, st.first_name,
+                   st.prefix, st.last_name, c.name AS class_name
+            FROM student_specialisaties ss
+            JOIN students st ON st.id = ss.student_id
+            LEFT JOIN classes c ON c.id = st.class_id
+            WHERE ss.specialisatie_id = ? AND {where}
+            ORDER BY st.name COLLATE nl""",
+        (spec_id, *args)).fetchall()
+    return jsonify({
+        "specialisatie": {"id": spec_id, "name": spec["name"]},
+        "students": [dict(r) for r in rows],
+    })
+
+
+@app.route("/api/specialisaties/bulk", methods=["POST"])
+def specialisaties_bulk():
+    user, err = auth_error("beheerder", "mentor")
+    if err:
+        return err
+    db = get_db()
+    data = request.get_json(force=True)
+    spec_id = data.get("specialisatie_id")
+    student_ids = data.get("student_ids") or []
+    action = data.get("action")
+    if not spec_id or action not in ("link", "unlink"):
+        return jsonify({"error": "specialisatie_id en action (link/unlink) zijn verplicht"}), 400
+    if not student_ids:
+        return jsonify({"error": "Kies eerst minimaal \u00e9\u00e9n student"}), 400
+    spec = db.execute("SELECT name FROM specialisaties WHERE id = ?",
+                      (spec_id,)).fetchone()
+    if spec is None:
+        return jsonify({"error": "Specialisatie bestaat niet"}), 404
+    students = db.execute(
+        f"""SELECT st.* FROM students st WHERE st.id IN
+           ({','.join('?' for _ in student_ids)})""",
+        student_ids).fetchall()
+    if user["role"] == "mentor":
+        students = [s for s in students if mentor_owns_student(user, s)]
+    if not students:
+        return jsonify({"error": "Geen van deze studenten mag je wijzigen"}), 403
+    if action == "link":
+        for s in students:
+            db.execute(
+                "INSERT OR IGNORE INTO student_specialisaties "
+                "(student_id, specialisatie_id) VALUES (?, ?)", (s["id"], spec_id))
+    else:
+        for s in students:
+            db.execute(
+                "DELETE FROM student_specialisaties "
+                "WHERE student_id = ? AND specialisatie_id = ?", (s["id"], spec_id))
+    db.commit()
+    audit(db, user, "bulk-" + action, "specialisatie", spec_id,
+          f"{spec['name']} \u2014 {len(students)} student(en) "
+          f"{'gekoppeld' if action == 'link' else 'ontkoppeld'}")
+    return jsonify({"ok": True, "affected": len(students)})
+
+
+@app.route("/api/specialisaties/links")
+def specialisaties_links():
+    """Alle student-specialisatie-koppelingen (voor de cijferpagina)."""
+    user, err = auth_error("beheerder", "mentor", "docent", "administratie")
+    if err:
+        return err
+    db = get_db()
+    rows = db.execute(
+        """SELECT ss.student_id, ss.specialisatie_id
+           FROM student_specialisaties ss
+           JOIN students st ON st.id = ss.student_id AND st.archived = 0"""
+    ).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/specialisaties/import", methods=["POST"])
+def specialisaties_import():
+    """CSV-import: koppelingen (studentnummer;specialisatie) en resultaten
+    (studentnummer;vak;resultaat). Kolommen worden herkend op de kop."""
+    user, err = auth_error("beheerder", "docent", "mentor")
+    if err:
+        return err
+    db = get_db()
+    file = request.files.get("file")
+    if not file:
+        return jsonify({"error": "Geen bestand meegestuurd"}), 400
+    rows = rows_from_upload(file)
+    if not rows:
+        return jsonify({"error": "Geen data gevonden"}), 400
+    header = [str(c).strip().lower() for c in rows[0]]
+    mode = None
+    if "specialisatie" in header:
+        mode = "koppeling"
+    elif "vak" in header and ("resultaat" in header or "cijfer" in header):
+        mode = "resultaat"
+    if mode:
+        rows = rows[1:]
+    imported, skipped = 0, 0
+    errors = []
+    for i, row in enumerate(rows, start=1):
+        if not row or not str(row[0]).strip():
+            continue
+        if mode == "koppeling" or (mode is None and len(row) == 2):
+            if len(row) < 2:
+                errors.append(f"Regel {i}: te weinig kolommen (verwacht: studentnummer;specialisatie)")
+                continue
+            number = str(row[0]).strip()
+            spec_name = str(row[1]).strip()
+            student = db.execute(
+                "SELECT * FROM students WHERE student_number = ?", (number,)).fetchone()
+            if student is None:
+                errors.append(f"Regel {i}: geen student met nummer {number}")
+                continue
+            if user["role"] == "mentor" and not mentor_owns_student(user, student):
+                errors.append(f"Regel {i}: {number} is niet van jouw klas")
+                continue
+            spec = db.execute(
+                "SELECT id FROM specialisaties WHERE name = ? COLLATE nl",
+                (spec_name,)).fetchone()
+            if spec is None:
+                errors.append(f"Regel {i}: geen specialisatie met naam {spec_name}")
+                continue
+            db.execute(
+                "INSERT OR IGNORE INTO student_specialisaties "
+                "(student_id, specialisatie_id) VALUES (?, ?)",
+                (student["id"], spec["id"]))
+            imported += 1
+        else:
+            if len(row) < 3:
+                errors.append(f"Regel {i}: te weinig kolommen (verwacht: studentnummer;vak;resultaat)")
+                continue
+            number = str(row[0]).strip()
+            subj_name = str(row[1]).strip()
+            value = str(row[2]).strip()
+            student = db.execute(
+                "SELECT * FROM students WHERE student_number = ?", (number,)).fetchone()
+            if student is None:
+                errors.append(f"Regel {i}: geen student met nummer {number}")
+                continue
+            if user["role"] == "mentor" and not mentor_owns_student(user, student):
+                errors.append(f"Regel {i}: {number} is niet van jouw klas")
+                continue
+            subject = db.execute(
+                """SELECT s.id, s.assessment_type, s.name, m.period_id
+                   FROM subjects s
+                   JOIN specialisatie_modules m ON m.id = s.specialisatie_module_id
+                   WHERE s.name = ? COLLATE nl AND s.kind = 'keuzemodule'""",
+                (subj_name,)).fetchone()
+            if subject is None:
+                errors.append(f"Regel {i}: geen keuzemodule-vak met naam {subj_name}")
+                continue
+            if db.execute(
+                """SELECT 1 FROM student_specialisaties ss
+                   JOIN specialisatie_modules m ON m.specialisatie_id = ss.specialisatie_id
+                   JOIN subjects s2 ON s2.specialisatie_module_id = m.id
+                   WHERE ss.student_id = ? AND s2.id = ?""",
+                (student["id"], subject["id"])).fetchone() is None:
+                errors.append(f"Regel {i}: {number} volgt geen specialisatie met vak {subj_name}")
+                continue
+            if not subject["period_id"]:
+                errors.append(f"Regel {i}: vak {subj_name} zit in een keuzemodule zonder periode")
+                continue
+            if value == "":
+                db.execute(
+                    "DELETE FROM grades WHERE student_id = ? AND subject_id = ? "
+                    "AND period_id = ?",
+                    (student["id"], subject["id"], subject["period_id"]))
+                skipped += 1
+                continue
+            try:
+                parsed = parse_value(value, subject["assessment_type"])
+            except ValueError as e:
+                errors.append(f"Regel {i} ({number}): {e}")
+                continue
+            db.execute(
+                """INSERT INTO grades (student_id, subject_id, period_id, value)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT (student_id, subject_id, period_id)
+                   DO UPDATE SET value = excluded.value""",
+                (student["id"], subject["id"], subject["period_id"], parsed))
+            imported += 1
+    db.commit()
+    audit(db, user, "import", "specialisatie", None,
+          f"{imported} regel(s) ge\u00efmporteerd, {skipped} leeg, {len(errors)} fout(en)")
+    return jsonify({"imported": imported, "skipped": skipped,
+                    "errors": errors[:50]})
+
+
 @app.route("/api/students/<int:student_id>/keuzedelen", methods=["GET", "PUT"])
 def student_keuzedelen(student_id):
     user, err = auth_error("beheerder", "mentor", "docent", "administratie")
@@ -2160,15 +2581,27 @@ def subjects_collection():
         if assessment_type not in ASSESSMENT_TYPES:
             return jsonify({"error": "Onbekend beoordelingstype"}), 400
         kind = data.get("kind") or "vak"
-        if kind not in ("vak", "keuzedeel"):
+        if kind not in ("vak", "keuzedeel", "keuzemodule"):
             return jsonify({"error": "Onbekend soort vak"}), 400
         try:
             sbu = float(data.get("sbu") or 0)
         except (TypeError, ValueError):
             return jsonify({"error": "SBU moet een getal zijn"}), 400
+        specialisatie_module_id = data.get("specialisatie_module_id") or None
+        if kind == "keuzemodule":
+            if not specialisatie_module_id:
+                return jsonify({"error": "Kies eerst een keuzemodule"}), 400
+            if db.execute(
+                    "SELECT id FROM specialisatie_modules WHERE id = ?",
+                    (specialisatie_module_id,)).fetchone() is None:
+                return jsonify({"error": "Keuzemodule bestaat niet"}), 400
+        elif specialisatie_module_id:
+            return jsonify({"error": "Alleen keuzemodule-vakken horen bij een keuzemodule"}), 400
         cur = db.execute(
-            "INSERT INTO subjects (name, assessment_type, kind, sbu) VALUES (?, ?, ?, ?)",
-            (name, assessment_type, kind, sbu),
+            """INSERT INTO subjects (name, assessment_type, kind, sbu,
+                                     specialisatie_module_id)
+               VALUES (?, ?, ?, ?, ?)""",
+            (name, assessment_type, kind, sbu, specialisatie_module_id),
         )
         subject_id = cur.lastrowid
         for pid in period_ids:
@@ -2216,9 +2649,17 @@ def subject_item(subject_id):
                        (assessment_type, subject_id))
         if "kind" in data:
             kind = data.get("kind") or "vak"
-            if kind not in ("vak", "keuzedeel"):
+            if kind not in ("vak", "keuzedeel", "keuzemodule"):
                 return jsonify({"error": "Onbekend soort vak"}), 400
             db.execute("UPDATE subjects SET kind = ? WHERE id = ?", (kind, subject_id))
+        if "specialisatie_module_id" in data:
+            smid = data.get("specialisatie_module_id") or None
+            if smid and db.execute(
+                    "SELECT id FROM specialisatie_modules WHERE id = ?",
+                    (smid,)).fetchone() is None:
+                return jsonify({"error": "Keuzemodule bestaat niet"}), 400
+            db.execute("UPDATE subjects SET specialisatie_module_id = ? WHERE id = ?",
+                       (smid, subject_id))
         if "sbu" in data:
             try:
                 sbu = float(data.get("sbu") or 0)
@@ -2351,9 +2792,17 @@ def grade_set():
         return jsonify({"error": "student_id, subject_id en period_id zijn verplicht"}), 400
     db = get_db()
     subject = db.execute(
-        "SELECT assessment_type FROM subjects WHERE id = ?", (subject_id,)
+        "SELECT assessment_type, kind FROM subjects WHERE id = ?", (subject_id,)
     ).fetchone()
     assessment_type = (subject["assessment_type"] if subject else None) or "cijfer"
+    if subject and subject["kind"] == "keuzemodule":
+        if db.execute(
+            """SELECT 1 FROM student_specialisaties ss
+               JOIN specialisatie_modules m ON m.specialisatie_id = ss.specialisatie_id
+               JOIN subjects s2 ON s2.specialisatie_module_id = m.id
+               WHERE ss.student_id = ? AND s2.id = ?""",
+            (student_id, subject_id)).fetchone() is None:
+            return jsonify({"error": "Deze student volgt geen specialisatie met dit vak"}), 400
     try:
         value = parse_value(data.get("value"), assessment_type)
     except ValueError as e:
@@ -2400,7 +2849,7 @@ def grade_bulk():
         return jsonify({"error": "subject_id en period_id zijn verplicht"}), 400
     db = get_db()
     subject = db.execute(
-        "SELECT assessment_type, name FROM subjects WHERE id = ?", (subject_id,)
+        "SELECT assessment_type, name, kind FROM subjects WHERE id = ?", (subject_id,)
     ).fetchone()
     if subject is None:
         return jsonify({"error": "Onbekend vak"}), 400
@@ -2408,6 +2857,14 @@ def grade_bulk():
     for entry in entries:
         student_id = entry.get("student_id")
         if not student_id:
+            continue
+        if subject["kind"] == "keuzemodule" and db.execute(
+            """SELECT 1 FROM student_specialisaties ss
+               JOIN specialisatie_modules m ON m.specialisatie_id = ss.specialisatie_id
+               JOIN subjects s2 ON s2.specialisatie_module_id = m.id
+               WHERE ss.student_id = ? AND s2.id = ?""",
+            (student_id, subject_id)).fetchone() is None:
+            errors.append(f"Student {student_id} volgt geen specialisatie met dit vak")
             continue
         try:
             value = parse_value(entry.get("value"), subject["assessment_type"])
@@ -2974,6 +3431,25 @@ def statistics():
             if period_id in {r["period_id"] for r in db.execute(
                 "SELECT period_id FROM subject_periods WHERE subject_id = ?",
                 (s["id"],)).fetchall()}]
+    # Keuzemodule-vakken: alleen de vakken van keuzemodules die bij de
+    # geselecteerde module(s) horen. Cijfers bestaan alleen voor studenten
+    # die de specialisatie volgen, dus de tellingen kloppen automatisch.
+    km_where = ""
+    km_args = []
+    if not all_periods:
+        km_where = " AND m.period_id = ?"
+        km_args = [period_id]
+    elif year_period_ids:
+        km_where = f" AND m.period_id IN ({','.join('?' for _ in year_period_ids)})"
+        km_args = year_period_ids
+    km_subjects = db.execute(
+        f"""SELECT s.* FROM subjects s
+            JOIN specialisatie_modules m ON m.id = s.specialisatie_module_id
+            WHERE s.archived = 0 AND s.kind = 'keuzemodule'{km_where}
+            ORDER BY s.name COLLATE nl""",
+        km_args).fetchall()
+    seen_subject_ids = {s["id"] for s in subjects}
+    subjects = subjects + [s for s in km_subjects if s["id"] not in seen_subject_ids]
     subject_ids = {s["id"] for s in subjects}
 
     # Cijfers, aanwezigheid en SBU ophalen. Bij 'alle modules' wordt per
@@ -3059,6 +3535,14 @@ def statistics():
         if r["period_id"] in scope_pids:
             subj_modules.setdefault(r["subject_id"], set()).add(
                 period_names.get(r["period_id"], "?"))
+    for r in db.execute(
+        """SELECT s.id AS subject_id, m.name AS module_name, m.period_id
+           FROM subjects s
+           JOIN specialisatie_modules m ON m.id = s.specialisatie_module_id
+           WHERE s.kind = 'keuzemodule' AND s.archived = 0""").fetchall():
+        if r["period_id"] in scope_pids:
+            subj_modules.setdefault(r["subject_id"], set()).add(
+                f"{period_names.get(r['period_id'], '?')} — {r['module_name']}")
 
     # Per vak.
     subject_stats = []
@@ -3997,6 +4481,32 @@ def report():
                 "value": display_value(value),
                 "tekorten": t,
             })
+        # Keuzemodules: vakken uit de specialisatie(s) van deze student die
+        # bij deze periode horen, tellen mee voor het rapport.
+        km_rows = db.execute(
+            """SELECT s.id AS subject_id, s.name AS subject_name, m.name AS module_name,
+                      sp.name AS specialisatie_name, s.assessment_type
+               FROM student_specialisaties ss
+               JOIN specialisatie_modules m ON m.specialisatie_id = ss.specialisatie_id
+               JOIN specialisaties sp ON sp.id = ss.specialisatie_id
+               JOIN subjects s ON s.specialisatie_module_id = m.id
+               WHERE ss.student_id = ? AND m.period_id = ?
+                 AND COALESCE(s.archived, 0) = 0
+               ORDER BY sp.name COLLATE nl, m.name COLLATE nl, s.name COLLATE nl""",
+            (s["id"], period_id)).fetchall()
+        for km in km_rows:
+            value = grades.get((s["id"], km["subject_id"]))
+            if value is None:
+                continue
+            t = tekorten_for_value(value)
+            total += t
+            entries.append({
+                "subject": f"{km['module_name']} — {km['subject_name']}",
+                "value": display_value(value),
+                "tekorten": t,
+                "keuzemodule": True,
+                "specialisatie": km["specialisatie_name"],
+            })
         att = attendance.get(s["id"])
         if att is not None and all(v is None for v in att.values()):
             att = None
@@ -4016,6 +4526,12 @@ def report():
             "value": display_value(r["grade"]) if r["grade"] else "",
             "tekorten": tekorten_for_value(r["grade"]) if r["grade"] else 0,
         } for r in kz_rows]
+        specialisaties = [r["name"] for r in db.execute(
+            """SELECT DISTINCT sp.name
+               FROM student_specialisaties ss
+               JOIN specialisaties sp ON sp.id = ss.specialisatie_id
+               WHERE ss.student_id = ? ORDER BY sp.name COLLATE nl""",
+            (s["id"],)).fetchall()]
         result.append({
             "student": dict(s),
             "class": class_map.get(s["id"]),
@@ -4024,6 +4540,7 @@ def report():
             "attendance": att,
             "notes": note,
             "keuzedelen": keuzedelen,
+            "specialisaties": specialisaties,
             "sbu_total": sum(k["sbu"] for k in keuzedelen),
             "sbu_doel": sbu_doel_for_student(db, s["id"]),
             "audience": audience,

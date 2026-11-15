@@ -38,6 +38,7 @@
         <button data-tab="vakken" class="tab-item">Vakken</button>
         <button data-tab="periodes" class="tab-item">Modules</button>
         <button data-tab="keuzedelen" class="tab-item">Keuzedelen</button>
+        <button data-tab="specialisaties" class="tab-item">Specialisaties</button>
         <button data-tab="gebruikers" class="tab-item">Gebruikers</button>
         <button data-tab="archief" class="tab-item">Archief</button>
       </div>
@@ -494,6 +495,86 @@
 <div id="meeting-print" class="hidden"></div>
 
 <!-- Gebruikers -->
+<!-- Specialisaties (keuzemodules) -->
+<section id="tab-specialisaties" class="panel">
+  <h3>Specialisaties</h3>
+  <p class="hint">Een specialisatie is een keuze van de student met één of meerdere keuzemodules (bijv. "Security 1") die naast een bestaande module loopt. Aan elke keuzemodule hangen vakken; de resultaten tellen mee voor het rapport van de module waarin de keuzemodule loopt. Cijfers voer je in op het tabblad Cijfers; alleen gekoppelde studenten kunnen daar een resultaat krijgen.</p>
+  <div class="toolbar addbar" id="spec-add-bar">
+    <strong>Specialisatie toevoegen:</strong>
+    <input id="spec-name" placeholder="Naam specialisatie (bijv. Security)">
+    <button id="btn-add-spec">Toevoegen</button>
+  </div>
+  <div class="toolbar filterbar">
+    <input id="spec-filter" placeholder="&#9906; Zoek specialisatie...">
+  </div>
+  <div class="table-wrap">
+    <table class="list sortable" id="specs-table">
+      <thead><tr>
+        <th data-key="name">Specialisatie</th>
+        <th data-key="module_count">Keuzemodules</th>
+        <th data-key="subject_count">Vakken</th>
+        <th data-key="student_count">Studenten</th>
+        <th></th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="pager" data-table="specs-table"></div>
+  </div>
+
+  <div id="spec-detail"></div>
+
+  <h3>Studenten koppelen</h3>
+  <div class="toolbar">
+    <label>Specialisatie:
+      <select id="spec-bulk-spec"><option value="">Kies een specialisatie...</option></select>
+    </label>
+    <input id="spec-bulk-search" placeholder="&#9906; Zoek student...">
+    <label>Klas:
+      <select id="spec-bulk-class"><option value="">Alle klassen</option></select>
+    </label>
+    <button id="btn-spec-bulk-link">Koppel geselecteerden</button>
+    <button id="btn-spec-bulk-unlink" class="secondary">Ontkoppel geselecteerden</button>
+  </div>
+  <table class="list" id="spec-bulk-table">
+    <thead><tr>
+      <th style="width:30px"><input type="checkbox" id="spec-bulk-select-all" title="Alles selecteren"></th>
+      <th data-key="student_number">Nr.</th><th data-key="last_name">Achternaam</th><th data-key="class_name">Klas</th><th data-key="spec_linked">Gekoppeld</th>
+    </tr></thead>
+    <tbody></tbody>
+  </table>
+  <div class="pager" data-table="spec-bulk-table"></div>
+
+  <h3>Gekoppelde studenten per specialisatie</h3>
+  <div class="toolbar">
+    <label>Specialisatie:
+      <select id="spec-students-spec"><option value="">Kies een specialisatie...</option></select>
+    </label>
+    <input id="spec-students-search" placeholder="&#9906; Zoek student...">
+  </div>
+  <div class="table-wrap">
+    <table class="list sortable" id="spec-students-table">
+      <thead><tr>
+        <th data-key="student_number">Nr.</th>
+        <th data-key="last_name">Achternaam</th>
+        <th data-key="class_name">Klas</th>
+        <th></th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="pager" data-table="spec-students-table"></div>
+  </div>
+
+  <div class="toolbar subtoolbar">
+    <strong>CSV-import:</strong>
+    <label class="file-label">Koppelingen of resultaten
+      <input type="file" id="spec-import-file" accept=".csv,.txt,.tsv,.xlsx,.xlsm">
+    </label>
+    <button type="button" class="template-link" data-template="spec-koppeling">Template koppelingen</button>
+    <button type="button" class="template-link" data-template="spec-resultaat">Template resultaten</button>
+  </div>
+  <div id="spec-import-result" class="result hidden"></div>
+</section>
+
 <section id="tab-gebruikers" class="panel">
   <div class="toolbar">
     <input id="user-username" placeholder="Gebruikersnaam">
