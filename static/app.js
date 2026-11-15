@@ -4210,22 +4210,25 @@ function renderSpecs() {
   rows = rows.map((s) => ({ ...s, ...specCounts(s) }));
   rows = sortRows(rows, listSort.specs, (s, key) => s[key]);
   updateSortArrows("#specs-table", listSort.specs);
+  if (!q && rows.length && !rows.some((s) => s.id === selectedSpecId)) {
+    selectedSpecId = rows[0].id;
+  }
   $("#specs-table tbody").innerHTML = rows.length
     ? pageSlice("#specs-table", rows).map((s) => `
-      <tr data-id="${s.id}" class="${selectedSpecId === s.id ? "selected" : ""}">
+      <tr data-id="${s.id}" class="spec-row${selectedSpecId === s.id ? " selected" : ""}" title="Klik om keuzemodules en vakken van deze specialisatie te beheren">
         <td>${isAdmin() ? `<input data-field="name" value="${esc(s.name)}">` : esc(s.name)}</td>
         <td>${s.module_count}</td>
         <td>${s.subject_count}</td>
         <td>${s.student_count}</td>
-        <td>${isAdmin() ? `<button class="danger" data-del>Verwijderen</button>` : ""}</td>
+        <td><button class="secondary" data-beheer>Beheer</button>${isAdmin() ? ` <button class="danger" data-del>Verwijderen</button>` : ""}</td>
       </tr>`).join("")
-    : `<tr><td colspan="5" class="hint">Nog geen specialisaties.</td></tr>`;
+    : `<tr><td colspan="5" class="hint">Nog geen specialisaties. Voeg hierboven een specialisatie toe (bijv. "Security").</td></tr>`;
 }
 
 function renderSpecDetail() {
   const box = $("#spec-detail");
   const spec = specialisaties.find((s) => s.id === selectedSpecId);
-  if (!spec) { box.innerHTML = "<p class='hint'>Kies een specialisatie in de tabel hierboven om keuzemodules en vakken te beheren.</p>"; return; }
+  if (!spec) { box.innerHTML = "<p class='hint'>Klik op een specialisatie in de tabel hierboven (of op de knop \"Beheer\") om hier keuzemodules en vakken te koppelen.</p>"; return; }
   const periodOpts = (sel) => `<option value="">(losse module)</option>` + periods.map((p) =>
     `<option value="${p.id}"${sel === p.id ? " selected" : ""}>${esc(periodLabel(p))}</option>`).join("");
   const modulesHtml = spec.modules.map((m) => `
@@ -4374,11 +4377,10 @@ $("#specs-table tbody").addEventListener("click", async (e) => {
     await refreshSpecs();
     return;
   }
-  if (e.target.tagName === "TD" || e.target.tagName === "INPUT") {
-    selectedSpecId = +tr.dataset.id;
-    renderSpecs();
-    renderSpecDetail();
-  }
+  if (e.target.tagName === "INPUT") return;
+  selectedSpecId = +tr.dataset.id;
+  renderSpecs();
+  renderSpecDetail();
 });
 $("#specs-table tbody").addEventListener("change", async (e) => {
   if (e.target.dataset.field !== "name") return;
@@ -4393,13 +4395,15 @@ $("#specs-table tbody").addEventListener("change", async (e) => {
 $("#btn-add-spec").addEventListener("click", async () => {
   const name = $("#spec-name").value.trim();
   if (!name) return;
-  await api("/api/specialisaties", {
+  const created = await api("/api/specialisaties", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name }),
   });
   $("#spec-name").value = "";
+  selectedSpecId = created.id;
   await refreshSpecs();
+  renderSpecDetail();
 });
 $("#spec-detail").addEventListener("click", async (e) => {
   const btn = e.target.closest("button");

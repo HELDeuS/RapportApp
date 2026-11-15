@@ -286,6 +286,8 @@ input.cell.att-incomplete { background: rgba(212, 177, 6, .18); box-shadow: inse
 
 input.cell.km-nvt { color: var(--muted, #888); background: transparent; }
 
+#specs-table tr.spec-row { cursor: pointer; }
+#specs-table tr.spec-row:hover td { background: rgba(59, 130, 246, .08); }
 #specs-table tr.selected td { background: rgba(59, 130, 246, .12); }
 
 .report-specs { margin: 6px 0 0; }
