@@ -470,6 +470,16 @@ td.tekort-2, td.tekort-3, td.tekort-4, td.tekort-5 { color: var(--tekort); font-
 
 /* Kolommen herschikken in cijferoverzicht */
 #grade-table thead th[data-subject] { cursor: grab; }
+
+/* Cijferoverzicht: studentnummer en naam blijven staan bij horizontaal scrollen */
+#grade-table thead th { z-index: 2; }
+#grade-table th:nth-child(-n+4),
+#grade-table td:nth-child(-n+4) { position: sticky; }
+#grade-table td:nth-child(-n+4) { background: var(--card); z-index: 1; }
+#grade-table th:nth-child(1), #grade-table td:nth-child(1) { left: 0; width: 52px; min-width: 52px; }
+#grade-table th:nth-child(2), #grade-table td:nth-child(2) { left: 52px; width: 96px; min-width: 96px; }
+#grade-table th:nth-child(3), #grade-table td:nth-child(3) { left: 148px; width: 64px; min-width: 64px; }
+#grade-table th:nth-child(4), #grade-table td:nth-child(4) { left: 212px; width: 110px; min-width: 110px; box-shadow: 1px 0 0 var(--border); }
 #grade-table thead th[data-subject]:active { cursor: grabbing; }
 
 /* Invoervelden in werkbalken vullen de beschikbare breedte mee */
