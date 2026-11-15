@@ -471,6 +471,19 @@ td.tekort-2, td.tekort-3, td.tekort-4, td.tekort-5 { color: var(--tekort); font-
 #grade-table thead th[data-subject] { cursor: grab; }
 #grade-table thead th[data-subject]:active { cursor: grabbing; }
 
+/* Studentgegevens (nr., voornaam, tussenv., achternaam) blijven staan bij horizontaal scrollen */
+#grade-table { border-collapse: separate; border-spacing: 0; }
+#grade-table thead th { position: sticky; top: 0; z-index: 2; }
+#grade-table thead th:nth-child(-n+4) { left: 0; z-index: 3; }
+#grade-table tbody td:nth-child(-n+4) {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--card);
+}
+#grade-table thead th:nth-child(4),
+#grade-table tbody td:nth-child(4) { border-right: 2px solid var(--border); }
+
 /* Invoervelden in werkbalken vullen de beschikbare breedte mee */
 .toolbar > input {
   flex: 1 1 140px;
