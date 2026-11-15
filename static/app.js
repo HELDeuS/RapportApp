@@ -3862,6 +3862,7 @@ function renderSettingsUi() {
       cb.checked = rolesRapport.includes(cb.value);
     $("#settings-mailmode-vergadering").value = (settings.mail_modes && settings.mail_modes.vergadering) || "direct";
     $("#settings-mailmode-rapport").value = (settings.mail_modes && settings.mail_modes.rapport) || "direct";
+    $("#settings-mail-student-rapport").checked = !!(settings.mail_students && settings.mail_students.rapport);
   }
   pendingLogo = null;
 }
@@ -3880,7 +3881,7 @@ for (const sel of ["#settings-smtp-host", "#settings-smtp-port", "#settings-smtp
   $(sel).addEventListener("input", markSettingsUnsaved);
 }
 for (const sel of ["#settings-smtp-starttls", "#settings-mailmode-vergadering",
-                   "#settings-mailmode-rapport"]) {
+                   "#settings-mailmode-rapport", "#settings-mail-student-rapport"]) {
   $(sel).addEventListener("change", markSettingsUnsaved);
 }
 for (const cb of document.querySelectorAll(".mail-role-vergadering, .mail-role-rapport"))
@@ -3934,6 +3935,7 @@ $("#btn-save-settings").addEventListener("click", async () => {
     body.mail_roles_rapport = [...document.querySelectorAll(".mail-role-rapport:checked")].map(cb => cb.value);
     body.mail_mode_vergadering = $("#settings-mailmode-vergadering").value;
     body.mail_mode_rapport = $("#settings-mailmode-rapport").value;
+    body.mail_students_rapport = $("#settings-mail-student-rapport").checked;
     const pass = $("#settings-smtp-pass").value;
     if (pass) body.smtp_pass = pass;
   }

@@ -10,7 +10,7 @@ Ga verder met RapportApp (https://github.com/HELDeuS/RapportApp, direct naar mai
 - Statistieken: leerjaar/module/cohort/klas/student-filters, sorteerbaar, gepagineerd, rapporten (signalering, alle resultaten per student, gekoppelde studenten per keuzedeel, onvoldoendes, aanwezigheid, keuzedelen) met drill-downs
 - Rapport: nette lay-out met info-blok (SLB'er, cohort, datum), ondertekenregels, logo-placeholder, print/PDF-vriendelijk
 - Rechten: 5 rollen (beheerder/mentor/docent/administratie/student), UI toont alleen wat een rol mag
-- E-mailmeldingen (Instellingen → E-mailmeldingen): SMTP volledig instelbaar; ontvangers zijn per meldingsoort (vergadering, rapport gereed) vinkjes per rol (beheerder/mentor/docent/administratie) — het systeem mailt alle actieve gebruikers binnen aangevinkte rollen met een e-mailadres (instelling `mail_roles_<event>`). Voor studenten moet nog een aparte oplossing komen. Modus direct of dagelijkse samenvatting; outbox-overzicht met sorteren/filteren/paginering; testmail-knop
+- E-mailmeldingen (Instellingen → E-mailmeldingen): SMTP volledig instelbaar; ontvangers zijn per meldingsoort (vergadering, rapport gereed) vinkjes per rol (beheerder/mentor/docent/administratie) — het systeem mailt alle actieve gebruikers binnen aangevinkte rollen met een e-mailadres (instelling `mail_roles_<event>`). Bij 'Rapport gereed' kan daarnaast een vinkje 'Student zelf' worden aangezet (instelling mail_students_rapport): de student krijgt dan een eigen mail op het e-mailadres uit de studentgegevens, altijd direct (nooit in de dagelijkse samenvatting). Modus direct of dagelijkse samenvatting; outbox-overzicht met sorteren/filteren/paginering; testmail-knop
 
 ## Werkwijze/afspraken
 
@@ -24,6 +24,5 @@ Ga verder met RapportApp (https://github.com/HELDeuS/RapportApp, direct naar mai
 
 ## Open punten (todo)
 
-- Studentenmail: aparte oplossing voor e-mailmeldingen aan studenten (de rolvinkjes gelden alleen voor medewerkersrollen)
 - Cosmetisch: werkbalkbreedtes op tabblad Klassen vs. de tabellen eronder
 - Toekomst: HTTPS (Caddy/nginx) vóór studentaccounts live gaan, wachtwoordbeleid (verplicht wijzigen bij eerste login), 720 SBU als instelling per crebo, eventueel grafieken/Excel-export in statistieken

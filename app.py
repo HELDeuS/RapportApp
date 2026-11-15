@@ -836,6 +836,8 @@ def mail_settings(db):
         "roles": {e: parse_roles(get_setting(db, f"mail_roles_{e}"))
                   for e in MAIL_EVENTS},
         "modes": {e: get_setting(db, f"mail_mode_{e}", "direct") for e in MAIL_EVENTS},
+        "students": {e: get_setting(db, f"mail_students_{e}", "0") == "1"
+                     for e in MAIL_EVENTS},
     }
 
 
@@ -897,15 +899,20 @@ def mail_enabled(db, event):
     return bool(cfg["smtp_host"] and event_recipients(db, event))
 
 
-def queue_mail(db, event, subject, body):
-    """Melding in de wachtrij; bij modus 'direct' meteen proberen te versturen."""
+def queue_mail(db, event, subject, body, recipients=None):
+    """Melding in de wachtrij; bij modus 'direct' meteen proberen te versturen.
+    Met 'recipients' wordt de melding uitsluitend naar deze adressen gestuurd
+    (bijv. de student zelf) en altijd direct, nooit in de dagelijkse samenvatting."""
     if event not in MAIL_EVENTS:
         return
     cfg = mail_settings(db)
-    recipients = event_recipients(db, event)
+    explicit = recipients is not None
+    if recipients is None:
+        recipients = event_recipients(db, event)
+    recipients = [r for r in (recipients or []) if r.strip()]
     if not recipients or not cfg["smtp_host"]:
         return
-    mode = cfg["modes"][event]
+    mode = "direct" if explicit else cfg["modes"][event]
     if mode not in ("direct", "samenvatting"):
         mode = "direct"
     cur = db.execute(
@@ -1019,9 +1026,11 @@ def report_ready_students(db, period_id, student_ids):
 
 def notify_report_ready(db, period_id, student_ids):
     """'Rapport gereed'-meldingen, per student+module maar één keer (dedup)."""
+    cfg = mail_settings(db)
+    student_mails = cfg["students"].get("rapport")
     for sid in report_ready_students(db, period_id, student_ids):
         student = db.execute(
-            "SELECT name, student_number FROM students WHERE id = ?",
+            "SELECT name, student_number, email FROM students WHERE id = ?",
             (sid,)).fetchone()
         period = db.execute(
             "SELECT name FROM periods WHERE id = ?", (period_id,)).fetchone()
@@ -1040,6 +1049,20 @@ def notify_report_ready(db, period_id, student_ids):
                 "hebben een resultaat.\n\n"
                 "Open RapportApp om het rapport te bekijken of af te drukken.")
         queue_mail(db, "rapport", subject, body)
+        student_subject = (f"Je rapport van module {period['name']} is gereed")
+        student_exists = db.execute(
+            "SELECT COUNT(*) FROM mail_outbox WHERE event = 'rapport' "
+            "AND subject = ?", (student_subject,)).fetchone()[0]
+        if student_mails and not student_exists:
+            email = (student["email"] or "").strip()
+            if email:
+                student_body = (f"Beste {student['name']},\n\n"
+                                f"Je rapport voor module {period['name']} is compleet: "
+                                "alle vakken van deze module hebben een resultaat.\n\n"
+                                "Open RapportApp om je rapport te bekijken of af "
+                                "te drukken.")
+                queue_mail(db, "rapport", student_subject, student_body,
+                           recipients=[email])
 
 
 @app.route("/api/settings")
@@ -1063,6 +1086,7 @@ def settings_get():
         "smtp_pass_set": bool(cfg["smtp_pass"]),
         "mail_roles": cfg["roles"],
         "mail_modes": cfg["modes"],
+        "mail_students": cfg["students"],
     })
 
 
@@ -1137,6 +1161,8 @@ def settings_put():
             if mode not in ("direct", "samenvatting"):
                 return jsonify({"error": "Ongeldige meldingsmodus"}), 400
             updates[f"mail_mode_{event}"] = mode
+        if f"mail_students_{event}" in data:
+            updates[f"mail_students_{event}"] = "1" if data[f"mail_students_{event}"] else "0"
     for key, value in updates.items():
         db.execute(
             "INSERT INTO settings (key, value) VALUES (?, ?) "
@@ -1164,6 +1190,7 @@ def settings_get_inner(db):
         "smtp_pass_set": bool(cfg["smtp_pass"]),
         "mail_roles": cfg["roles"],
         "mail_modes": cfg["modes"],
+        "mail_students": cfg["students"],
     })
 
 

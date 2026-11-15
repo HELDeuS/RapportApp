@@ -574,7 +574,7 @@
   </div>
   <details class="block" id="settings-blok-mail" open>
     <summary class="block-title">E-mailmeldingen</summary>
-    <p class="hint">Meldingen bij een nieuwe of afgeronde vergadering (met bespreeklijst/conclusies) en zodra het rapport van een student compleet is. Kies per meldingsoort de ontvangers als rollen: alle actieve gebruikers binnen een aangevinkte rol met een e-mailadres ontvangen de mail. Kies daarnaast of de mail direct of als dagelijkse samenvatting gaat. Zonder SMTP-server worden geen meldingen verstuurd.</p>
+    <p class="hint">Meldingen bij een nieuwe of afgeronde vergadering (met bespreeklijst/conclusies) en zodra het rapport van een student compleet is. Kies per meldingsoort de ontvangers als rollen: alle actieve gebruikers binnen een aangevinkte rol met een e-mailadres ontvangen de mail. Kies daarnaast of de mail direct of als dagelijkse samenvatting gaat. Bij 'Rapport gereed' kun je de student zelf ook een eigen mail sturen op zijn/haar e-mailadres uit de studentgegevens (altijd direct, nooit in de dagelijkse samenvatting). Zonder SMTP-server worden geen meldingen verstuurd.</p>
     <div class="toolbar addbar">
       <label>SMTP-server
         <input id="settings-smtp-host" placeholder="Bijv. smtp.school.nl">
@@ -618,6 +618,7 @@
           <label class="checkbox-label"><input type="checkbox" class="mail-role-rapport" value="administratie"> Administratie</label>
         </span>
       </label>
+      <label class="checkbox-label"><input type="checkbox" id="settings-mail-student-rapport"> Student zelf (eigen mail)</label>
       <label>Modus
         <select id="settings-mailmode-rapport">
           <option value="direct">Direct versturen</option>
