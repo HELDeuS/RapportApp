@@ -54,9 +54,8 @@ function sortRows(rows, state, fieldOf) {
         !isNaN(na) && !isNaN(nb)) {
       return na < nb ? -dir : na > nb ? dir : 0;
     }
-    const sav = (av || "").toString().toLowerCase();
-    const sbv = (bv || "").toString().toLowerCase();
-    return sav < sbv ? -dir : sav > sbv ? dir : 0;
+    const cmp = (av || "").toString().localeCompare((bv || "").toString(), "nl");
+    return cmp * dir;
   });
 }
 
@@ -2668,7 +2667,7 @@ function applyStatReportTable() {
       const ta = cellVal(a), tb = cellVal(b);
       const na = asNum(ta), nb = asNum(tb);
       if (na !== null && nb !== null) return (na - nb) * dir;
-      return (ta.toLowerCase() < tb.toLowerCase() ? -1 : ta.toLowerCase() > tb.toLowerCase() ? 1 : 0) * dir;
+      return ta.localeCompare(tb, "nl") * dir;
     });
   }
   [...table.tHead.rows[0].cells].forEach((th, i) => {
@@ -2888,8 +2887,7 @@ function statSortRows(tableId, rows) {
     if (typeof av === "number" || typeof bv === "number") {
       return (av < bv ? -1 : av > bv ? 1 : 0) * dir;
     }
-    const as = String(av).toLowerCase(), bs = String(bv).toLowerCase();
-    return as < bs ? -dir : as > bs ? dir : 0;
+    return String(av).localeCompare(String(bv), "nl") * dir;
   });
 }
 
@@ -3494,9 +3492,9 @@ function renderArchTable(tableId) {
   if (state.sortKey) {
     const key = state.sortKey;
     rows = [...rows].sort((a, b) => {
-      const av = (a[key] || "").toString().toLowerCase();
-      const bv = (b[key] || "").toString().toLowerCase();
-      return av < bv ? -state.sortDir : av > bv ? state.sortDir : 0;
+      const av = (a[key] || "").toString();
+      const bv = (b[key] || "").toString();
+      return av.localeCompare(bv, "nl") * state.sortDir;
     });
   }
   // sorteer-indicator in de kop

@@ -4,6 +4,7 @@ import os
 import secrets
 import sqlite3
 import subprocess
+import unicodedata
 from datetime import datetime, timedelta
 
 from flask import Flask, g, jsonify, request, send_file, send_from_directory, session
@@ -54,10 +55,21 @@ def auth_error(*roles):
     return user, None
 
 
+def nl_collate(a, b):
+    """Sorteert diakritische tekens mee met de basisletter (Ç bij C, Ş bij S)."""
+    def key(s):
+        s = unicodedata.normalize("NFKD", str(s))
+        s = "".join(ch for ch in s if not unicodedata.combining(ch))
+        return s.casefold()
+    ka, kb = key(a), key(b)
+    return -1 if ka < kb else (1 if ka > kb else 0)
+
+
 def get_db():
     if "db" not in g:
         g.db = sqlite3.connect(DB_PATH, timeout=10)
         g.db.row_factory = sqlite3.Row
+        g.db.create_collation("nl", nl_collate)
         g.db.execute("PRAGMA foreign_keys = ON")
     return g.db
 
@@ -612,7 +624,7 @@ def users_collection():
         """SELECT u.id, u.username, u.role, u.student_id, u.active,
                   u.first_name, u.last_name, u.email, s.name AS student_name
            FROM users u LEFT JOIN students s ON s.id = u.student_id
-           ORDER BY u.username"""
+           ORDER BY u.username COLLATE nl"""
     ).fetchall()
     return jsonify([dict(r) for r in rows])
 
@@ -1393,7 +1405,7 @@ def cohorts_collection():
         audit(db, user, "aanmaken", "cohort", None, f"Cohort '{name}'")
     archived = 1 if request.args.get("archived") == "1" else 0
     rows = db.execute(
-        "SELECT * FROM cohorts WHERE archived = ? ORDER BY name DESC", (archived,)
+        "SELECT * FROM cohorts WHERE archived = ? ORDER BY name COLLATE nl DESC", (archived,)
     ).fetchall()
     return jsonify([dict(r) for r in rows])
 
@@ -1446,7 +1458,7 @@ def crebos_collection():
         db.execute("INSERT OR IGNORE INTO crebos (name) VALUES (?)", (name,))
         db.commit()
         audit(db, user, "aanmaken", "crebo", None, f"Crebo '{name}'")
-    rows = db.execute("SELECT * FROM crebos ORDER BY name").fetchall()
+    rows = db.execute("SELECT * FROM crebos ORDER BY name COLLATE nl").fetchall()
     return jsonify([dict(r) for r in rows])
 
 
@@ -1514,7 +1526,7 @@ def leertrajecten_collection():
            FROM leertrajecten lt
            LEFT JOIN crebos n ON n.id = lt.crebo_id
            LEFT JOIN cohorts co ON co.id = lt.cohort_id
-           WHERE lt.archived = ? ORDER BY lt.name""",
+           WHERE lt.archived = ? ORDER BY lt.name COLLATE nl""",
         (archived,)).fetchall()
     return jsonify([leertraject_with_periods(db, r) for r in rows])
 
@@ -1592,7 +1604,7 @@ def classes_collection():
            LEFT JOIN cohorts co ON co.id = lt.cohort_id
            LEFT JOIN users m ON m.id = c.mentor_id
            WHERE c.archived = ?
-           ORDER BY c.name""",
+           ORDER BY c.name COLLATE nl""",
         (archived,),
     ).fetchall()
     return jsonify([dict(r) for r in rows])
@@ -1690,12 +1702,12 @@ def students_collection():
         rows = db.execute(
             f"""SELECT st.* FROM students st
                 WHERE st.archived = ? AND st.class_id IN ({placeholders})
-                ORDER BY st.name""",
+                ORDER BY st.name COLLATE nl""",
             (archived, *mentor_ids),
         ).fetchall()
     else:
         rows = db.execute(
-            "SELECT st.* FROM students st WHERE st.archived = ? ORDER BY st.name",
+            "SELECT st.* FROM students st WHERE st.archived = ? ORDER BY st.name COLLATE nl",
             (archived,),
         ).fetchall()
     return jsonify([dict(r) for r in rows])
@@ -1845,7 +1857,7 @@ def keuzedelen_collection():
     db = get_db()
     archived = 1 if request.args.get("archived") == "1" else 0
     rows = db.execute(
-        "SELECT * FROM subjects WHERE kind = 'keuzedeel' AND archived = ? ORDER BY name",
+        "SELECT * FROM subjects WHERE kind = 'keuzedeel' AND archived = ? ORDER BY name COLLATE nl",
         (archived,)).fetchall()
     return jsonify([subject_with_periods(db, r["id"]) for r in rows])
 
@@ -1882,11 +1894,11 @@ def keuzedelen_matrix():
                    c.leertraject_id
             FROM students st
             LEFT JOIN classes c ON c.id = st.class_id
-            WHERE {where} ORDER BY st.name""",
+            WHERE {where} ORDER BY st.name COLLATE nl""",
         args).fetchall()
     keuzedelen = db.execute(
         """SELECT id, name, sbu, assessment_type FROM subjects
-           WHERE archived = 0 AND kind = 'keuzedeel' ORDER BY name""").fetchall()
+           WHERE archived = 0 AND kind = 'keuzedeel' ORDER BY name COLLATE nl""").fetchall()
     grades = {}
     sbu_totals = {}
     for r in db.execute(
@@ -2122,7 +2134,7 @@ def student_keuzedelen(student_id):
            FROM student_keuzedelen k
            JOIN subjects s ON s.id = k.subject_id
            WHERE k.student_id = ?
-           ORDER BY s.name""",
+           ORDER BY s.name COLLATE nl""",
         (student_id,)).fetchall()
     total = sum(r["sbu"] or 0 for r in rows)
     return jsonify({
@@ -2170,7 +2182,7 @@ def subjects_collection():
         return jsonify(subject_with_periods(db, subject_id)), 201
     archived = 1 if request.args.get("archived") == "1" else 0
     rows = db.execute(
-        "SELECT * FROM subjects WHERE archived = ? ORDER BY name", (archived,)
+        "SELECT * FROM subjects WHERE archived = ? ORDER BY name COLLATE nl", (archived,)
     ).fetchall()
     return jsonify([subject_with_periods(db, r["id"]) for r in rows])
 
@@ -2943,12 +2955,12 @@ def statistics():
     if all_periods:
         if year_period_ids is None:
             subjects = db.execute(
-                "SELECT * FROM subjects WHERE archived = 0 AND kind = 'vak' ORDER BY name"
+                "SELECT * FROM subjects WHERE archived = 0 AND kind = 'vak' ORDER BY name COLLATE nl"
             ).fetchall()
         elif year_period_ids:
             ph_p = ",".join("?" for _ in year_period_ids)
             subjects = [s for s in db.execute(
-                "SELECT * FROM subjects WHERE archived = 0 AND kind = 'vak' ORDER BY name"
+                "SELECT * FROM subjects WHERE archived = 0 AND kind = 'vak' ORDER BY name COLLATE nl"
             ).fetchall()
                 if any(r["period_id"] in year_period_ids for r in db.execute(
                     f"SELECT period_id FROM subject_periods WHERE subject_id = ?",
@@ -2957,7 +2969,7 @@ def statistics():
             subjects = []
     else:
         subjects = [s for s in db.execute(
-            "SELECT * FROM subjects WHERE archived = 0 AND kind = 'vak' ORDER BY name"
+            "SELECT * FROM subjects WHERE archived = 0 AND kind = 'vak' ORDER BY name COLLATE nl"
         ).fetchall()
             if period_id in {r["period_id"] for r in db.execute(
                 "SELECT period_id FROM subject_periods WHERE subject_id = ?",
@@ -3132,7 +3144,7 @@ def statistics():
         rows = []
         for k in db.execute(
             """SELECT id, name, sbu, assessment_type FROM subjects
-               WHERE archived = 0 AND kind = 'keuzedeel' ORDER BY name""").fetchall():
+               WHERE archived = 0 AND kind = 'keuzedeel' ORDER BY name COLLATE nl""").fetchall():
             links = [dict(r) for r in db.execute(
                 """SELECT student_id, grade FROM student_keuzedelen
                    WHERE subject_id = ?""", (k["id"],)).fetchall()]
@@ -3160,7 +3172,7 @@ def statistics():
             """SELECT k.student_id, k.grade, st.name, st.student_number,
                       st.class_id FROM student_keuzedelen k
                JOIN students st ON st.id = k.student_id
-               WHERE k.subject_id = ? ORDER BY st.name""",
+               WHERE k.subject_id = ? ORDER BY st.name COLLATE nl""",
             (subject_id,)).fetchall():
             if r["student_id"] not in student_ids:
                 continue
@@ -3238,7 +3250,7 @@ def statistics():
             names = [r["name"] for r in db.execute(
                 """SELECT s2.name FROM student_keuzedelen k
                    JOIN subjects s2 ON s2.id = k.subject_id
-                   WHERE k.student_id = ? ORDER BY s2.name""",
+                   WHERE k.student_id = ? ORDER BY s2.name COLLATE nl""",
                 (s["id"],)).fetchall()]
             rows.append({
                 "student": s["name"], "student_number": s["student_number"],
@@ -3573,7 +3585,7 @@ def meetings_create():
                 """SELECT st.first_name, st.prefix, st.last_name,
                           st.student_number, i.reason
                    FROM meeting_items i JOIN students st ON st.id = i.student_id
-                   WHERE i.meeting_id = ? ORDER BY st.last_name, st.first_name""",
+                   WHERE i.meeting_id = ? ORDER BY st.last_name COLLATE nl, st.first_name COLLATE nl""",
                 (meeting_id,)).fetchall():
                 name = " ".join(x for x in [it["first_name"], it["prefix"],
                                           it["last_name"]] if x)
@@ -3610,7 +3622,7 @@ def meetings_detail(meeting_id):
                   st.first_name, st.prefix, st.last_name, st.student_number
            FROM meeting_items i
            JOIN students st ON st.id = i.student_id
-           WHERE i.meeting_id = ? ORDER BY st.last_name, st.first_name""",
+           WHERE i.meeting_id = ? ORDER BY st.last_name COLLATE nl, st.first_name COLLATE nl""",
         (meeting_id,)).fetchall()
     subj_names = {r["id"]: r["name"] for r in db.execute(
         "SELECT id, name FROM subjects").fetchall()}
@@ -3636,7 +3648,7 @@ def meetings_detail(meeting_id):
         keuzedelen = db.execute(
             """SELECT s.name, s.sbu, k.grade FROM student_keuzedelen k
                JOIN subjects s ON s.id = k.subject_id
-               WHERE k.student_id = ? ORDER BY s.name""",
+               WHERE k.student_id = ? ORDER BY s.name COLLATE nl""",
             (sid,)).fetchall()
         note = notes.get(sid)
         sig = signals.get(sid, {"tekorten": 0, "present": None,
@@ -3717,7 +3729,7 @@ def meetings_update(meeting_id):
                        FROM meeting_items i
                        JOIN students st ON st.id = i.student_id
                        WHERE i.meeting_id = ?
-                       ORDER BY st.last_name, st.first_name""",
+                       ORDER BY st.last_name COLLATE nl, st.first_name COLLATE nl""",
                     (meeting_id,)).fetchall():
                     name = " ".join(x for x in [it["first_name"], it["prefix"],
                                               it["last_name"]] if x)
@@ -3875,7 +3887,7 @@ def report():
                JOIN cohorts co ON co.id = lt.cohort_id
                WHERE lt.cohort_id = ? AND st.archived = 0
                  AND co.archived = 0
-               ORDER BY st.name""",
+               ORDER BY st.name COLLATE nl""",
             (cohort_id,),
         ).fetchall()
     elif class_id:
@@ -3883,16 +3895,16 @@ def report():
             """SELECT st.* FROM students st
                JOIN classes c ON c.id = st.class_id
                WHERE st.class_id = ? AND st.archived = 0 AND c.archived = 0
-               ORDER BY st.name""",
+               ORDER BY st.name COLLATE nl""",
             (class_id,),
         ).fetchall()
     else:
         students = db.execute(
-            "SELECT * FROM students WHERE archived = 0 ORDER BY name"
+            "SELECT * FROM students WHERE archived = 0 ORDER BY name COLLATE nl"
         ).fetchall()
 
     subjects = db.execute(
-        "SELECT * FROM subjects WHERE archived = 0 ORDER BY name"
+        "SELECT * FROM subjects WHERE archived = 0 ORDER BY name COLLATE nl"
     ).fetchall()
     # Alleen vakken tonen waarvan de periode expliciet is aangevinkt.
     subject_period_map = {}
@@ -3996,7 +4008,7 @@ def report():
                FROM student_keuzedelen k
                JOIN subjects s ON s.id = k.subject_id
                WHERE k.student_id = ?
-               ORDER BY s.name""",
+               ORDER BY s.name COLLATE nl""",
             (s["id"],)).fetchall()
         keuzedelen = [{
             "name": r["name"],
