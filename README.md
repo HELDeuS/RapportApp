@@ -61,8 +61,10 @@ Vul een lege database met een complete testset (12 modules, 39 vakken, 6 klassen
 
 ```bash
 cd /opt/RapportApp
-sudo -u rapportapp venv/bin/python seed_dummy.py --url http://127.0.0.1:5000 --username beheerder --password <jouw-wachtwoord>
+sudo -u rapportapp /opt/RapportApp/venv/bin/python /opt/RapportApp/seed_dummy.py --url http://127.0.0.1:5000 --username beheerder --password <jouw-wachtwoord>
 ```
+
+> **Let op:** gebruik absolute paden (of sta in `/opt/RapportApp`); met een relatief pad als `venv/bin/python` krijg je buiten die map de melding "command not found". Omdat het script alleen de standaardbibliotheek gebruikt, kan ook `sudo -u rapportapp python3 /opt/RapportApp/seed_dummy.py ...` als de venv ontbreekt.
 
 Opbouw: 3 leerjaren van 4 modules (M1 t/m M12, modules tellen door); M5, M6, M11 en M12 zijn stagemodules met één vak (Stage 1 t/m 4); 8 vakken per gewone module (5 technisch, 3 niet-technisch, sommige vakken starten later of stoppen eerder); 2 klassen per leerjaar met unieke klascodes en eigen mentor; alle dummy-accounts hebben wachtwoord `welkom` (studenten loggen in met hun studentnummer).
 
@@ -71,7 +73,7 @@ Het script gebruikt alleen de Python-standaardbibliotheek; er hoeft niets extra 
 Alle dummydata (en alle andere gebruikers dan je eigen account) verwijder je weer met:
 
 ```bash
-sudo -u rapportapp venv/bin/python seed_dummy.py --reset --url http://127.0.0.1:5000 --username beheerder --password <jouw-wachtwoord>
+sudo -u rapportapp /opt/RapportApp/venv/bin/python /opt/RapportApp/seed_dummy.py --reset --url http://127.0.0.1:5000 --username beheerder --password <jouw-wachtwoord>
 ```
 
 > **Let op:** gebruik voor het live gaan van studentaccounts HTTPS (bijv. via Caddy of nginx), zodat wachtwoorden niet als platte tekst over het netwerk gaan.
