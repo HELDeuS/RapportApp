@@ -25,4 +25,8 @@ Ga verder met RapportApp (https://github.com/HELDeuS/RapportApp, direct naar mai
 ## Open punten (todo)
 
 - Cosmetisch: werkbalkbreedtes op tabblad Klassen vs. de tabellen eronder
-- Toekomst: HTTPS (Caddy/nginx) vóór studentaccounts live gaan, wachtwoordbeleid (verplicht wijzigen bij eerste login), 720 SBU als instelling per crebo, eventueel grafieken/Excel-export in statistieken
+- Toekomst: HTTPS (Caddy/nginx) vóór studentaccounts live gaan
+
+Al afgerond (was eerder op deze lijst): wachtwoordbeleid (verplicht wijzigen bij eerste
+login, min. 8 tekens), 720 SBU als instelling per crebo, grafieken en Excel-export in
+statistieken, e-mailmeldingen aan studenten zelf.
