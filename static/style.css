@@ -282,6 +282,7 @@ input.cell.att-present { color: var(--vol); }
 input.cell.att-present.att-onv { color: var(--onv); font-weight: 700; }
 input.cell.att-allowed, .att-allowed { color: var(--geel); font-weight: 700; }
 input.cell.att-unallowed { color: var(--onv); font-weight: 700; }
+input.cell.att-incomplete { background: rgba(212, 177, 6, .18); box-shadow: inset 0 0 0 1px var(--geel); }
 
 .att-table { margin-bottom: 12px; }
 

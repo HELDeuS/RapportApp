@@ -10,6 +10,7 @@ let subjects = [];
 let periods = [];
 let grades = {}; // "studentId:subjectId" -> value
 let attendance = {}; // studentId -> {present, absent_allowed, absent_unallowed}
+const ATT_FIELDS = ["present", "absent_allowed", "absent_unallowed"];
 let notes = {}; // studentId -> {comment, teacher_comment}
 let currentPeriod = null;
 let users = [];
@@ -645,10 +646,15 @@ function renderGradeTable() {
       return `<td${cls}><input class="cell${kind ? " val-" + kind : ""}" data-sid="${st.id}" data-suid="${su.id}" value="${esc(v)}"${gradeDis}></td>`;
     }).join("");
     const att = attendance[st.id] || {};
+    const attSum = ATT_FIELDS.reduce((t, f) => t + (att[f] ?? 0), 0);
+    const attFilled = ATT_FIELDS.some((f) => att[f] !== null && att[f] !== undefined && att[f] !== "");
+    const attIncomplete = attFilled && Math.abs(attSum - 100) > 0.01;
     const attCell = (field, cls) => {
       const v = att[field] === null || att[field] === undefined ? "" : att[field];
       const kind = cls === "att-present" && v !== "" && parseFloat(v) < 85 ? " att-onv" : "";
-      return `<td><input class="cell ${cls}${kind}" data-att="${field}" data-sid="${st.id}" value="${esc(v)}"${attDis}></td>`;
+      const mark = attIncomplete ? " att-incomplete" : "";
+      const title = attIncomplete ? `Samen ${Math.round(attSum * 100) / 100}% — pas aan tot samen 100% (nog niet opgeslagen)` : "";
+      return `<td><input class="cell ${cls}${kind}${mark}" data-att="${field}" data-sid="${st.id}" value="${esc(v)}"${attDis} title="${esc(title)}"></td>`;
     };
     return `<tr><td>${esc(st.student_number || "")}</td><td>${esc(st.first_name || "")}</td><td>${esc(st.prefix || "")}</td><td>${esc(st.last_name || "")}</td>${cells}` +
       attCell("present", "att-present") +
@@ -788,10 +794,62 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && noteEdit) closeNoteDialog();
 });
 
+function attRowInputs(sid) {
+  return ATT_FIELDS.map((f) =>
+    document.querySelector(`input.cell[data-att="${f}"][data-sid="${sid}"]`));
+}
+
+function attRowValues(sid) {
+  const inputs = attRowInputs(sid);
+  const vals = {};
+  let filled = 0;
+  let sum = 0;
+  for (const inp of inputs) {
+    const f = inp.dataset.att;
+    const raw = inp.value.trim().replace("%", "").replace(",", ".");
+    if (raw === "") {
+      vals[f] = null;
+    } else {
+      const n = parseFloat(raw);
+      if (isNaN(n) || n < 0 || n > 100) return null;
+      vals[f] = n;
+      filled++;
+      sum += n;
+    }
+  }
+  return { vals, filled, sum };
+}
+
+function markAttRow(sid, sum) {
+  for (const inp of attRowInputs(sid)) {
+    inp.classList.add("att-incomplete");
+    inp.title = `Samen ${Math.round(sum * 100) / 100}% — pas aan tot samen 100% (nog niet opgeslagen)`;
+  }
+}
+
+function clearAttRowMark(sid) {
+  for (const inp of attRowInputs(sid)) {
+    inp.classList.remove("att-incomplete");
+    inp.title = "";
+  }
+}
+
 async function saveAttendance(inp) {
   const sid = +inp.dataset.sid;
-  const att = attendance[sid] || { present: null, absent_allowed: null, absent_unallowed: null };
-  att[inp.dataset.att] = inp.value;
+  const parsed = attRowValues(sid);
+  if (!parsed) {
+    alert("Ongeldig percentage: gebruik een getal tussen 0 en 100.");
+    return;
+  }
+  const { vals, filled, sum } = parsed;
+  const att = attendance[sid] || {};
+  for (const f of ATT_FIELDS) att[f] = vals[f];
+  attendance[sid] = att;
+  if (filled && Math.abs(sum - 100) > 0.01) {
+    markAttRow(sid, sum);
+    return;
+  }
+  clearAttRowMark(sid);
   try {
     const res = await api("/api/attendance", {
       method: "POST",
