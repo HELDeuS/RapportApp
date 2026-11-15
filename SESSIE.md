@@ -26,6 +26,9 @@ Ga verder met RapportApp (https://github.com/HELDeuS/RapportApp, direct naar mai
 ## Open punten (todo)
 
 - Cosmetisch: werkbalkbreedtes op tabblad Klassen vs. de tabellen eronder
+- Rapportages: sorteren op achternaam van de student
+- Rapporten netter maken, met name de printrapporten (lay-out/opmaak voor print en PDF)
+- Bulk-PDF: per student een PDF genereren en in bulk downloaden (bijv. hele klas/cohort in één keer als aparte bestanden of één bundel)
 - Toekomst: HTTPS (Caddy/nginx) vóór studentaccounts live gaan
 
 Al afgerond (was eerder op deze lijst): wachtwoordbeleid (verplicht wijzigen bij eerste
