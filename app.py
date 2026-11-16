@@ -4722,15 +4722,16 @@ def student_report_pdf(student, period_label, school_name, logo):
         section("Aanwezigheid")
         font("B")
         for h in ("Aanwezigheid", "Geoorloofd afwezig", "Ongeoorloofd afwezig"):
-            pdf.cell(60, 7, h, border=1, new_x="END")
-        pdf.cell(0, 0, "", new_x="LMARGIN", new_y="NEXT")
+            pdf.cell(60, 7, h, border=1)
+        pdf.ln(7)
         font()
         vals = [att.get("present"), att.get("absent_allowed"), att.get("absent_unallowed")]
         pdf.set_text_color(*(PDF_GREEN if (vals[0] or 0) >= 85 else PDF_RED))
-        pdf.cell(60, 7, pct(vals[0]), border=1, new_x="END")
+        pdf.cell(60, 7, pct(vals[0]), border=1)
         pdf.set_text_color(0, 0, 0)
-        pdf.cell(60, 7, pct(vals[1]), border=1, new_x="END")
-        pdf.cell(0, 7, pct(vals[2]), border=1, new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(60, 7, pct(vals[1]), border=1)
+        pdf.cell(60, 7, pct(vals[2]), border=1)
+        pdf.ln(7)
 
     if student.get("keuzedelen"):
         section(f"Keuzedelen ({int(student.get('sbu_total', 0))} van "
@@ -4780,6 +4781,16 @@ def _safe_name(name):
                    if ch.isalnum() or ch in " -_")[:60].strip().replace(" ", "_") or "student"
 
 
+def _report_pdf_name(student, period_label):
+    """Bestandsnaam: rapport_<studentnummer>_<achternaam>_<voornaam>_<module>.pdf"""
+    parts = [student.get("student_number") or student.get("id")]
+    parts.append(student.get("last_name") or student.get("name"))
+    if student.get("first_name"):
+        parts.append(student["first_name"])
+    parts.append(period_label)
+    return "rapport_" + "_".join(_safe_name(p) for p in parts) + ".pdf"
+
+
 @app.route("/api/report/pdf", methods=["POST"])
 def report_pdf():
     """PDF-rapporten: modus 'zip' (aparte bestanden) of 'bundle' (één pdf)."""
@@ -4821,8 +4832,7 @@ def report_pdf():
     import zipfile
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for s in students:
-            fname = (f"rapport_{_safe_name(s['student']['name'])}_"
-                     f"{_safe_name(period_label)}.pdf")
+            fname = _report_pdf_name(s["student"], period_label)
             zf.writestr(fname, student_report_pdf(s, period_label, school, logo))
     buf.seek(0)
     return send_file(buf, mimetype="application/zip", as_attachment=True,
@@ -4867,7 +4877,7 @@ def report_mail():
         try:
             pdf = student_report_pdf(s, period_label, school, logo)
             smtp_send(cfg, [email], subject, body,
-                      attachments=[(f"rapport_{_safe_name(period_label)}.pdf",
+                      attachments=[(_report_pdf_name(s["student"], period_label),
                                     pdf, "application/pdf")])
             db.execute(
                 "INSERT INTO mail_outbox (event, mode, subject, body, recipients) "
