@@ -1919,6 +1919,86 @@ function renderReportCards(data, periodOverride) {
     </div>`).join("");
 }
 
+// ---------- Bulk-PDF en rapporten mailen ----------
+function reportSelection() {
+  const periodId = $("#report-period").value;
+  if (!periodId || periodId === "all") return null;
+  const body = { period_id: +periodId, audience: $("#report-audience").value };
+  const studentId = $("#report-student").value;
+  const classId = $("#report-class").value;
+  const cohortId = $("#report-cohort").value;
+  if (studentId) body.student_id = +studentId;
+  if (classId) body.class_id = +classId;
+  if (cohortId) body.cohort_id = +cohortId;
+  return body;
+}
+
+function showReportBulkResult(msg, ok) {
+  const box = $("#report-bulk-result");
+  box.textContent = msg;
+  box.classList.remove("hidden", ok ? "err" : "ok");
+  box.classList.add(ok ? "ok" : "err");
+}
+
+$("#btn-report-pdf").addEventListener("click", async () => {
+  const body = reportSelection();
+  if (!body) return alert("Kies eerst een specifieke module (niet 'alle modules').");
+  body.mode = $("#report-pdf-mode").value;
+  const btn = $("#btn-report-pdf");
+  btn.disabled = true;
+  btn.textContent = "Bezig...";
+  try {
+    const res = await fetch("/api/report/pdf", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
+    const blob = await res.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = body.mode === "bundle" ? "rapporten.pdf" : "rapporten.zip";
+    a.click();
+    URL.revokeObjectURL(a.href);
+    showReportBulkResult("PDF('s) gedownload.", true);
+  } catch (err) {
+    showReportBulkResult("Download mislukt: " + err.message, false);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "PDF('s) downloaden";
+  }
+});
+
+$("#btn-report-mail").addEventListener("click", async () => {
+  const body = reportSelection();
+  if (!body) return alert("Kies eerst een specifieke module (niet 'alle modules').");
+  const scope = body.student_id ? "deze student"
+    : body.class_id ? "deze klas" : body.cohort_id ? "dit cohort" : "alle studenten";
+  if (!confirm(`Stuur het PDF-rapport van de gekozen module naar de individuele studenten van ${scope}? Studenten zonder e-mailadres worden overgeslagen.`)) return;
+  const btn = $("#btn-report-mail");
+  btn.disabled = true;
+  btn.textContent = "Bezig...";
+  try {
+    const res = await api("/api/report/mail", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    let msg = `${res.sent} rapport(en) gemaild.`;
+    if (res.no_email.length) msg += ` Zonder e-mailadres: ${res.no_email.join(", ")}.`;
+    if (res.errors.length) msg += ` Fouten: ${res.errors.slice(0, 3).join("; ")}.`;
+    showReportBulkResult(msg, !res.errors.length);
+  } catch (err) {
+    showReportBulkResult("Mailen mislukt: " + err.message, false);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Mailen naar studenten";
+  }
+});
+
 // ---------- Keuzedelen-matrix ----------
 let kdMatrix = null;
 

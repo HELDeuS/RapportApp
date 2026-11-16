@@ -1,3 +1,5 @@
+import base64
+import io
 import json
 import math
 import os
@@ -907,7 +909,7 @@ def event_recipients(db, event):
     return role_recipients(db, cfg["roles"].get(event) or [])
 
 
-def smtp_send(cfg, recipients, subject, body):
+def smtp_send(cfg, recipients, subject, body, attachments=None):
     import smtplib
     from email.message import EmailMessage
     msg = EmailMessage()
@@ -915,6 +917,9 @@ def smtp_send(cfg, recipients, subject, body):
     msg["From"] = cfg["smtp_from"] or cfg["smtp_user"] or "rapportapp@localhost"
     msg["To"] = ", ".join(recipients)
     msg.set_content(body)
+    for filename, content, mimetype in (attachments or []):
+        msg.add_attachment(content, maintype=mimetype.split("/")[0],
+                           subtype=mimetype.split("/")[1], filename=filename)
     try:
         port = int(cfg["smtp_port"] or DEFAULT_SMTP_PORT)
     except (TypeError, ValueError):
@@ -4350,14 +4355,21 @@ def report():
     else:
         class_id = request.args.get("class_id", type=int)
         cohort_id = request.args.get("cohort_id", type=int)
-    class_id = request.args.get("class_id", type=int)
-    cohort_id = request.args.get("cohort_id", type=int)
+    audience = "student" if user["role"] == "student" else request.args.get("audience", "staff")
     if not period_id:
         return jsonify({"error": "period_id is verplicht"}), 400
+    try:
+        return jsonify(build_report(user, period_id, student_id,
+                                    class_id, cohort_id, audience))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+
+
+def build_report(user, period_id, student_id, class_id, cohort_id, audience="staff"):
     db = get_db()
     period = db.execute("SELECT * FROM periods WHERE id = ?", (period_id,)).fetchone()
     if period is None:
-        return jsonify({"error": "Periode bestaat niet"}), 404
+        raise ValueError("Periode bestaat niet")
 
     if student_id:
         students = db.execute(
@@ -4371,7 +4383,7 @@ def report():
                JOIN cohorts co ON co.id = lt.cohort_id
                WHERE lt.cohort_id = ? AND st.archived = 0
                  AND co.archived = 0
-               ORDER BY st.name COLLATE nl""",
+               ORDER BY st.last_name COLLATE nl, st.first_name COLLATE nl""",
             (cohort_id,),
         ).fetchall()
     elif class_id:
@@ -4379,12 +4391,13 @@ def report():
             """SELECT st.* FROM students st
                JOIN classes c ON c.id = st.class_id
                WHERE st.class_id = ? AND st.archived = 0 AND c.archived = 0
-               ORDER BY st.name COLLATE nl""",
+               ORDER BY st.last_name COLLATE nl, st.first_name COLLATE nl""",
             (class_id,),
         ).fetchall()
     else:
         students = db.execute(
-            "SELECT * FROM students WHERE archived = 0 ORDER BY name COLLATE nl"
+            """SELECT * FROM students WHERE archived = 0
+               ORDER BY last_name COLLATE nl, first_name COLLATE nl"""
         ).fetchall()
 
     subjects = db.execute(
@@ -4430,7 +4443,6 @@ def report():
              "cohort": r["ccohort"], "mentor": r["cmentor"]}
             if r["cname"] else None
         )
-    audience = "student" if user["role"] == "student" else request.args.get("audience", "staff")
     notes_map = {}
     for r in db.execute(
         """SELECT student_id, comment, teacher_comment FROM notes
@@ -4545,7 +4557,330 @@ def report():
             "sbu_doel": sbu_doel_for_student(db, s["id"]),
             "audience": audience,
         })
-    return jsonify({"period": dict(period), "students": result})
+    return {"period": dict(period), "students": result}
+
+
+
+# ---------------------------------------------------------------------------
+# PDF-rapporten (fpdf2): per student, als zip of als één bundel,
+# en per klas/cohort mailen naar de individuele studenten.
+# ---------------------------------------------------------------------------
+
+PDF_GREEN = (30, 126, 52)
+PDF_RED = (192, 57, 43)
+
+
+def _pdf_logo(pdf, logo):
+    """Logo uit de instellingen (data-URI) linksboven in de kop plaatsen."""
+    if not logo or not logo.startswith("data:image/"):
+        return 0
+    try:
+        head, b64 = logo.split(",", 1)
+        fmt = head.split("data:image/")[1].split(";")[0].lower()
+        if fmt not in ("png", "jpeg", "jpg"):
+            return 0
+        if fmt == "jpg":
+            fmt = "jpeg"
+        data = base64.b64decode(b64)
+        fname = f"/tmp/rapportapp_logo.{fmt}"
+        with open(fname, "wb") as f:
+            f.write(data)
+        y = pdf.get_y()
+        pdf.image(fname, x=pdf.l_margin, y=y, w=26)
+        return 30
+    except Exception:
+        return 0
+
+
+PDF_FONT_CANDIDATES = (
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+    "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+)
+
+
+def _pdf_unicode_font():
+    for path in PDF_FONT_CANDIDATES:
+        if os.path.isfile(path):
+            return path
+    return None
+
+
+def _pdf_sanitize(text):
+    """Zet tekst om naar latin-1 als er geen Unicode-font beschikbaar is."""
+    replacements = {"\u2014": "-", "\u2013": "-", "\u2026": "...",
+                    "\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"'}
+    s = str(text)
+    for old, new in replacements.items():
+        s = s.replace(old, new)
+    try:
+        s.encode("latin-1")
+        return s
+    except UnicodeEncodeError:
+        norm = unicodedata.normalize("NFKD", s)
+        return "".join(ch for ch in norm if not unicodedata.combining(ch))
+
+
+def student_report_pdf(student, period_label, school_name, logo):
+    """Genereert het PDF-rapport van \u00e9\u00e9n student met fpdf2."""
+    from fpdf import FPDF
+    pdf = FPDF(format="A4")
+    pdf.set_auto_page_break(True, margin=18)
+    pdf.add_page()
+    unicode_font = _pdf_unicode_font()
+    if unicode_font:
+        pdf.add_font("appfont", "", unicode_font)
+        pdf.add_font("appfont", "B", unicode_font)
+        base_font = "appfont"
+        T = lambda s: str(s)
+    else:
+        base_font = "helvetica"
+        T = _pdf_sanitize
+
+    def font(style="", size=10):
+        pdf.set_font(base_font, style, size)
+
+    logo_w = _pdf_logo(pdf, logo)
+    pdf.set_xy(pdf.l_margin + logo_w, 10)
+    font("B", 16)
+    pdf.cell(0, 8, T(school_name or "MBO ICT-opleiding"), new_x="LMARGIN", new_y="NEXT")
+    font("", 13)
+    pdf.cell(0, 8, T(f"Rapport \u2014 module {period_label}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(4)
+
+    cls = student.get("class") or {}
+
+    def info_row(label, value, label2=None, value2=None):
+        font("B")
+        pdf.cell(38, 7, T(label), border=1)
+        font()
+        pdf.cell(55, 7, T(value or ""), border=1)
+        if label2 is not None:
+            font("B")
+            pdf.cell(38, 7, T(label2), border=1)
+            font()
+            pdf.cell(0, 7, T(value2 or ""), border=1, new_x="LMARGIN", new_y="NEXT")
+        else:
+            pdf.cell(0, 7, "", border=1, new_x="LMARGIN", new_y="NEXT")
+
+    def pct(v):
+        return f"{v:g}%" if v is not None else ""
+
+    info_row("Student", student["student"]["name"],
+             "Studentnummer", student["student"].get("student_number"))
+    info_row("Klas", cls.get("name"), "Crebo", cls.get("crebo"))
+    info_row("SLB'er", cls.get("mentor"), "Cohort", cls.get("cohort"))
+    datum = datetime.now().strftime("%d-%m-%Y")
+    tek = student["total_tekorten"]
+    font("B")
+    pdf.cell(38, 7, "Datum", border=1)
+    font()
+    pdf.cell(55, 7, datum, border=1)
+    font("B")
+    pdf.cell(38, 7, "Totaal tekorten", border=1)
+    font()
+    pdf.set_text_color(*(PDF_RED if tek > 0 else PDF_GREEN))
+    pdf.cell(0, 7, str(tek), border=1, new_x="LMARGIN", new_y="NEXT")
+    pdf.set_text_color(0, 0, 0)
+    if student.get("specialisaties"):
+        font()
+        pdf.cell(0, 7, T("Specialisatie: " + ", ".join(student["specialisaties"])),
+                 new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(4)
+
+    def section(title):
+        pdf.ln(2)
+        font("B", 11)
+        pdf.cell(0, 7, T(title), new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(1)
+
+    def value_color(value, tekorten):
+        if value == "VS":
+            return (130, 90, 20)
+        return PDF_RED if tekorten > 0 else PDF_GREEN
+
+    if student["entries"]:
+        section("Beoordelingen")
+        font("B")
+        pdf.cell(120, 7, "Vak", border=1)
+        pdf.cell(0, 7, "Beoordeling", border=1, new_x="LMARGIN", new_y="NEXT")
+        font()
+        for e in student["entries"]:
+            name = e["subject"] if len(e["subject"]) <= 68 else e["subject"][:67] + "..."
+            pdf.cell(120, 7, T(name), border=1)
+            pdf.set_text_color(*value_color(e["value"], e["tekorten"]))
+            pdf.cell(0, 7, T(e["value"]), border=1, new_x="LMARGIN", new_y="NEXT")
+            pdf.set_text_color(0, 0, 0)
+    else:
+        font()
+        pdf.cell(0, 7, "Geen cijfers bekend in deze module.",
+                 new_x="LMARGIN", new_y="NEXT")
+
+    att = student.get("attendance")
+    if att:
+        section("Aanwezigheid")
+        font("B")
+        for h in ("Aanwezigheid", "Geoorloofd afwezig", "Ongeoorloofd afwezig"):
+            pdf.cell(60, 7, h, border=1, new_x="END")
+        pdf.cell(0, 0, "", new_x="LMARGIN", new_y="NEXT")
+        font()
+        vals = [att.get("present"), att.get("absent_allowed"), att.get("absent_unallowed")]
+        pdf.set_text_color(*(PDF_GREEN if (vals[0] or 0) >= 85 else PDF_RED))
+        pdf.cell(60, 7, pct(vals[0]), border=1, new_x="END")
+        pdf.set_text_color(0, 0, 0)
+        pdf.cell(60, 7, pct(vals[1]), border=1, new_x="END")
+        pdf.cell(0, 7, pct(vals[2]), border=1, new_x="LMARGIN", new_y="NEXT")
+
+    if student.get("keuzedelen"):
+        section(f"Keuzedelen ({int(student.get('sbu_total', 0))} van "
+                f"{int(student.get('sbu_doel', 720))} SBU)")
+        font("B")
+        pdf.cell(90, 7, "Keuzedeel", border=1)
+        pdf.cell(25, 7, "SBU", border=1)
+        pdf.cell(0, 7, "Beoordeling", border=1, new_x="LMARGIN", new_y="NEXT")
+        font()
+        for k in student["keuzedelen"]:
+            pdf.cell(90, 7, T(k["name"])[:52], border=1)
+            pdf.cell(25, 7, str(int(k["sbu"])), border=1)
+            if k.get("value"):
+                pdf.set_text_color(*value_color(k["value"], k.get("tekorten", 0)))
+            pdf.cell(0, 7, T(k.get("value") or ""), border=1, new_x="LMARGIN", new_y="NEXT")
+            pdf.set_text_color(0, 0, 0)
+
+    notes = student.get("notes")
+    if notes and (notes.get("comment") or
+                  (student.get("audience") != "student" and notes.get("teacher_comment"))):
+        section("Opmerkingen")
+        font()
+        if notes.get("comment"):
+            pdf.multi_cell(0, 6, T(notes["comment"]))
+            pdf.ln(2)
+        if student.get("audience") != "student" and notes.get("teacher_comment"):
+            font("B")
+            pdf.cell(0, 6, "Opmerking docenten:", new_x="LMARGIN", new_y="NEXT")
+            font()
+            pdf.multi_cell(0, 6, T(notes["teacher_comment"]))
+
+    pdf.ln(14)
+    pdf.set_draw_color(60, 60, 60)
+    y = pdf.get_y()
+    pdf.line(pdf.l_margin, y, pdf.l_margin + 75, y)
+    pdf.line(pdf.l_margin + 100, y, pdf.l_margin + 175, y)
+    font("", 9)
+    pdf.set_xy(pdf.l_margin, y + 2)
+    pdf.cell(75, 6, "Handtekening SLB'er")
+    pdf.set_xy(pdf.l_margin + 100, y + 2)
+    pdf.cell(75, 6, "Handtekening student / ouder")
+    return bytes(pdf.output())
+
+
+def _safe_name(name):
+    return "".join(ch for ch in str(name)
+                   if ch.isalnum() or ch in " -_")[:60].strip().replace(" ", "_") or "student"
+
+
+@app.route("/api/report/pdf", methods=["POST"])
+def report_pdf():
+    """PDF-rapporten: modus 'zip' (aparte bestanden) of 'bundle' (één pdf)."""
+    user, err = auth_error("beheerder", "mentor", "docent", "administratie")
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    period_id = data.get("period_id")
+    if not period_id:
+        return jsonify({"error": "period_id is verplicht"}), 400
+    mode = data.get("mode") or "zip"
+    if mode not in ("zip", "bundle"):
+        return jsonify({"error": "Ongeldige modus (zip of bundle)"}), 400
+    audience = data.get("audience") or "staff"
+    db = get_db()
+    school = get_setting(db, "school_name")
+    logo = get_setting(db, "logo")
+    try:
+        report_data = build_report(user, period_id, data.get("student_id"),
+                                   data.get("class_id"), data.get("cohort_id"),
+                                   audience)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+    students = report_data["students"]
+    if not students:
+        return jsonify({"error": "Geen studenten in deze selectie"}), 400
+    period_label = report_data["period"]["name"]
+    if mode == "bundle":
+        from pypdf import PdfWriter
+        writer = PdfWriter()
+        for s in students:
+            writer.append(io.BytesIO(student_report_pdf(s, period_label, school, logo)))
+        out = io.BytesIO()
+        writer.write(out)
+        out.seek(0)
+        return send_file(out, mimetype="application/pdf", as_attachment=True,
+                         download_name=f"rapporten_{_safe_name(period_label)}.pdf")
+    buf = io.BytesIO()
+    import zipfile
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for s in students:
+            fname = (f"rapport_{_safe_name(s['student']['name'])}_"
+                     f"{_safe_name(period_label)}.pdf")
+            zf.writestr(fname, student_report_pdf(s, period_label, school, logo))
+    buf.seek(0)
+    return send_file(buf, mimetype="application/zip", as_attachment=True,
+                     download_name=f"rapporten_{_safe_name(period_label)}.zip")
+
+
+@app.route("/api/report/mail", methods=["POST"])
+def report_mail():
+    """Mail het PDF-rapport naar de individuele studenten van de selectie."""
+    user, err = auth_error("beheerder", "mentor", "docent", "administratie")
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    period_id = data.get("period_id")
+    if not period_id:
+        return jsonify({"error": "period_id is verplicht"}), 400
+    db = get_db()
+    cfg = mail_settings(db)
+    if not cfg["smtp_host"]:
+        return jsonify({"error": "Vul eerst de SMTP-instellingen in (Instellingen)"}), 400
+    try:
+        report_data = build_report(user, period_id, data.get("student_id"),
+                                   data.get("class_id"), data.get("cohort_id"),
+                                   "student")
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+    period_label = report_data["period"]["name"]
+    school = get_setting(db, "school_name")
+    logo = get_setting(db, "logo")
+    sent, no_email, errors = 0, [], []
+    for s in report_data["students"]:
+        email = (s["student"].get("email") or "").strip()
+        name = s["student"]["name"]
+        if not email:
+            no_email.append(name)
+            continue
+        subject = f"Je rapport van module {period_label}"
+        body = (f"Beste {name},\n\n"
+                "In de bijlage vind je je rapport van module "
+                f"{period_label}.\n\n"
+                f"Met vriendelijke groet,\n{school or 'RapportApp'}")
+        try:
+            pdf = student_report_pdf(s, period_label, school, logo)
+            smtp_send(cfg, [email], subject, body,
+                      attachments=[(f"rapport_{_safe_name(period_label)}.pdf",
+                                    pdf, "application/pdf")])
+            db.execute(
+                "INSERT INTO mail_outbox (event, mode, subject, body, recipients) "
+                "VALUES (?, 'direct', ?, ?, ?)",
+                ("rapport", subject, body, email))
+            db.commit()
+            sent += 1
+        except Exception as e:
+            errors.append(f"{name}: {str(e)[:120]}")
+    audit(db, user, "mailen", "rapport", period_id,
+          f"Rapporten van module {period_label} gemaild: {sent} verstuurd, "
+          f"{len(no_email)} zonder e-mail, {len(errors)} fout(en)")
+    return jsonify({"sent": sent, "no_email": no_email, "errors": errors})
 
 
 init_db()

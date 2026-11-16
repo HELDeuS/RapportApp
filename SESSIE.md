@@ -26,9 +26,7 @@ Ga verder met RapportApp (https://github.com/HELDeuS/RapportApp, direct naar mai
 ## Open punten (todo)
 
 - Cosmetisch: werkbalkbreedtes op tabblad Klassen vs. de tabellen eronder
-- Rapportages: sorteren op achternaam van de student
-- Rapporten netter maken, met name de printrapporten (lay-out/opmaak voor print en PDF)
-- Bulk-PDF: per student een PDF genereren en in bulk downloaden (bijv. hele klas/cohort in één keer als aparte bestanden of één bundel)
+- Bulk-PDF en mailen van rapporten: op het tabblad Rapport kun je met één klik PDF-rapporten genereren van de selectie (modus zip met aparte bestanden per student, of één bundel-PDF via pypdf) en de rapporten per student mailen als bijlage (fpdf2; gebruikt de SMTP-instellingen; studenten zonder e-mailadres worden overgeslagen en gerapporteerd). Rapporten (HTML en PDF) zijn gesorteerd op achternaam
 - Toekomst: HTTPS (Caddy/nginx) vóór studentaccounts live gaan
 
 Al afgerond (was eerder op deze lijst): wachtwoordbeleid (verplicht wijzigen bij eerste

@@ -456,7 +456,16 @@
     </label>
     <button id="btn-report" class="primary">Rapport tonen</button>
     <button id="btn-print" class="secondary">Afdrukken / PDF</button>
+    <label>PDF-download:
+      <select id="report-pdf-mode">
+        <option value="zip">Aparte bestanden (zip)</option>
+        <option value="bundle">E&eacute;n bundel-PDF</option>
+      </select>
+    </label>
+    <button id="btn-report-pdf" class="secondary">PDF('s) downloaden</button>
+    <button id="btn-report-mail" class="secondary">Mailen naar studenten</button>
   </div>
+  <div id="report-bulk-result" class="result hidden"></div>
   <div id="report-output"></div>
 </section>
 
