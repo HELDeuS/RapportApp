@@ -8,9 +8,11 @@ Draai dit op een lege (of Test-)database; het script controleert niet op bestaan
 """
 
 import argparse
+import http.client
 import http.cookiejar
 import json
 import random
+import ssl
 import sys
 import urllib.request
 
@@ -20,11 +22,19 @@ random.seed(42)
 class Client:
     """Minimale HTTP-client met cookies (geen externe dependencies)."""
 
-    def __init__(self, base):
+    def __init__(self, base, insecure=False):
         self.base = base.rstrip("/")
         self.jar = http.cookiejar.CookieJar()
-        self.opener = urllib.request.build_opener(
-            urllib.request.HTTPCookieProcessor(self.jar))
+        if insecure and self.base.startswith("https"):
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            https = urllib.request.HTTPSHandler(context=ctx)
+            self.opener = urllib.request.build_opener(
+                https, urllib.request.HTTPCookieProcessor(self.jar))
+        else:
+            self.opener = urllib.request.build_opener(
+                urllib.request.HTTPCookieProcessor(self.jar))
 
     def request(self, method, path, json_body=None, form=None):
         url = self.base + path
@@ -48,7 +58,18 @@ class Client:
                          "\n  sudo systemctl status rapportapp"
                          "\nZonodig herstarten:"
                          "\n  sudo systemctl restart rapportapp")
+            if isinstance(e.reason, ssl.SSLCertVerificationError):
+                sys.exit(f"Het TLS-certificaat van {self.base} is niet vertrouwd"
+                         " (bijv. self-signed)."
+                         "\nVoeg --insecure toe om het certificaat te negeren.")
             raise
+        except (http.client.BadStatusLine, http.client.RemoteDisconnected,
+                ConnectionResetError):
+            sys.exit(f"De server op {self.base} gaf geen geldig HTTP-antwoord."
+                     "\nWaarschijnlijk spreekt de server HTTPS (RAPPORTAPP_TLS=1)"
+                     " of zit er een proxy op dit adres."
+                     "\nProbeer:  --url https://127.0.0.1:5000"
+                     "  (met --insecure bij een self-signed certificaat)")
 
     def get(self, path):
         return self.request("GET", path)
@@ -85,8 +106,10 @@ def main():
     ap.add_argument("--password", required=True)
     ap.add_argument("--reset", action="store_true",
                     help="Leeg de database (alle data en gebruikers behalve jezelf)")
+    ap.add_argument("--insecure", action="store_true",
+                    help="Negeer TLS-certificaatfouten (self-signed certificaat)")
     args = ap.parse_args()
-    s = Client(args.url)
+    s = Client(args.url, insecure=args.insecure)
     status, body = s.post("/api/auth/login",
                           {"username": args.username, "password": args.password})
     if status != 200:

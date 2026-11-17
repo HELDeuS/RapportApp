@@ -65,6 +65,8 @@ sudo -u rapportapp /opt/RapportApp/venv/bin/python /opt/RapportApp/seed_dummy.py
 ```
 
 > **Let op:** gebruik absolute paden (of sta in `/opt/RapportApp`); met een relatief pad als `venv/bin/python` krijg je buiten die map de melding "command not found". Omdat het script alleen de standaardbibliotheek gebruikt, kan ook `sudo -u rapportapp python3 /opt/RapportApp/seed_dummy.py ...` als de venv ontbreekt.
+>
+> **HTTPS/TLS:** draait de server met TLS (RAPPORTAPP_TLS=1) of achter een proxy die op poort 5000 HTTPS spreekt, gebruik dan `--url https://127.0.0.1:5000`. Bij een self-signed certificaat voeg je `--insecure` toe. Krijg je de melding "gaf geen geldig HTTP-antwoord", dan spreekt het script HTTP tegen een HTTPS-poort.
 
 Opbouw: 3 leerjaren van 4 modules (M1 t/m M12, modules tellen door); M5, M6, M11 en M12 zijn stagemodules met één vak (Stage 1 t/m 4); 8 vakken per gewone module (5 technisch, 3 niet-technisch, sommige vakken starten later of stoppen eerder); 2 klassen per leerjaar met unieke klascodes en eigen mentor; alle dummy-accounts hebben wachtwoord `welkom` (studenten loggen in met hun studentnummer).
 
