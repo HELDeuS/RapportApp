@@ -25,6 +25,14 @@ Ga verder met RapportApp (https://github.com/HELDeuS/RapportApp, direct naar mai
 
 ## Open punten (todo)
 
+### Testfase: gemelde issues (echte data, collega-testers)
+
+Werkwijze: gemelde problemen komen hieronder op de lijst met urgentie
+(HOOG / MIDDEN / LAAG) en worden niet direct opgelost; we lossen ze later
+op volgorde van urgentie. Een issue is pas van de lijst als het is opgelost
+en in "Al afgerond" is gezet. Nog geen issues gemeld.
+
+Overige todo's:
 - Cosmetisch: werkbalkbreedtes op tabblad Klassen vs. de tabellen eronder
 - Bulk-PDF en mailen van rapporten: op het tabblad Rapport kun je met één klik PDF-rapporten genereren van de selectie (modus zip met aparte bestanden per student, of één bundel-PDF via pypdf) en de rapporten per student mailen als bijlage (fpdf2; gebruikt de SMTP-instellingen; studenten zonder e-mailadres worden overgeslagen en gerapporteerd). Rapporten (HTML en PDF) zijn gesorteerd op achternaam
 - Toekomst: HTTPS (Caddy/nginx) vóór studentaccounts live gaan
