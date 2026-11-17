@@ -30,7 +30,9 @@ Ga verder met RapportApp (https://github.com/HELDeuS/RapportApp, direct naar mai
 Werkwijze: gemelde problemen komen hieronder op de lijst met urgentie
 (HOOG / MIDDEN / LAAG) en worden niet direct opgelost; we lossen ze later
 op volgorde van urgentie. Een issue is pas van de lijst als het is opgelost
-en in "Al afgerond" is gezet. Nog geen issues gemeld.
+en in "Al afgerond" is gezet.
+
+- [MIDDEN] Usernames zijn hoofdlettergevoelig: inloggen met 'Jan' lukt niet als de account 'jan' heet. Gewenst: inloggen (en uniek maken van gebruikersnamen) hoofdletterongevoelig.
 
 Overige todo's:
 - Cosmetisch: werkbalkbreedtes op tabblad Klassen vs. de tabellen eronder
