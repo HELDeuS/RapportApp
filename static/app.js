@@ -248,7 +248,7 @@ const ROLE_TABS = {
 };
 
 const isRole = (...roles) => currentUser && roles.includes(currentUser.role);
-const maySetGrades = () => isRole("beheerder", "docent");
+const maySetGrades = () => isRole("beheerder", "docent", "mentor");
 const maySetAttendanceNotes = () => isRole("beheerder", "docent", "mentor");
 const isAdmin = () => isRole("beheerder");
 

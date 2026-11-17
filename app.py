@@ -2786,7 +2786,7 @@ def grades_list():
 
 @app.route("/api/grades", methods=["POST"])
 def grade_set():
-    user, err = auth_error("beheerder", "docent")
+    user, err = auth_error("beheerder", "docent", "mentor")
     if err:
         return err
     data = request.get_json(force=True)
@@ -2843,7 +2843,7 @@ def grade_set():
 @app.route("/api/grades/bulk", methods=["POST"])
 def grade_bulk():
     """Kolom-import: één vak, meerdere studenten (geplakte kolom uit Excel)."""
-    user, err = auth_error("beheerder", "docent")
+    user, err = auth_error("beheerder", "docent", "mentor")
     if err:
         return err
     data = request.get_json(force=True)
@@ -2931,7 +2931,7 @@ def split_line(line):
 
 @app.route("/api/import", methods=["POST"])
 def import_grades():
-    user, err = auth_error("beheerder", "docent")
+    user, err = auth_error("beheerder", "docent", "mentor")
     if err:
         return err
     period_id = request.form.get("period_id", type=int)
