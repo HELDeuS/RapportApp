@@ -33,6 +33,11 @@ op volgorde van urgentie. Een issue is pas van de lijst als het is opgelost
 en in "Al afgerond" is gezet.
 
 - [MIDDEN] Usernames zijn hoofdlettergevoelig: inloggen met 'Jan' lukt niet als de account 'jan' heet. Gewenst: inloggen (en uniek maken van gebruikersnamen) hoofdletterongevoelig.
+- [MIDDEN] Studentenlijst: (a) voor mentoren is er geen default filter meer op de
+  eigen klas nu ze alle studenten zien — gewenst: default "eigen klassen" aan,
+  met optie om het filter uit te zetten; (b) de mogelijkheid om vanuit de
+  studentenlijst een vinkje te zetten zodat een student kan inloggen
+  (studentaccount activeren) is weg — moet voor productie terugkomen.
 - [LAAG] Logboek is zichtbaar voor mentoren (en docenten); gewenst is alleen
   beheerders. Backend-endpoint /api/auditlog (app.py, auth_error) staat nu
   open voor beheerder/mentor/docent/administratie; moet naar alleen
