@@ -511,9 +511,9 @@ function renderPeriodSelects() {
     if (kbcPrev && [...kbc.options].some((o) => o.value === kbcPrev)) kbc.value = kbcPrev;
   }
   const scFilter = $("#student-cohort") ? $("#student-cohort").value : "";
-  const scList = ownClassesOnly(scFilter
+  const scList = scFilter
     ? classes.filter((c) => String(c.cohort_id) === scFilter)
-    : classes);
+    : classes;
   const scSel = $("#student-class-filter");
   const scPrev = scSel.value;
   scSel.innerHTML = `<option value="">Alle klassen</option>` +
@@ -524,12 +524,12 @@ function renderPeriodSelects() {
 function renderClassSelects() {
   const cohortFilter = $("#grade-cohort").value;
   const reportCohortFilter = $("#report-cohort").value;
-  const visibleClasses = ownClassesOnly(cohortFilter
+  const visibleClasses = cohortFilter
     ? classes.filter((c) => String(c.cohort_id) === cohortFilter)
-    : classes);
-  const reportClasses = ownClassesOnly(reportCohortFilter
+    : classes;
+  const reportClasses = reportCohortFilter
     ? classes.filter((c) => String(c.cohort_id) === reportCohortFilter)
-    : classes);
+    : classes;
   const grouped = (sel, list) => {
     const byCohort = {};
     for (const c of list) {
@@ -1128,20 +1128,27 @@ function renderStudents() {
     const c = classes.find((x) => x.id === s.class_id);
     return c ? c.name : "";
   };
+  // Mentoren zijn ook docenten: ze zien alle studenten, maar mogen alleen
+  // studenten van eigen klassen muteren (backend handhaaft dit ook).
+  const mayEditStudent = (s) => {
+    if (!currentUser || currentUser.role !== "mentor") return true;
+    const c = classes.find((x) => String(x.id) === String(s.class_id));
+    return c ? String(c.mentor_id) === String(currentUser.id) : false;
+  };
   const rows = sortRows(visibleStudentsList(), listSort.students, (s, key) =>
     key === "class" ? classOf(s)
     : (s[key] || ""));
   updateSortArrows("#students-table", listSort.students);
   $("#students-table tbody").innerHTML = pageSlice("#students-table", rows).map((s) => `
-    <tr data-id="${s.id}">
-      <td><input type="checkbox" class="row-select" data-id="${s.id}"></td>
-      <td><input data-field="student_number" value="${esc(s.student_number || "")}" style="width:90px"></td>
-      <td><input data-field="first_name" value="${esc(s.first_name || "")}" style="width:110px"></td>
-      <td><input data-field="prefix" value="${esc(s.prefix || "")}" style="width:80px"></td>
-      <td><input data-field="last_name" value="${esc(s.last_name || "")}" style="width:130px"></td>
-      <td><input type="email" data-field="email" value="${esc(s.email || "")}" style="width:160px"></td>
-      <td><select data-field="class_id">${classOptions(s.class_id)}</select></td>
-      <td><button class="secondary" data-archive>Archiveren</button></td>
+    <tr data-id="${s.id}"${mayEditStudent(s) ? "" : ` class="readonly-row" title="Als mentor kun je alleen studenten van je eigen klas wijzigen"`}>
+      <td><input type="checkbox" class="row-select" data-id="${s.id}"${mayEditStudent(s) ? "" : " disabled"}></td>
+      <td>${mayEditStudent(s) ? `<input data-field="student_number" value="${esc(s.student_number || "")}" style="width:90px">` : esc(s.student_number || "")}</td>
+      <td>${mayEditStudent(s) ? `<input data-field="first_name" value="${esc(s.first_name || "")}" style="width:110px">` : esc(s.first_name || "")}</td>
+      <td>${mayEditStudent(s) ? `<input data-field="prefix" value="${esc(s.prefix || "")}" style="width:80px">` : esc(s.prefix || "")}</td>
+      <td>${mayEditStudent(s) ? `<input data-field="last_name" value="${esc(s.last_name || "")}" style="width:130px">` : esc(s.last_name || "")}</td>
+      <td>${mayEditStudent(s) ? `<input type="email" data-field="email" value="${esc(s.email || "")}" style="width:160px">` : esc(s.email || "")}</td>
+      <td>${mayEditStudent(s) ? `<select data-field="class_id">${classOptions(s.class_id)}</select>` : esc(classOf(s))}</td>
+      <td>${mayEditStudent(s) ? `<button class="secondary" data-archive>Archiveren</button>` : ""}</td>
       ${!currentUser || currentUser.role === "beheerder" ? `<td><button class="danger" data-del>Verwijderen</button></td>` : "<td></td>"}
     </tr>`).join("");
   updateBulkBar();
@@ -2479,9 +2486,6 @@ function statClassOptions() {
   let list = classes;
   if (cohortFilter) {
     list = list.filter((c) => String(c.cohort_id) === cohortFilter);
-  }
-  if (currentUser && currentUser.role === "mentor") {
-    list = list.filter((c) => String(c.mentor_id) === String(currentUser.id));
   }
   return `<option value="">Alle klassen</option>` +
     list.map((c) => `<option value="${c.id}">${esc(classLabel(c))}</option>`).join("");

@@ -787,3 +787,5 @@ input.note-open { cursor: pointer; }
   color: var(--subtext);
   border: 1px solid var(--border);
 }
+
+tr.readonly-row td { color: var(--muted, #777); opacity: .85; }

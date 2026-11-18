@@ -1729,24 +1729,10 @@ def students_collection():
               f"Student '{name}' ({number})")
         return jsonify(student), 201
     archived = 1 if request.args.get("archived") == "1" else 0
-    mentor_ids = None
-    if user["role"] == "mentor":
-        mentor_ids = mentor_class_ids(user)
-    if mentor_ids is not None:
-        if not mentor_ids:
-            return jsonify([])
-        placeholders = ",".join("?" for _ in mentor_ids)
-        rows = db.execute(
-            f"""SELECT st.* FROM students st
-                WHERE st.archived = ? AND st.class_id IN ({placeholders})
-                ORDER BY st.name COLLATE nl""",
-            (archived, *mentor_ids),
-        ).fetchall()
-    else:
-        rows = db.execute(
-            "SELECT st.* FROM students st WHERE st.archived = ? ORDER BY st.name COLLATE nl",
-            (archived,),
-        ).fetchall()
+    rows = db.execute(
+        "SELECT st.* FROM students st WHERE st.archived = ? ORDER BY st.name COLLATE nl",
+        (archived,),
+    ).fetchall()
     return jsonify([dict(r) for r in rows])
 
 
@@ -1924,14 +1910,6 @@ def keuzedelen_matrix():
     cohort_id = request.args.get("cohort_id", type=int)
     where = "st.archived = 0"
     args = []
-    if user["role"] == "mentor":
-        own = mentor_class_ids(user)
-        if not own:
-            return jsonify({"keuzedelen": [], "students": [],
-                            "sbu_doel": KEUZEDEEL_SBU_DOEL})
-        placeholders = ",".join("?" for _ in own)
-        where += f" AND st.class_id IN ({placeholders})"
-        args.extend(own)
     if class_id:
         where += " AND st.class_id = ?"
         args.append(class_id)
@@ -2059,9 +2037,6 @@ def keuzedelen_import():
         if student is None:
             errors.append(f"Regel {i}: geen student met nummer {number}")
             continue
-        if user["role"] == "mentor" and not mentor_owns_student(user, student):
-            errors.append(f"Regel {i}: {number} is niet van jouw klas")
-            continue
         db.execute(
             "INSERT OR IGNORE INTO student_keuzedelen (student_id, subject_id) "
             "VALUES (?, ?)", (student["id"], subject_id))
@@ -2104,8 +2079,6 @@ def keuzedeel_grade():
         "SELECT * FROM students WHERE id = ?", (student_id,)).fetchone()
     if student is None:
         return jsonify({"error": "Student bestaat niet"}), 404
-    if user["role"] == "mentor" and not mentor_owns_student(user, student):
-        return jsonify({"error": "Als mentor kun je alleen studenten van je eigen klas wijzigen"}), 403
     row = db.execute(
         """SELECT k.id, s.assessment_type, s.name FROM student_keuzedelen k
            JOIN subjects s ON s.id = k.subject_id
@@ -2309,13 +2282,6 @@ def specialisatie_students(spec_id):
         return jsonify({"error": "Specialisatie bestaat niet"}), 404
     where = "st.archived = 0"
     args = []
-    if user["role"] == "mentor":
-        own = mentor_class_ids(user)
-        if not own:
-            return jsonify({"specialisatie": {"id": spec_id, "name": spec["name"]},
-                            "students": []})
-        where += f" AND st.class_id IN ({','.join('?' for _ in own)})"
-        args.extend(own)
     rows = db.execute(
         f"""SELECT st.id, st.name, st.student_number, st.first_name,
                    st.prefix, st.last_name, c.name AS class_name
@@ -2427,9 +2393,6 @@ def specialisaties_import():
             if student is None:
                 errors.append(f"Regel {i}: geen student met nummer {number}")
                 continue
-            if user["role"] == "mentor" and not mentor_owns_student(user, student):
-                errors.append(f"Regel {i}: {number} is niet van jouw klas")
-                continue
             spec = db.execute(
                 "SELECT id FROM specialisaties WHERE name = ? COLLATE nl",
                 (spec_name,)).fetchone()
@@ -2452,9 +2415,6 @@ def specialisaties_import():
                 "SELECT * FROM students WHERE student_number = ?", (number,)).fetchone()
             if student is None:
                 errors.append(f"Regel {i}: geen student met nummer {number}")
-                continue
-            if user["role"] == "mentor" and not mentor_owns_student(user, student):
-                errors.append(f"Regel {i}: {number} is niet van jouw klas")
                 continue
             subject = db.execute(
                 """SELECT s.id, s.assessment_type, s.name, m.period_id
@@ -3381,19 +3341,9 @@ def statistics():
         row = db.execute("SELECT * FROM periods WHERE id = ?", (period_id,)).fetchone()
         return dict(row) if row else {"name": "?", "year": ""}
 
-    # Studenten in scope (zelfde regels als rapport; mentor: alleen eigen klassen).
-    if user["role"] == "mentor":
-        mentor_ids = mentor_class_ids(user)
-        if not mentor_ids:
-            return jsonify({"subjects": [], "classes": [], "signals": []})
-        if class_id and class_id not in mentor_ids:
-            return jsonify({"error": "Deze klas is niet van jou"}), 403
-        placeholders = ",".join("?" for _ in mentor_ids)
-        where = f"st.archived = 0 AND st.class_id IN ({placeholders})"
-        args = list(mentor_ids)
-    else:
-        where = "st.archived = 0"
-        args = []
+    # Studenten in scope (zelfde regels als rapport).
+    where = "st.archived = 0"
+    args = []
 
     if class_id:
         where += " AND st.class_id = ?"
@@ -3985,12 +3935,6 @@ def meetings_collection():
         return err
     db = get_db()
     where, args = "1=1", []
-    if user["role"] == "mentor":
-        ids = mentor_class_ids(user)
-        if not ids:
-            return jsonify([])
-        where = f"m.class_id IN ({','.join('?' for _ in ids)})"
-        args = list(ids)
     class_id = request.args.get("class_id", type=int)
     if class_id:
         where += " AND m.class_id = ?"
@@ -4099,10 +4043,6 @@ def meetings_detail(meeting_id):
     meeting = meeting_row(db, meeting_id)
     if meeting is None:
         return jsonify({"error": "Vergadering bestaat niet"}), 404
-    if user["role"] == "mentor":
-        ids = mentor_class_ids(user)
-        if not ids or meeting["class_id"] not in ids:
-            return jsonify({"error": "Deze klas is niet van jou"}), 403
     signals = meeting_student_signals(
         db, meeting["class_id"], meeting["period_id"],
         include_sbu=bool(meeting["include_sbu"]))
