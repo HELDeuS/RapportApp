@@ -4,51 +4,40 @@ Ga verder met RapportApp (https://github.com/HELDeuS/RapportApp, direct naar mai
 
 ## Context
 
-- Flask 3 + SQLite backend (app.py), vanilla JS frontend (static/app.js, index.html, style.css)
-- Model: Crebo → Leertraject (met startcohort) → Module → Vak; Klas → Leertraject; crebo en cohort van een klas komen uit het leertraject
-- Keuzedelen: apart vaksoort met SBU (doel 720), matrixoverzicht, bulk-koppeling en CSV-import van resultaten
-- Specialisaties (keuzemodules): specialisatie → keuzemodule(s) die naast een bestaande module/periode lopen → vakken; studenten worden aan een specialisatie gekoppeld (bulk + CSV). Cijfers worden op het cijferoverzicht ingevoerd als extra kolommen in de periode waarin de keuzemodule loopt (alleen gekoppelde studenten kunnen een resultaat krijgen); ze tellen mee voor rapport, tekorten, signalering en 'rapport gereed'. Rapport toont per student de specialisatie(s) en de keuzemodule-vakken
-- Statistieken: leerjaar/module/cohort/klas/student-filters, sorteerbaar, gepagineerd, rapporten (signalering, alle resultaten per student, gekoppelde studenten per keuzedeel, onvoldoendes, aanwezigheid, keuzedelen) met drill-downs
-- Rapport: nette lay-out met info-blok (SLB'er, cohort, datum), ondertekenregels, logo-placeholder, print/PDF-vriendelijk
-- Rechten: 5 rollen (beheerder/mentor/docent/administratie/student), cumulatief: beheerder ≥ mentor ≥ docent ≥ administratie; UI toont alleen wat een rol mag. Een mentor ziet en kan alles wat een docent kan (alle klassen/studenten zien, cijfers/aanwezigheid/opmerkingen/keuzedelen/specialisaties/importeren, statistieken, vergaderingen) plus mentor-extra's. De mentor-extra's (studenten/klassen muteren, keuzedelen/specialisaties bulk-koppelen, vergaderingen aanmaken/wijzigen) blijven beperkt tot de eigen klas(len)
-- E-mailmeldingen (Instellingen → E-mailmeldingen): SMTP volledig instelbaar; ontvangers zijn per meldingsoort (vergadering, rapport gereed) vinkjes per rol (beheerder/mentor/docent/administratie) — het systeem mailt alle actieve gebruikers binnen aangevinkte rollen met een e-mailadres (instelling `mail_roles_<event>`). Bij 'Rapport gereed' kan daarnaast een vinkje 'Student zelf' worden aangezet (instelling mail_students_rapport): de student krijgt dan een eigen mail op het e-mailadres uit de studentgegevens, altijd direct (nooit in de dagelijkse samenvatting). Modus direct of dagelijkse samenvatting; outbox-overzicht met sorteren/filteren/paginering; testmail-knop
+- Flask 3 + SQLite backend (app.py), vanilla JS frontend (static/app.js, index.html, style.css). Requirements: Flask, openpyxl, fpdf2, pypdf (geen andere externe deps; seed_dummy.py gebruikt alleen stdlib)
+- Model: Crebo → Leertraject (met startcohort) → Module → Vak; Klas → Leertraject
+- Keuzedelen: apart vaksoort met SBU (doel 720), matrixoverzicht, bulk-koppeling en CSV-import
+- Specialisaties (keuzemodules): specialisatie → keuzemodule(s) naast een bestaande module → vakken (kind='keuzemodule'); student-specialisatie-koppeling (bulk + CSV). Cijfers in het cijferoverzicht als extra kolommen in de periode waarin de keuzemodule loopt (API weigert cijfers van niet-gekoppelde studenten); tellen mee voor rapport, tekorten, signalering, 'rapport gereed'
+- Rapport: infoblok, ondertekenregels, logo, printvriendelijk; gesorteerd op achternaam. Bulk-PDF: POST /api/report/pdf met mode 'zip' (per student, naam rapport_<studentnummer>_<achternaam>_<voornaam>_<module>.pdf) of 'bundle' (één pdf via pypdf); bulk-mail: POST /api/report/mail mailt ieders rapport als bijlage (SMTP-instellingen, studenten zonder e-mail overgeslagen)
+- Statistieken: filters op leerjaar/module/cohort/klas/student, sorteren/filteren/paginering, signalering en rapporten met drill-downs, Excel-export
+- Rechten: cumulatief, beheerder ≥ mentor ≥ docent ≥ administratie. Mentor ziet en kan alles wat een docent kan (alle studenten zien, cijfers/aanwezigheid/opmerkingen/keuzedelen/specialisaties/importeren, statistieken, vergaderingen bekijken). Mentor-extra's (studenten/klassen muteren, keuzedelen/specialisaties bulk-koppelen, vergaderingen aanmaken/wijzigen) blijven beperkt tot eigen klas(len); backend handhaaft dit
+- E-mailmeldingen: SMTP instelbaar; ontvangers per meldingsoort met rol-vinkjes; student-zelf-mail bij 'rapport gereed' is altijd direct; modus direct of dagelijkse samenvatting; outbox met sorteren/filteren/paginering
 
 ## Werkwijze/afspraken
 
-- Vóór elke push: `python3 -c "import quickjs; ctx = quickjs.Context(); ctx.eval('(function(){' + open('static/app.js').read() + '})')"` → moet JS_SYNTAX_OK geven
-- API-tests: server starten met `RAPPORTAPP_DB=/tmp/test.db` (poort 5000), seeden met `seed_dummy.py --username beheerder --password rapportapp`; beheerder-wachtwoord is 'rapportapp', overige accounts 'welkom'
-- Server apart starten (niet met &-achter-de-keten), stoppen met `pgrep -f "^python3 app.py$" | xargs -r kill`
-- In de sandbox overleeft een achtergrondserver geen aparte bash-aanroep: start server, seed en tests binnen één aanroep, of gebruik `app.app_context()` voor directe functietests
+- Vóór elke push: `python3 -c "import quickjs; ctx = quickjs.Context(); ctx.eval('(function(){' + open('static/app.js').read() + '})')"` (en `python3 -m py_compile app.py`)
+- API-tests: server starten met `RAPPORTAPP_DB=/tmp/test.db python3 app.py`, seeden met `seed_dummy.py --username beheerder --password rapportapp`; beheerder-wachtwoord 'rapportapp', overige accounts 'welkom'. Let op: als de server HTTPS spreekt (RAPPORTAPP_TLS), gebruik `--url https://127.0.0.1:5000 --insecure` bij seed scripts
+- Server stoppen met `pgrep -f "^python3 app.py$" | xargs -r kill`; start seed en tests binnen één bash-aanroep, of gebruik `app.app_context()` voor directe functietests
 - Elke nieuwe lijstoverzicht: sorteren, filteren en paginering zijn standaard onderdeel van de vraag
-- VM-update: `cd /opt/RapportApp && sudo -u rapportapp git pull && sudo systemctl restart rapportapp`
-- Commando's op de VM altijd met absolute paden (bijv. `/opt/RapportApp/venv/bin/python /opt/RapportApp/seed_dummy.py ...`); relatieve venv-paden geven buiten /opt/RapportApp "command not found"
+- VM-update: `cd /opt/RapportApp && sudo -u rapportapp git pull && (eventueel pip install -r requirements.txt als requirements wijzigde, als rapportapp) && sudo systemctl restart rapportapp`. VM-commando's altijd met absolute paden; pip draaien als rapportapp (`sudo -u rapportapp /opt/RapportApp/venv/bin/pip ...`)
+- Fpdf2 core-fonts zijn latin-1: er is een _pdf_sanitize/fallback voor Unicode (gebruikt DejaVu/Liberation als systeemfont beschikbaar is)
 
 ## Open punten (todo)
 
 ### Testfase: gemelde issues (echte data, collega-testers)
 
-Werkwijze: gemelde problemen komen hieronder op de lijst met urgentie
-(HOOG / MIDDEN / LAAG) en worden niet direct opgelost; we lossen ze later
-op volgorde van urgentie. Een issue is pas van de lijst als het is opgelost
-en in "Al afgerond" is gezet.
+Werkwijze: gemelde problemen komen hieronder met urgentie (HOOG / MIDDEN / LAAG), worden NIET direct opgelost en later in volgorde van urgentie afgehandeld. Pas bij het daadwerkelijk oplossen van de lijst af.
 
-- [MIDDEN] Usernames zijn hoofdlettergevoelig: inloggen met 'Jan' lukt niet als de account 'jan' heet. Gewenst: inloggen (en uniek maken van gebruikersnamen) hoofdletterongevoelig.
-- [MIDDEN] Studentenlijst: (a) voor mentoren is er geen default filter meer op de
-  eigen klas nu ze alle studenten zien — gewenst: default "eigen klassen" aan,
-  met optie om het filter uit te zetten; (b) de mogelijkheid om vanuit de
-  studentenlijst een vinkje te zetten zodat een student kan inloggen
-  (studentaccount activeren) is weg — moet voor productie terugkomen.
-- [LAAG] Logboek is zichtbaar voor mentoren (en docenten); gewenst is alleen
-  beheerders. Backend-endpoint /api/auditlog (app.py, auth_error) staat nu
-  open voor beheerder/mentor/docent/administratie; moet naar alleen
-  "beheerder". Frontend: "logboek" uit ROLE_TABS van mentor, docent en
-  administratie halen.
+- [MIDDEN] Usernames zijn hoofdlettergevoelig: inloggen met 'Jan' lukt niet als de account 'jan' heet. Gewenst: inloggen (en uniek maken van gebruikersnamen) hoofdletterongevoelig (login-lookup + uniekcheck bij accountaanmaak).
+- [MIDDEN] Studentenlijst: (a) geen default-filter meer op de eigen klas voor mentoren — gewenst: vinkje/default "eigen klassen" aan met optie om uit te zetten; (b) de mogelijkheid om vanuit de studentenlijst een vinkje te zetten zodat een student kan inloggen (studentaccount aanmaken/activeren) is weg — moet vóór productie terugkomen (bestaande logica op het tabblad Gebruikers kan hergebruikt worden).
+- [LAAG] Logboek zichtbaar voor mentoren (en docenten); gewenst alleen beheerders. Aanpak: /api/auditlog (auth_error) naar alleen "beheerder" en "logboek" uit ROLE_TABS van mentor/docent/administratie in static/app.js halen.
 
-Overige todo's:
+### Overig
+
 - Cosmetisch: werkbalkbreedtes op tabblad Klassen vs. de tabellen eronder
-- Bulk-PDF en mailen van rapporten: op het tabblad Rapport kun je met één klik PDF-rapporten genereren van de selectie (modus zip met aparte bestanden per student, of één bundel-PDF via pypdf) en de rapporten per student mailen als bijlage (fpdf2; gebruikt de SMTP-instellingen; studenten zonder e-mailadres worden overgeslagen en gerapporteerd). Rapporten (HTML en PDF) zijn gesorteerd op achternaam
+- Print-rapport (HTML/printerlay-out in de browser) verder verfijnen (PDF-lay-out is al netjes)
 - Toekomst: HTTPS (Caddy/nginx) vóór studentaccounts live gaan
 
-Al afgerond (was eerder op deze lijst): wachtwoordbeleid (verplicht wijzigen bij eerste
-login, min. 8 tekens), 720 SBU als instelling per crebo, grafieken en Excel-export in
-statistieken, e-mailmeldingen aan studenten zelf.
+## Al afgerond
+
+Wachtwoordbeleid (verplicht wijzigen bij eerste login, min. 8 tekens), 720 SBU als instelling per crebo, grafieken en Excel-export in statistieken, e-mailmeldingen aan studenten zelf, specialisaties/keuzemodules, bulk-PDF (zip + bundel) en rapporten mailen per student, mentorrechten gelijkgetrokken met docent (rollen cumulatief), sortering rapporten op achternaam, seed-script met --insecure/HTTPS-ondersteuning.
