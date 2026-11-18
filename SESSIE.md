@@ -34,9 +34,10 @@ en in "Al afgerond" is gezet.
 
 - [MIDDEN] Usernames zijn hoofdlettergevoelig: inloggen met 'Jan' lukt niet als de account 'jan' heet. Gewenst: inloggen (en uniek maken van gebruikersnamen) hoofdletterongevoelig.
 - [LAAG] Logboek is zichtbaar voor mentoren (en docenten); gewenst is alleen
-  beheerders. Backend ( /api/audit log) kent momenteel inzagerecht voor alle
-  rollen behalve studenten; functie auth_error(...) en de ROLE_TABS in de
-  frontend moeten naar alleen "beheerder".
+  beheerders. Backend-endpoint /api/auditlog (app.py, auth_error) staat nu
+  open voor beheerder/mentor/docent/administratie; moet naar alleen
+  "beheerder". Frontend: "logboek" uit ROLE_TABS van mentor, docent en
+  administratie halen.
 
 Overige todo's:
 - Cosmetisch: werkbalkbreedtes op tabblad Klassen vs. de tabellen eronder
