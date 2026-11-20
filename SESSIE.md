@@ -28,9 +28,7 @@ Ga verder met RapportApp (https://github.com/HELDeuS/RapportApp, direct naar mai
 
 Werkwijze: gemelde problemen komen hieronder met urgentie (HOOG / MIDDEN / LAAG), worden NIET direct opgelost en later in volgorde van urgentie afgehandeld. Pas bij het daadwerkelijk oplossen van de lijst af.
 
-- [MIDDEN] Usernames zijn hoofdlettergevoelig: inloggen met 'Jan' lukt niet als de account 'jan' heet. Gewenst: inloggen (en uniek maken van gebruikersnamen) hoofdletterongevoelig (login-lookup + uniekcheck bij accountaanmaak).
-- [MIDDEN] Studentenlijst: (a) geen default-filter meer op de eigen klas voor mentoren — gewenst: vinkje/default "eigen klassen" aan met optie om uit te zetten; (b) de mogelijkheid om vanuit de studentenlijst een vinkje te zetten zodat een student kan inloggen (studentaccount aanmaken/activeren) is weg — moet vóór productie terugkomen (bestaande logica op het tabblad Gebruikers kan hergebruikt worden).
-- [LAAG] Logboek zichtbaar voor mentoren (en docenten); gewenst alleen beheerders. Aanpak: /api/auditlog (auth_error) naar alleen "beheerder" en "logboek" uit ROLE_TABS van mentor/docent/administratie in static/app.js halen.
+(leeg — de eerste serie testfase-issues is opgelost, zie "Al afgerond")
 
 ### Overig
 
@@ -40,4 +38,5 @@ Werkwijze: gemelde problemen komen hieronder met urgentie (HOOG / MIDDEN / LAAG)
 
 ## Al afgerond
 
+Testfase-issues ronde 1: gebruikersnamen hoofdletterongevoelig (login-lookup met COLLATE NOCASE, uniekcheck bij aanmaak en import, migratie met unieke NOCASE-index; bij al bestaande naamvarianten wordt de index overgeslagen en moeten dubbele accounts handmatig samengevoegd), studentenlijst met "alleen eigen klassen"-vinkje (default aan voor mentoren) en Login-kolom om een studentaccount aan te maken/activeren/deactiveren (POST /api/students/<id>/login, standaardwachtwoord 'welkom', mentor alleen eigen klas), logboektab alleen voor beheerders (backend + ROLE_TABS), logboektabel met vaste kolombreedtes en wrappende detailtekst (viel eerder deels uit beeld).
 Wachtwoordbeleid (verplicht wijzigen bij eerste login, min. 8 tekens), 720 SBU als instelling per crebo, grafieken en Excel-export in statistieken, e-mailmeldingen aan studenten zelf, specialisaties/keuzemodules, bulk-PDF (zip + bundel) en rapporten mailen per student, mentorrechten gelijkgetrokken met docent (rollen cumulatief), sortering rapporten op achternaam, seed-script met --insecure/HTTPS-ondersteuning.

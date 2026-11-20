@@ -241,9 +241,9 @@ const ROLE_LABELS = {
 
 const ROLE_TABS = {
   beheerder: ["cijfers", "studenten", "structuur", "vakken", "periodes", "keuzedelen", "specialisaties", "statistieken", "rapport", "vergadering", "archief", "gebruikers", "instellingen", "logboek"],
-  mentor: ["cijfers", "studenten", "keuzedelen", "specialisaties", "statistieken", "rapport", "vergadering", "archief", "logboek"],
-  docent: ["cijfers", "keuzedelen", "specialisaties", "statistieken", "rapport", "vergadering", "logboek"],
-  administratie: ["keuzedelen", "specialisaties", "statistieken", "rapport", "logboek"],
+  mentor: ["cijfers", "studenten", "keuzedelen", "specialisaties", "statistieken", "rapport", "vergadering", "archief"],
+  docent: ["cijfers", "keuzedelen", "specialisaties", "statistieken", "rapport", "vergadering"],
+  administratie: ["keuzedelen", "specialisaties", "statistieken", "rapport"],
   student: ["rapport"],
 };
 
@@ -293,6 +293,11 @@ function applyRoleUi() {
   if (gradeImport) gradeImport.style.display = maySetGrades() ? "" : "none";
   const studentImport = $("#student-import-ui");
   if (studentImport) studentImport.style.display = isAdmin() ? "" : "none";
+  const ownClassesWrap = $("#student-own-classes-wrap");
+  if (ownClassesWrap) {
+    ownClassesWrap.style.display = role === "mentor" ? "" : "none";
+    if (role === "mentor") $("#student-own-classes").checked = true;
+  }
   $$("#tab-structuur .admin-only").forEach((el) => {
     el.style.display = isAdmin() ? "" : "none";
   });
@@ -1110,9 +1115,14 @@ function visibleStudentsList() {
   const q = $("#student-search").value.trim().toLowerCase();
   const cohortId = $("#student-cohort").value;
   const classId = $("#student-class-filter").value;
+  const ownOnly = currentUser && currentUser.role === "mentor" &&
+    $("#student-own-classes").checked;
+  const ownClassIds = ownOnly
+    ? new Set(ownClassesOnly(classes).map((c) => String(c.id))) : null;
   return students.filter((s) => {
     if (q && !s.name.toLowerCase().includes(q) && !(s.student_number || "").toLowerCase().includes(q)) return false;
     if (classId && String(s.class_id) !== classId) return false;
+    if (ownClassIds && !ownClassIds.has(String(s.class_id))) return false;
     if (cohortId) {
       const c = classes.find((x) => x.id === s.class_id);
       if (!c || String(c.cohort_id) !== cohortId) return false;
@@ -1138,6 +1148,11 @@ function renderStudents() {
   const rows = sortRows(visibleStudentsList(), listSort.students, (s, key) =>
     key === "class" ? classOf(s)
     : (s[key] || ""));
+  const mayToggleLogin = (s) => (currentUser && (currentUser.role === "beheerder" || (currentUser.role === "mentor" && mayEditStudent(s))));
+  const loginCell = (s) => !currentUser || !["beheerder", "mentor"].includes(currentUser.role) ? "<td></td>"
+    : mayToggleLogin(s)
+      ? `<td><input type="checkbox" class="login-toggle" data-id="${s.id}"${s.login_active ? " checked" : ""} title="${esc(s.login_username || "")}"></td>`
+      : `<td>${s.login_active ? esc(s.login_username || "\u2713") : ""}</td>`;
   updateSortArrows("#students-table", listSort.students);
   $("#students-table tbody").innerHTML = pageSlice("#students-table", rows).map((s) => `
     <tr data-id="${s.id}"${mayEditStudent(s) ? "" : ` class="readonly-row" title="Als mentor kun je alleen studenten van je eigen klas wijzigen"`}>
@@ -1148,6 +1163,7 @@ function renderStudents() {
       <td>${mayEditStudent(s) ? `<input data-field="last_name" value="${esc(s.last_name || "")}" style="width:130px">` : esc(s.last_name || "")}</td>
       <td>${mayEditStudent(s) ? `<input type="email" data-field="email" value="${esc(s.email || "")}" style="width:160px">` : esc(s.email || "")}</td>
       <td>${mayEditStudent(s) ? `<select data-field="class_id">${classOptions(s.class_id)}</select>` : esc(classOf(s))}</td>
+      ${loginCell(s)}
       <td>${mayEditStudent(s) ? `<button class="secondary" data-archive>Archiveren</button>` : ""}</td>
       ${!currentUser || currentUser.role === "beheerder" ? `<td><button class="danger" data-del>Verwijderen</button></td>` : "<td></td>"}
     </tr>`).join("");
@@ -1214,6 +1230,30 @@ $("#bulk-archive").addEventListener("click", () =>
   bulkAction("archive", "{n} studenten archiveren?"));
 $("#bulk-delete").addEventListener("click", () =>
   bulkAction("delete", "{n} studenten definitief verwijderen? Dit kan niet ongedaan worden."));
+
+$("#student-own-classes").addEventListener("change", () => {
+  resetPage("#students-table");
+  renderStudents();
+});
+
+$("#students-table tbody").addEventListener("change", async (e) => {
+  const cb = e.target.closest("input.login-toggle");
+  if (!cb) return;
+  try {
+    const res = await api(`/api/students/${cb.dataset.id}/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: cb.checked }),
+    });
+    cb.title = res.username || "";
+    if (res.created) {
+      alert(`Account aangemaakt met gebruikersnaam '${res.username}'. Het standaardwachtwoord is 'welkom' en moet bij de eerste login worden gewijzigd.`);
+    }
+  } catch (err) {
+    cb.checked = !cb.checked;
+    alert("Inloggen instellen mislukt: " + err.message);
+  }
+});
 
 $("#students-select-all").addEventListener("change", (e) => {
   $$("#students-table tbody input.row-select").forEach((cb) => {

@@ -323,6 +323,13 @@ td.tekort-2, td.tekort-3, td.tekort-4, td.tekort-5 { color: var(--tekort); font-
 
 .list { background: var(--card); border-radius: 8px; overflow: hidden; border: 1px solid var(--border); width: 100%; }
 
+#audit-table { table-layout: fixed; }
+#audit-table th:nth-child(1), #audit-table td:nth-child(1) { width: 150px; }
+#audit-table th:nth-child(2), #audit-table td:nth-child(2) { width: 130px; }
+#audit-table th:nth-child(3), #audit-table td:nth-child(3) { width: 110px; }
+#audit-table th:nth-child(4), #audit-table td:nth-child(4) { width: 110px; }
+#audit-table td { white-space: normal; overflow-wrap: anywhere; }
+
 .hint { color: var(--subtext); font-size: .9rem; }
 
 .result {

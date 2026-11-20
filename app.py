@@ -110,7 +110,7 @@ CREATE TABLE IF NOT EXISTS classes (
 );
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT NOT NULL UNIQUE,
+    username TEXT NOT NULL UNIQUE COLLATE NOCASE,
     password_hash TEXT NOT NULL,
     role TEXT NOT NULL,
     student_id INTEGER,
@@ -295,6 +295,13 @@ def init_db():
             db.execute("UPDATE users SET must_change_password = 1 WHERE id = ?",
                        (uid,))
     db.commit()
+    # Gebruikersnamen hoofdletterongevoelig maken voor bestaande databases.
+    try:
+        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_ci "
+                   "ON users(username COLLATE NOCASE)")
+        db.commit()
+    except sqlite3.IntegrityError:
+        db.rollback()
     # Migratie niveau -> crebo: oude tabel en kolom hernoemen.
     tables = [r[0] for r in db.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()]
@@ -556,7 +563,8 @@ def auth_login():
     username = (data.get("username") or "").strip()
     password = data.get("password") or ""
     row = get_db().execute(
-        "SELECT * FROM users WHERE username = ? AND active = 1", (username,)
+        "SELECT * FROM users WHERE username = ? COLLATE NOCASE AND active = 1",
+        (username,)
     ).fetchone()
     if row is None or not check_password_hash(row["password_hash"], password):
         return jsonify({"error": "Onjuiste gebruikersnaam of wachtwoord"}), 401
@@ -620,6 +628,9 @@ def users_collection():
         student_id = data.get("student_id") or None
         if not username or not password:
             return jsonify({"error": "Gebruikersnaam en wachtwoord zijn verplicht"}), 400
+        if db.execute("SELECT id FROM users WHERE username = ? COLLATE NOCASE",
+                      (username,)).fetchone():
+            return jsonify({"error": "Deze gebruikersnaam bestaat al (hoofdletters worden genegeerd)"}), 400
         if role not in ROLES:
             return jsonify({"error": "Onbekende rol"}), 400
         if role == "student" and not student_id:
@@ -811,7 +822,7 @@ def student_display_name(data):
 
 @app.route("/api/auditlog")
 def auditlog_list():
-    user, err = auth_error("beheerder", "mentor", "docent", "administratie")
+    user, err = auth_error("beheerder")
     if err:
         return err
     db = get_db()
@@ -1333,7 +1344,8 @@ def users_import():
         if role not in ROLES:
             errors.append(f"Onbekende rol '{role}' bij {username}")
             continue
-        if db.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone():
+        if db.execute("SELECT id FROM users WHERE username = ? COLLATE NOCASE",
+                      (username,)).fetchone():
             skipped += 1
             continue
         db.execute(
@@ -1730,10 +1742,67 @@ def students_collection():
         return jsonify(student), 201
     archived = 1 if request.args.get("archived") == "1" else 0
     rows = db.execute(
-        "SELECT st.* FROM students st WHERE st.archived = ? ORDER BY st.name COLLATE nl",
+        """SELECT st.*,
+                  (SELECT u.active FROM users u
+                    WHERE u.student_id = st.id AND u.role = 'student'
+                    LIMIT 1) AS login_active,
+                  (SELECT u.username FROM users u
+                    WHERE u.student_id = st.id AND u.role = 'student'
+                    LIMIT 1) AS login_username
+           FROM students st WHERE st.archived = ? ORDER BY st.name COLLATE nl""",
         (archived,),
     ).fetchall()
     return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/students/<int:student_id>/login", methods=["POST"])
+def student_login_toggle(student_id):
+    user, err = auth_error("beheerder", "mentor")
+    if err:
+        return err
+    db = get_db()
+    student = db.execute(
+        "SELECT * FROM students WHERE id = ?", (student_id,)).fetchone()
+    if student is None:
+        return jsonify({"error": "Student bestaat niet"}), 404
+    if user["role"] == "mentor" and not mentor_owns_student(user, student):
+        return jsonify({"error": "Als mentor kun je alleen studenten in je eigen klas wijzigen"}), 403
+    data = request.get_json(silent=True) or {}
+    enabled = bool(data.get("enabled"))
+    account = db.execute(
+        "SELECT * FROM users WHERE student_id = ? AND role = 'student'",
+        (student_id,)).fetchone()
+    if account is None and not enabled:
+        return jsonify({"error": "Deze student heeft nog geen account"}), 400
+    if account is None:
+        base = (student["student_number"] or "").strip() or "student"
+        username, n = base, 2
+        while db.execute("SELECT id FROM users WHERE username = ? COLLATE NOCASE",
+                         (username,)).fetchone():
+            username = f"{base}{n}"
+            n += 1
+        db.execute(
+            """INSERT INTO users (username, password_hash, role, student_id,
+                                  first_name, last_name, email,
+                                  must_change_password)
+               VALUES (?, ?, 'student', ?, ?, ?, ?, 1)""",
+            (username, generate_password_hash("welkom"), student_id,
+             student["first_name"] or "", student["last_name"] or "",
+             student["email"] or ""))
+        account = db.execute("SELECT * FROM users WHERE username = ?",
+                              (username,)).fetchone()
+        audit(db, user, "aanmaken", "gebruiker", account["id"],
+              f"Studentaccount '{username}' voor {student['name']} (via studentenlijst)")
+        created = True
+    else:
+        db.execute("UPDATE users SET active = ? WHERE id = ?",
+                   (1 if enabled else 0, account["id"]))
+        audit(db, user, "login-toggle", "gebruiker", account["id"],
+              f"{student['name']}: {'geactiveerd' if enabled else 'gedeactiveerd'}")
+        created = False
+    db.commit()
+    return jsonify({"ok": True, "username": account["username"],
+                    "created": created, "enabled": enabled})
 
 
 @app.route("/api/students/bulk", methods=["POST"])
